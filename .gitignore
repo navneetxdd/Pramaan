@@ -31,6 +31,7 @@ src-tauri/target/
 src-tauri/binaries/pramaan-engine-*.exe
 src-tauri/binaries/pramaan-engine-*.exe.sha256
 artifacts/
+release-artifacts/
 
 # IDE / OS
 .idea/
