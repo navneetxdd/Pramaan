@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --canvas: #eef0f3;
+  --surface: #ffffff;
+  --raised: #f7f8fa;
+  --sunken: #e2e5ea;
+  --hairline: #d5d9e0;
+  --hairline-strong: #b8bec8;
+  --ink: #14161a;
+  --ink-muted: #4b5563;
+  --ink-faint: #7b8494;
+  --accent: #9a5a12;
+  --accent-hover: #7c480e;
+  --accent-soft: #f3e8d6;
+  --accent-line: #d4ae74;
+  --solved: #1f6b45;
+  --solved-soft: #d7ebe1;
+  --solved-line: #8fbfa6;
+  --danger: #b42318;
+  --danger-soft: #f4d9d6;
+  --shadow-ambient: 0 1px 2px rgb(20 22 26 / 0.06), 0 8px 24px -12px rgb(20 22 26 / 0.14);
+  --shadow-lifted: 0 2px 4px rgb(20 22 26 / 0.07), 0 18px 44px -16px rgb(20 22 26 / 0.18);
+}
+
+.dark {
+  color-scheme: dark;
+  --canvas: #000000;
+  --surface: #0a0a0a;
+  --raised: #121212;
+  --sunken: #000000;
+  --hairline: #1c1c1c;
+  --hairline-strong: #2a2a2a;
+  --ink: #ededed;
+  --ink-muted: #9a9a9a;
+  --ink-faint: #6a6a6a;
+  --accent: #c4924a;
+  --accent-hover: #d4a55c;
+  --accent-soft: #1a140c;
+  --accent-line: #3d2e18;
+  --solved: #6dbd8c;
+  --solved-soft: #0c1610;
+  --solved-line: #1e3226;
+  --danger: #e88880;
+  --danger-soft: #1a0c0b;
+  --shadow-ambient: 0 1px 2px rgb(0 0 0 / 0.7), 0 8px 24px -12px rgb(0 0 0 / 0.85);
+  --shadow-lifted: 0 2px 4px rgb(0 0 0 / 0.75), 0 18px 44px -16px rgb(0 0 0 / 0.9);
+}
+
+@layer base {
+  * {
+    @apply border-hairline;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+  }
+
+  ::selection {
+    background: var(--accent-line);
+    color: var(--ink);
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border border-hairline bg-surface shadow-ambient;
+  }
+
+  .panel-raised {
+    @apply rounded-xl border border-hairline bg-raised;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-accent-line bg-accent px-4 py-2 text-sm font-medium text-ink transition hover:bg-accent-hover disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-hairline bg-transparent px-3 py-2 text-sm text-ink-muted transition hover:border-hairline-strong hover:text-ink;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-hairline bg-raised px-3 py-2 text-sm text-ink outline-none transition focus:border-accent-line;
+  }
+
+  .label {
+    @apply text-xs font-medium uppercase tracking-[0.12em] text-ink-faint;
+  }
+
+  .mono {
+    @apply font-mono text-xs text-ink-muted;
+  }
+}

@@ -1,25 +1,18 @@
-"""
-Root-level launcher for CyberShield AI Video Analytics.
+#!/usr/bin/env python3
+"""Launch Pramaan API server from repository root."""
 
-Run from the workspace root:
-    python run.py
-
-The server starts on http://localhost:8080
-"""
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 from pathlib import Path
 
-APP_DIR = Path(__file__).resolve().parent / "integrated-video-analytics"
-APP_PYTHON = APP_DIR / ".venv" / "Scripts" / "python.exe"
+ROOT = Path(__file__).resolve().parent
+BACKEND = ROOT / "backend"
+sys.path.insert(0, str(BACKEND))
+os.chdir(BACKEND)
 
-if not APP_PYTHON.exists():
-    # Fallback to the current interpreter (e.g. in CI)
-    APP_PYTHON = Path(sys.executable)
+import uvicorn  # noqa: E402
 
-# Change into the app directory so uvicorn reload and relative paths work correctly.
-os.chdir(APP_DIR)
-os.execv(str(APP_PYTHON), [str(APP_PYTHON), str(APP_DIR / "main.py")])
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8787, reload=False)
