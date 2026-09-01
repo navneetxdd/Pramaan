@@ -1,74 +1,95 @@
 # Pramaan
 
-Multi-vendor DVR/NVR forensic workstation for standardized acquisition, recovery, and analysis of surveillance evidence (SIH26150 / NTRO).
+**Pramaan** is a multi-vendor DVR/NVR forensic workstation for SIH26150 — acquisition, device identification, tiered recovery, chain-of-custody, and PAdES-signed reporting.
 
-## Modular architecture (team integration)
-
-Each forensic capability is a **lego brick** under `backend/pramaan/modules/` with its own README, public Python API, and mountable FastAPI routes. Shared contracts live in `backend/pramaan/schemas/`.
-
-| Module | Directory | Responsibility |
-|--------|-----------|----------------|
-| Acquisition | `modules/acquisition/` | Disk image ingest, SHA-256 sidecar |
-| Recovery | `modules/recovery/` | Vendor detector + pluggable adapters |
-| Custody | `modules/custody/` | Hash-chained tamper-evident audit log |
-| Analysis | `modules/analysis/` | Vendor-aware export (DHAV unwrap → MP4) |
-| Reporting | `modules/reporting/` | JSON + HTML forensic reports |
-
-**Env vars:** `PRAMAAN_*` (alias `CSHIELD_*` supported for team docs).  
-**Data exchange:** JSON via REST; evidence files accompanied by `.sha256` sidecars.
+## Repository layout
 
 ```
-backend/pramaan/
-  schemas/       Pydantic contracts (import across modules)
-  core/          SQLite WAL + case repository
-  modules/       Self-contained forensic bricks
-  recovery/      Adapter implementations (register via registry)
-frontend/        Cipher Margin UI (Mirage-inspired)
+/src              React UI (Vite + TypeScript)
+/src-tauri        Tauri v2 desktop shell
+/engine           Python FastAPI forensic engine (sidecar)
+/run.py           Backend-only dev launcher (API testing — not the application)
+/DESIGN.md        UI/UX specification (Part K)
+/DEVIATIONS.md    Spec gap log
 ```
 
-## Research basis
+## Development
 
-Pramaan’s recovery methodology aligns with peer-reviewed forensic literature:
+### Desktop app (SAC-safe on Windows)
 
-- **MDPI Information 2025** ([doi:10.3390/info16110983](https://doi.org/10.3390/info16110983)): dual-signature DHAV validation (header `DHAV` + footer `dhav`), adaptive temporal sequencing — reported 91.8% recovery, 2.4% false-positive rate vs header-only carving.
-- **MDPI Information 2026** ([doi:10.3390/info17050493](https://doi.org/10.3390/info17050493)): multi-channel DHAV demultiplexing for analog Dahua DVR interleaved streams.
-- **Hikvision FS analysis** (Han et al., ICDF2C 2015): HIKBTREE index structure — basis for HKVI adapter heuristics and future HIKBTREE parser (team slot).
-- **Open-source references** (approaches, not copied): HIKVISION-DVR-Tool (E01 + timeline), dhfs_extractor, DVRExtractor (multi-FS: DHFS, WFS, HIKVISION).
-- **Commercial gap:** Magnet WITNESS / Amped DVRConv are closed, siloed per-format; Pramaan targets **open, plugin-based** multi-vendor recovery with algorithmic transparency for court admissibility.
+Windows Smart App Control blocks local `tauri build`. Install a **Desktop shortcut with the Pramaan icon** (one-time setup):
 
-## Requirements
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install-pramaan-desktop.ps1
+```
 
-- Python 3.11+
-- Node.js 20+
-- FFmpeg on `PATH` (optional; MP4 export)
+Then double-click **Pramaan** on your Desktop — launches WebView2 UI + forensic engine with no console window.
 
-## Quick start
+For a full Tauri NSIS/MSI installer, push to GitHub and download the `pramaan-windows-release` artifact (see [docs/DESKTOP.md](docs/DESKTOP.md)).
+
+Alternative launcher:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run-desktop-sac-safe.ps1
+```
+
+### Primary: Tauri desktop app
 
 ```bash
-cd backend && pip install -r requirements.txt
-cd .. && python run.py
-
-cd frontend && npm install && npm run dev   # dev UI
-cd frontend && npm run build && cd .. && python run.py   # prod UI
+npm install
+npm run tauri:dev
 ```
 
-API: `http://127.0.0.1:8787`
+Starts the Vite dev server (port 5173), spawns the Python engine on `127.0.0.1:8787`, and opens the Tauri webview. API calls are proxied through Vite to `/api/v1/*`.
 
-## Forensic workflow
+### Backend-only (curl / Postman / unit tests)
 
-1. **Cases** — investigation registry with examiner metadata
-2. **Acquire** — disk image + SHA-256 sidecar + vendor fingerprint hints
-3. **Recover** — async job; Dahua DHAV / Hikvision HKVI / H.264 adapters
-4. **Analyze** — offset timeline, vendor-aware segment export
-5. **Custody** — hash-chained audit ledger with integrity verification
-6. **Report** — JSON summary + printable HTML report
+```bash
+pip install -r engine/requirements.txt
+python run.py
+```
+
+Engine listens on `http://127.0.0.1:8787`. This is **not** the application launch path — it does not serve the SPA.
+
+### Frontend-only (browser against running engine)
+
+```bash
+python run.py          # terminal 1
+npm run dev            # terminal 2 → http://localhost:5173
+```
+
+## API
+
+All clients use **`/api/v1/*`** only. Version and capabilities: `GET /api/v1/version`.
+
+## Documentation
+
+- [Release documentation index](docs/README.md)
+- [SIH26150 release audit](docs/SIH26150-AUDIT.md)
+- [Architecture and trust boundaries](docs/ARCHITECTURE.md)
+- [OEM capabilities and limitations](docs/CAPABILITIES-AND-LIMITATIONS.md)
+- [Operations procedures](docs/OPERATIONS-SOP.md)
+- [User manual](docs/USER-MANUAL.md)
+- [Validation report](docs/VALIDATION-REPORT.md)
+- [Release checklist](docs/RELEASE-CHECKLIST.md)
+
+## Version bump
+
+```bash
+npm run version:bump -- 0.3.0
+```
+
+Updates `engine/app/__init__.py`, `package.json`, and `src-tauri/tauri.conf.json` together.
 
 ## Tests
 
 ```bash
-cd backend && pytest
+python -m pytest engine/tests -q
+npm run build
+python scripts/smoke_test.py
 ```
 
-## License
+## Data locations
 
-See LICENSE.
+- Application DB: `~/ForensicWorkstation/data/forensic.db` (override: `FORENSIC_WORKSTATION_DATA`)
+- Case artifacts: under per-case directories referenced from the DB

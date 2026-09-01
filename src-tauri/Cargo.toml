@@ -1,0 +1,37 @@
+[package]
+name = "pramaan-desktop"
+version = "0.6.0"
+description = "Pramaan forensic workstation"
+authors = ["Pramaan Team"]
+edition = "2021"
+
+[lib]
+name = "pramaan_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-window-state = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", default-features = false, features = ["rustls"] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+
+# SAC blocks freshly-linked build artifacts with os error 4551 unless build scripts/proc-macros stay unoptimized.
+[profile.release.build-override]
+opt-level = 0
+codegen-units = 256
+strip = false
+debug = true

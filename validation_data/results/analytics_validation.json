@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-09-01T12:47:09.571475+00:00",
+  "dataset": {
+    "name": "CAVIAR Walk1",
+    "source": "https://homepages.inf.ed.ac.uk/rbf/CAVIARDATA1/",
+    "license": "CC BY-SA; acknowledge EC Funded CAVIAR project/IST 2001 37540",
+    "video_sha256": "a5d6dc7d7def01c1bdaeea8ff620195c148b366e1a52589bf4e46f15b6daa0c2",
+    "ground_truth_sha256": "dfcb8135fe46e7fbbcb7616d93f4f16aee040570185227ecd8c81aaa87de06cd"
+  },
+  "configuration": {
+    "sample_fps": 1.0,
+    "source_fps": 25
+  },
+  "object_person_event_metrics": {
+    "true_positives": 7,
+    "false_positives": 0,
+    "false_negatives": 17,
+    "precision": 1.0,
+    "recall": 0.2917,
+    "event_tolerance_frames": 25
+  },
+  "foreground_motion_event_metrics": {
+    "true_positives": 12,
+    "false_positives": 1,
+    "false_negatives": 6,
+    "precision": 0.9231,
+    "recall": 0.6667,
+    "event_tolerance_frames": 25
+  },
+  "finding_counts": {
+    "motion": 13,
+    "scene_change": 0,
+    "face": 0,
+    "object": 8
+  },
+  "warnings": [],
+  "scope": "Single-clip event-level regression. Person boxes supervise person-object events; CAVIAR 'moving' situations are used as a coarse foreground-motion proxy. Face and scene-change outputs lack ground truth in this clip and are counts only. Findings remain investigative leads."
+}

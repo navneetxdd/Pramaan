@@ -1,0 +1,10 @@
+{
+  "CP-UNR": {
+    "declared_brand": "CP Plus",
+    "likely_lineage": "historically Dahua/Hikvision OEM hardware; confirm via signature match, never assume from model string alone"
+  },
+  "GCC": {
+    "declared_brand": "Godrej",
+    "likely_lineage": "commonly Hikvision- or Dahua-derived hardware — confirm via signature match"
+  }
+}

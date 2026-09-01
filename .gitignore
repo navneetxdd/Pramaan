@@ -8,28 +8,35 @@ venv/
 .env.*
 
 # Runtime storage (never commit evidence)
-backend/storage/cases/*
-backend/storage/exports/*
-!backend/storage/cases/.gitkeep
-!backend/storage/exports/.gitkeep
-backend/pramaan.db
-backend/*.db
+uploads/
+scratch/
+tmp/
 
 # Test artifacts
-backend/tests/fixtures/generated/
 .pytest_cache/
 .coverage
 htmlcov/
 
 # Node
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-frontend/tsconfig.tsbuildinfo
+node_modules/
+dist/
+.vite/
+tsconfig.tsbuildinfo
+
+# Legacy frontend tree (project root is the SPA now)
+frontend/
+
+# Tauri build output and frozen sidecars (built locally or in CI)
+src-tauri/target/
+src-tauri/binaries/pramaan-engine-*.exe
+src-tauri/binaries/pramaan-engine-*.exe.sha256
+artifacts/
 
 # IDE / OS
 .idea/
 .vscode/
+.cursor/
+.serena/
 *.swp
 .DS_Store
 Thumbs.db
@@ -38,7 +45,11 @@ Thumbs.db
 *.log
 
 # Uploads / scratch
-uploads/
-scratch/
-tmp/
 _ref-cybershield/
+
+# Validation corpora — commit fixtures/manifest; ignore operator OEM dumps
+validation_data/oem/*
+!validation_data/oem/.gitkeep
+validation_data/external/**/*.raw
+validation_data/external/**/*.E01
+validation_data/external/**/*.dd

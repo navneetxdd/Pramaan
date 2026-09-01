@@ -1,0 +1,14 @@
+UBNIST1  (FAT32)
+
+This directory contains multiple images of a 2GB flash USB device with
+a bootable copy of Ubuntu 8.10. The device has been repeatedly boot
+and used over the course of several weeks.  Files from US Government
+websites have been downloaded.
+
+
+    filename         size                       SHA1                  
+======================================================================
+ubnist1.gen0.raw  2106589184  92914171f450e7ed35c7104e799554037b193d46
+ubnist1.gen1.raw  2106589184  1ca6b256a439faefc85d4ddf85abefd2f20f56f5
+ubnist1.gen2.raw  2106589184  51436cc05e636782aec4d9e27b5ace11e53bd79d
+ubnist1.gen3.raw  2106589184  9b58bb9e1716dd6a12ef76de1d0790508a3c7166

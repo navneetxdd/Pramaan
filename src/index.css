@@ -1,0 +1,596 @@
+@import "./styles/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: var(--border-subtle);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply font-sans antialiased;
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--text-primary);
+  }
+}
+
+@layer components {
+  .instrument-panel,
+  .visily-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  }
+
+  .visily-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+
+  .visily-hero-dark {
+    @apply relative overflow-hidden rounded-lg px-5 py-5;
+    background: var(--surface-dark);
+    box-shadow: var(--shadow-hero);
+  }
+
+  .visily-hero-dark-bg {
+    @apply pointer-events-none absolute inset-0;
+    background: var(--hero-gradient);
+  }
+
+  .visily-hero-dark-pattern {
+    @apply pointer-events-none absolute inset-0 opacity-60;
+    background: var(--hero-pattern);
+  }
+
+  .visily-filter-pane {
+    @apply shrink-0 rounded-lg border;
+    width: var(--filter-width);
+    border-color: var(--border-subtle);
+    background: var(--surface-2);
+    box-shadow: var(--shadow-card);
+  }
+
+  .visily-filter-row {
+    @apply flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5;
+  }
+
+  .visily-filter-row:hover {
+    background: var(--surface-4);
+  }
+
+  .visily-filter-row-active {
+    background: var(--accent-soft);
+  }
+
+  .visily-quick-filter {
+    @apply rounded border px-2 py-2 text-[10px] font-bold uppercase tracking-wide;
+    border-color: var(--border-subtle);
+    background: var(--surface-3);
+    color: var(--text-secondary);
+  }
+
+  .visily-quick-filter:hover {
+    border-color: var(--accent-400);
+    color: var(--accent-500);
+  }
+
+  .visily-inspector {
+    @apply shrink-0 overflow-hidden rounded-lg border;
+    width: var(--inspector-width);
+    border-color: var(--border-subtle);
+    background: var(--surface-2);
+    box-shadow: var(--shadow-card);
+  }
+
+  .visily-inspector-header {
+    @apply flex items-center justify-between border-b px-3 py-2.5;
+    border-color: var(--border-subtle);
+    background: var(--surface-3);
+  }
+
+  .visily-inspector-preview {
+    @apply flex h-40 items-center justify-center;
+    background: linear-gradient(180deg, var(--surface-4), var(--surface-3));
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .visily-catalog-stat {
+    @apply flex items-center justify-between rounded-lg border p-4;
+    border-color: var(--border-subtle);
+    background: var(--surface-2);
+    box-shadow: var(--shadow-card);
+  }
+
+  .visily-catalog-toolbar {
+    @apply flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3;
+    border-color: var(--border-subtle);
+    background: var(--surface-2);
+    box-shadow: var(--shadow-card);
+  }
+
+  .visily-breadcrumb-trail {
+    @apply mono flex flex-wrap items-center gap-1 text-[10px] uppercase tracking-wide;
+    color: var(--text-tertiary);
+  }
+
+  .visily-evidence-grid-card {
+    @apply cursor-pointer rounded-lg border p-3 transition-all;
+    border-color: var(--border-subtle);
+    background: var(--surface-2);
+    box-shadow: var(--shadow-card);
+  }
+
+  .visily-evidence-grid-card:hover,
+  .visily-evidence-grid-card-selected {
+    border-color: var(--accent-400);
+    box-shadow: 0 0 0 1px var(--accent-soft);
+  }
+
+  .visily-evidence-grid-card-selected {
+    background: var(--accent-soft);
+  }
+
+  .visily-card-header {
+    @apply flex items-center justify-between gap-2 px-4 py-3;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-3);
+  }
+
+  .visily-card-title {
+    @apply text-[11px] font-semibold uppercase tracking-wider;
+    color: var(--text-tertiary);
+  }
+
+  .visily-hero {
+    @apply relative overflow-hidden rounded-xl border px-5 py-5;
+    border-color: var(--border-default);
+    background: var(--surface-2);
+  }
+
+  .visily-hero-bg {
+    @apply pointer-events-none absolute inset-0;
+    background: var(--hero-gradient);
+    mask-image: radial-gradient(circle at 20% 20%, black, transparent 70%);
+  }
+
+  .visily-badge {
+    @apply inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide;
+  }
+
+  .visily-badge-active {
+    background: var(--accent-soft);
+    color: var(--accent-400);
+  }
+
+  .visily-badge-success {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--status-success);
+  }
+
+  .visily-badge-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--status-danger);
+  }
+
+  .visily-badge-neutral {
+    background: var(--surface-4);
+    color: var(--text-secondary);
+  }
+
+  .visily-stat-card {
+    @apply rounded-lg border p-4;
+    border-color: var(--border-subtle);
+    background: var(--surface-2);
+    box-shadow: var(--shadow-card);
+  }
+
+  .visily-stat-value {
+    @apply text-[26px] font-semibold leading-none;
+    color: var(--text-primary);
+  }
+
+  .visily-stat-label {
+    @apply mt-1 text-[11px] font-semibold uppercase tracking-wide;
+    color: var(--text-tertiary);
+  }
+
+  .visily-job-card {
+    @apply rounded-lg border p-3;
+    border-color: var(--border-subtle);
+    background: var(--surface-3);
+  }
+
+  .visily-job-card-active {
+    border-color: var(--accent-400);
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.25);
+  }
+
+  .visily-evidence-tile {
+    @apply block rounded-xl border p-3 transition-colors;
+    border-color: var(--border-subtle);
+    background: var(--surface-2);
+  }
+
+  .visily-evidence-tile:hover {
+    border-color: var(--accent-400);
+    background: var(--surface-3);
+  }
+
+  .visily-evidence-thumb {
+    @apply flex h-24 items-center justify-center rounded-lg;
+    background: linear-gradient(180deg, var(--surface-4), var(--surface-3));
+    border: 1px solid var(--border-subtle);
+  }
+
+  .visily-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium;
+    border-color: var(--border-default);
+    background: var(--surface-3);
+    color: var(--text-secondary);
+  }
+
+  .visily-nav-item {
+    @apply flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide;
+    color: var(--text-tertiary);
+    transition: color 120ms ease, background-color 120ms ease;
+  }
+
+  .visily-nav-item:hover {
+    background: var(--surface-3);
+    color: var(--text-primary);
+  }
+
+  .visily-nav-item-active {
+    background: var(--accent-soft);
+    color: var(--accent-500);
+    box-shadow: inset 3px 0 0 0 var(--accent-500);
+  }
+
+  .visily-nav-item-disabled {
+    @apply flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide;
+    color: var(--border-strong);
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .panel-header {
+    @apply flex items-center justify-between gap-3 px-3 py-2;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-3);
+  }
+
+  .panel-title {
+    @apply text-[11px] font-semibold uppercase;
+    letter-spacing: 0.02em;
+    color: var(--text-tertiary);
+  }
+
+  .section-label {
+    @apply text-[11px] font-semibold uppercase;
+    letter-spacing: 0.02em;
+    color: var(--text-tertiary);
+  }
+
+  .page-heading {
+    @apply text-[26px] font-semibold;
+    line-height: 1.15;
+    color: var(--text-primary);
+  }
+
+  .page-lead {
+    @apply mt-1 text-[13px];
+    color: var(--text-secondary);
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-[13px] font-medium;
+    transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease;
+  }
+
+  .btn:disabled {
+    @apply pointer-events-none opacity-45;
+  }
+
+  .btn-primary {
+    @apply btn border;
+    background: var(--accent-500);
+    border-color: var(--accent-400);
+    color: #fff;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-400);
+  }
+
+  .btn-secondary {
+    @apply btn border;
+    background: var(--surface-3);
+    border-color: var(--border-default);
+    color: var(--text-primary);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--surface-4);
+    border-color: var(--border-strong);
+  }
+
+  .btn-ghost {
+    @apply btn;
+    color: var(--text-secondary);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--surface-3);
+    color: var(--text-primary);
+  }
+
+  .field {
+    @apply w-full rounded-md px-2.5 py-1.5 text-[14px] outline-none;
+    background: var(--surface-2);
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
+  }
+
+  .field:focus {
+    border-color: var(--accent-500);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+  }
+
+  .field::placeholder {
+    color: var(--text-tertiary);
+  }
+
+  .label {
+    @apply mb-1 block text-[11px] font-semibold uppercase;
+    letter-spacing: 0.02em;
+    color: var(--text-tertiary);
+  }
+
+  .mono {
+    @apply font-mono text-[12px];
+    color: var(--text-secondary);
+  }
+
+  .data-table {
+    @apply w-full text-left text-[13px];
+  }
+
+  .data-table th {
+    @apply px-3 py-2 text-[11px] font-semibold uppercase;
+    letter-spacing: 0.02em;
+    color: var(--text-tertiary);
+    background: var(--surface-3);
+    border-bottom: 1px solid var(--border-subtle);
+    height: 32px;
+  }
+
+  .data-table td {
+    @apply px-3 py-2;
+    height: 34px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .data-table tbody tr:hover {
+    background: var(--surface-3);
+  }
+
+  .data-table tbody tr.row-selected {
+    background: var(--accent-soft);
+  }
+
+  .module-nav-item {
+    @apply relative flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium;
+    color: var(--text-secondary);
+    transition: color 100ms ease, background-color 100ms ease;
+  }
+
+  .module-nav-item:hover {
+    background: var(--surface-3);
+    color: var(--text-primary);
+  }
+
+  .module-nav-item-active {
+    background: var(--accent-soft);
+    color: var(--text-primary);
+    box-shadow: inset 3px 0 0 0 var(--accent-500);
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .badge-open {
+    background: rgba(59, 166, 118, 0.15);
+    color: var(--status-success);
+  }
+
+  .badge-running {
+    background: var(--accent-soft);
+    color: var(--accent-400);
+  }
+
+  .badge-failed {
+    background: rgba(214, 88, 79, 0.15);
+    color: var(--status-danger);
+  }
+
+  .badge-neutral {
+    background: var(--surface-3);
+    color: var(--text-secondary);
+  }
+
+  .progress-strip {
+    @apply h-px w-full;
+    background: var(--accent-500);
+    animation: scan 1.2s linear infinite;
+  }
+
+  .progress-strip-success {
+    background: var(--status-success);
+    animation: none;
+  }
+
+  .job-card-running {
+    animation: job-border 3s linear infinite;
+    border-image: linear-gradient(90deg, var(--surface-2), var(--accent-500), var(--surface-2)) 1;
+  }
+
+  .toast {
+    @apply pointer-events-auto flex items-center gap-3 rounded-md border px-3 py-2 text-[13px];
+    background: var(--surface-3);
+    border-color: var(--border-default);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+
+  .toast-success {
+    border-left: 2px solid var(--status-success);
+  }
+
+  .toast-error {
+    border-left: 2px solid var(--status-danger);
+  }
+
+  .read-only-banner {
+    @apply rounded-md border px-3 py-2 text-[12px] font-semibold uppercase;
+    letter-spacing: 0.02em;
+    border-color: var(--status-warning);
+    background: rgba(217, 164, 65, 0.1);
+    color: var(--status-warning);
+  }
+
+  .pipeline-step {
+    @apply flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px];
+    color: var(--text-secondary);
+  }
+
+  .pipeline-step:hover {
+    background: var(--surface-3);
+    color: var(--text-primary);
+  }
+
+  .pipeline-step-active {
+    background: var(--accent-soft);
+    color: var(--text-primary);
+    box-shadow: inset 3px 0 0 0 var(--accent-500);
+  }
+
+  .pipeline-dot {
+    @apply flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold;
+    border: 1px solid var(--border-default);
+    color: var(--text-tertiary);
+  }
+
+  .timeline-bar {
+    @apply h-full min-h-[1rem] cursor-pointer rounded-sm;
+    transition: background-color 100ms ease;
+  }
+
+  .timeline-bar-idle {
+    background: rgba(47, 111, 237, 0.45);
+  }
+
+  .timeline-bar-idle:hover {
+    background: rgba(47, 111, 237, 0.65);
+  }
+
+  .timeline-bar-active {
+    background: var(--accent-500);
+  }
+
+  .timeline-bar-tooltip {
+    @apply pointer-events-none absolute -top-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 font-mono text-[10px];
+    background: var(--surface-3);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+  }
+
+  .timeline-bar:hover .timeline-bar-tooltip,
+  .timeline-bar-active .timeline-bar-tooltip {
+    @apply block;
+  }
+
+  /* legacy aliases */
+  .panel,
+  .glass-panel {
+    @apply instrument-panel;
+  }
+
+  .command-bar {
+    @apply flex h-10 shrink-0 items-center justify-between gap-4 border-b px-4;
+    border-color: var(--border-subtle);
+    background: var(--surface-1);
+    border-radius: 0;
+  }
+
+  .status-footer {
+    @apply flex h-8 shrink-0 items-center justify-between border-t px-4 text-[11px];
+    border-color: var(--border-subtle);
+    background: var(--surface-0);
+    color: var(--text-tertiary);
+    border-radius: 0;
+  }
+}
+
+@keyframes scan {
+  0% { opacity: 0.4; }
+  50% { opacity: 1; }
+  100% { opacity: 0.4; }
+}
+
+@keyframes job-border {
+  0% { border-color: var(--border-subtle); }
+  50% { border-color: var(--accent-500); }
+  100% { border-color: var(--border-subtle); }
+}
+
+.titlebar-btn {
+  @apply inline-flex h-7 w-9 items-center justify-center rounded-md;
+  color: var(--text-secondary);
+}
+
+.titlebar-btn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
+.titlebar-btn-close:hover {
+  background: var(--status-danger);
+  color: #fff;
+}
+
+.status-bar-success-pulse {
+  animation: status-pulse 0.6s ease-out;
+}
+
+@keyframes status-pulse {
+  from { background: rgba(59, 166, 118, 0.12); }
+  to { background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-strip,
+  .job-card-running {
+    animation: none;
+  }
+}

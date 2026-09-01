@@ -1,0 +1,152 @@
+{
+  "generated_at": "2026-09-01T12:44:38.305376+00:00",
+  "note": "Public DVR/NVR OEM disk images are NOT available from CFReDS or Digital Corpora. Place operator captures under validation_data/oem/ or set PRAMAAN_OEM_IMAGE_DIR.",
+  "assets": [
+    {
+      "id": "fixtures_tier1_dahua_known_answer_bin",
+      "path": "fixtures/tier1/dahua_known_answer.bin",
+      "bytes": 17917,
+      "sha256": "72d8773e4c8acb7466ad377ab234f91a6b1f07390bca224bca00f2d75931275b",
+      "kind": "generated_known_answer"
+    },
+    {
+      "id": "fixtures_tier1_honeywell_known_answer_bin",
+      "path": "fixtures/tier1/honeywell_known_answer.bin",
+      "bytes": 4259904,
+      "sha256": "776231bab0b8460d1f23157c901eb0d5ce32c7a3bc6cad7a1369cf924789e1f2",
+      "kind": "generated_known_answer"
+    },
+    {
+      "id": "fixtures_tier1_hikvision_known_answer_bin",
+      "path": "fixtures/tier1/hikvision_known_answer.bin",
+      "bytes": 29117,
+      "sha256": "101f34f000df70b06c39f51753c6bbc00b715077cfea55e91b73ca0ac27746aa",
+      "kind": "generated_known_answer"
+    },
+    {
+      "id": "fixtures_tier2_fat16_deleted_entry_img",
+      "path": "fixtures/tier2/fat16_deleted_entry.img",
+      "bytes": 65537,
+      "sha256": "d737804c68fe74d8ca5180c11099a012caf11b8e6f6fe9cb5bf8b7dd27167a40",
+      "kind": "generated_known_answer"
+    },
+    {
+      "id": "digitalcorpora_ubnist1_narrative",
+      "path": "external/digitalcorpora/nps-2009-ubnist1/narrative.txt",
+      "bytes": 685,
+      "sha256": "b84e94921462a4331b1943d56f4703519ddfef0a5b1d68d573d11296418d2473",
+      "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2009-ubnist1/narrative.txt",
+      "purpose": "Tier-2 FAT corpus reference (full ubnist1.gen3.raw is ~2.1 GB \u2014 fetch separately if needed)",
+      "license": "NPS-created content is public domain; inspect embedded-file rights",
+      "retrieved_at": "2026-09-01T12:44:38.470089+00:00",
+      "kind": "download"
+    },
+    {
+      "id": "digitalcorpora_xbox_narrative",
+      "path": "external/digitalcorpora/nps-2014-xbox1/narrative.txt",
+      "bytes": 4107,
+      "sha256": "fc8d087647a85a724bfbf3627815cbd5675d38ed308f178b5bee27114b4d5126",
+      "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2014-xbox1/narrative.txt",
+      "purpose": "Filesystem scenario metadata for extended tier-2 regression",
+      "license": "NPS-created content is public domain; inspect embedded-file rights",
+      "retrieved_at": "2026-09-01T12:44:38.471985+00:00",
+      "kind": "download"
+    },
+    {
+      "id": "yunet_face_detection",
+      "path": "models/face_detection_yunet_2023mar.onnx",
+      "bytes": 232589,
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "url": "https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx",
+      "purpose": "Optional YuNet face detection for AI analytics (replaces Haar fallback when present)",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-09-01T12:44:38.474284+00:00",
+      "kind": "download"
+    },
+    {
+      "id": "yolox_nano_onnx",
+      "path": "models/yolox_nano.onnx",
+      "bytes": 3659407,
+      "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+      "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx",
+      "purpose": "YOLOX Nano COCO object-candidate detector for offline analytics",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-09-01T12:45:04.608095+00:00",
+      "kind": "download"
+    },
+    {
+      "id": "caviar_walk1_video",
+      "path": "external/caviar/Walk1.mpg",
+      "bytes": 7208095,
+      "sha256": "a5d6dc7d7def01c1bdaeea8ff620195c148b366e1a52589bf4e46f15b6daa0c2",
+      "url": "https://homepages.inf.ed.ac.uk/rbf/CAVIARDATA1/Walk1/Walk1.mpg",
+      "purpose": "Real surveillance-style motion, face, and object candidate validation",
+      "license": "CC BY-SA; acknowledge EC Funded CAVIAR project/IST 2001 37540",
+      "retrieved_at": "2026-09-01T12:45:45.837551+00:00",
+      "kind": "download_surveillance"
+    },
+    {
+      "id": "caviar_walk1_ground_truth",
+      "path": "external/caviar/wk1gt.xml",
+      "bytes": 1490491,
+      "sha256": "dfcb8135fe46e7fbbcb7616d93f4f16aee040570185227ecd8c81aaa87de06cd",
+      "url": "https://homepages.inf.ed.ac.uk/rbf/CAVIARDATA1/Walk1/wk1gt.xml",
+      "purpose": "Hand-labelled CAVIAR person tracks for event-level validation",
+      "license": "CC BY-SA; acknowledge EC Funded CAVIAR project/IST 2001 37540",
+      "retrieved_at": "2026-09-01T12:45:59.532909+00:00",
+      "kind": "download_surveillance"
+    }
+  ],
+  "large_optional": [
+    {
+      "id": "digitalcorpora_ubnist1_gen3",
+      "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2009-ubnist1/ubnist1.gen3.raw",
+      "dest": "external/digitalcorpora/nps-2009-ubnist1/ubnist1.gen3.raw",
+      "bytes": 2106589184,
+      "purpose": "NPS FAT32 tier-2 filesystem regression (~2.1 GB)",
+      "license": "NPS-created content is public domain; inspect embedded-file rights"
+    }
+  ],
+  "surveillance_optional": [
+    {
+      "id": "caviar_walk1_video",
+      "url": "https://homepages.inf.ed.ac.uk/rbf/CAVIARDATA1/Walk1/Walk1.mpg",
+      "dest": "external/caviar/Walk1.mpg",
+      "purpose": "Real surveillance-style motion, face, and object candidate validation",
+      "license": "CC BY-SA; acknowledge EC Funded CAVIAR project/IST 2001 37540"
+    },
+    {
+      "id": "caviar_walk1_ground_truth",
+      "url": "https://homepages.inf.ed.ac.uk/rbf/CAVIARDATA1/Walk1/wk1gt.xml",
+      "dest": "external/caviar/wk1gt.xml",
+      "purpose": "Hand-labelled CAVIAR person tracks for event-level validation",
+      "license": "CC BY-SA; acknowledge EC Funded CAVIAR project/IST 2001 37540"
+    }
+  ],
+  "source_records": [
+    {
+      "id": "cdnet_2014_baseline",
+      "source": "https://changedetection.net/",
+      "status": "operator_fetch_required",
+      "reason": "The benchmark site documents frame-level ground truth, but its dataset host was not resolvable during the 2026-09-01 release run.",
+      "license": "Use requires benchmark acknowledgement and paper citation; redistribution is not asserted."
+    },
+    {
+      "id": "meva",
+      "source": "https://mevadata.org/",
+      "status": "operator_fetch_required",
+      "reason": "Access terms and account requirements must be accepted by the operator; assets are not redistributed."
+    },
+    {
+      "id": "heimvision_dvr_evidence_image",
+      "source": "https://digitalcorpora.org/corpora/disk-images/",
+      "status": "unavailable",
+      "reason": "No authoritative Heimvision DVR forensic disk image was located in Digital Corpora or CFReDS; unrelated media is not substituted."
+    }
+  ],
+  "oem_env_var": "PRAMAAN_OEM_IMAGE_DIR",
+  "oem_drop_zone": "validation_data\\oem",
+  "oem_files": [
+    ".gitkeep"
+  ]
+}
