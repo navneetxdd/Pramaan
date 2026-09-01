@@ -441,6 +441,21 @@ def list_sequences(device_id: str) -> list[dict]:
     return sequences
 
 
+def delete_sequences_for_device(device_id: str) -> int:
+    """Remove prior recovered segments and their artifact files for a device."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT output_path FROM recovered_sequences WHERE device_id = ?",
+            (device_id,),
+        ).fetchall()
+        for row in rows:
+            path = row["output_path"]
+            if path:
+                Path(path).unlink(missing_ok=True)
+        cursor = conn.execute("DELETE FROM recovered_sequences WHERE device_id = ?", (device_id,))
+        return int(cursor.rowcount)
+
+
 def list_custody_for_case(case_id: str) -> list[dict]:
     with get_db() as conn:
         rows = conn.execute(

@@ -13,11 +13,13 @@ from engine.app.parsers.schemas.honeywell import (
     SECTOR_SIZE,
     rounded_frame_length_u16,
 )
+from engine.app.verification.media_fixture import NalPayloadSource
 
 SECTOR_34_OFFSET = 34 * SECTOR_SIZE
 PARTITION_BASE = 0x10000
 CHANNEL_LIST_BASE = PARTITION_BASE + 0x400000
 VIDEO_DATA_BASE = 0x200000
+_nal_source = NalPayloadSource()
 
 
 def _gpt_sector() -> bytes:
@@ -36,8 +38,12 @@ def _machine_data_sector() -> bytes:
 
 
 def _build_nal_frame(*, frame_type: int, timestamp_us: int, payload_extra: int = 64) -> bytes:
-    nal_type_byte = 0x65 if frame_type == 0x82 else 0x41
-    payload = NAL_START_4 + bytes([nal_type_byte]) + (b"\x00" * payload_extra)
+    nal_body = _nal_source.next_single_nal()
+    if not nal_body.startswith(NAL_START_4):
+        nal_body = NAL_START_4 + nal_body.lstrip(b"\x00")
+    if len(nal_body) < payload_extra + 8:
+        nal_body = _nal_source.next_payload(payload_extra + 8)
+    payload = nal_body
     header = HoneywellNalHeader.build(
         {
             "frame_type": frame_type,

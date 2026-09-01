@@ -22,12 +22,35 @@ from engine.app.core.signing import sign_pdf_bytes
 
 def _recovery_summary(case_id: str) -> list[dict]:
     summary: list[dict] = []
+    for job in list_jobs_for_case(case_id):
+        if job.get("kind") != "recovery":
+            continue
+        result = job.get("result") or {}
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except json.JSONDecodeError:
+                result = {}
+        adapter = result.get("adapter")
+        segment_count = int(result.get("segments_found") or 0)
+        if not adapter and segment_count == 0:
+            continue
+        summary.append(
+            {
+                "job_id": job["id"],
+                "status": job["status"],
+                "vendor": result.get("vendor"),
+                "adapter": adapter,
+                "segment_count": segment_count,
+                "segment_evidence": result.get("evidence", []),
+            }
+        )
     for device in list_devices(case_id):
         sequences = list_sequences(device["id"])
         summary.append(
             {
-                "job_id": device["id"],
-                "status": "completed" if sequences else "pending",
+                "summary_type": "current_sequences",
+                "device_id": device["id"],
                 "vendor": device.get("declared_brand"),
                 "adapter": device.get("detected_engine"),
                 "segment_count": len(sequences),
@@ -45,23 +68,6 @@ def _recovery_summary(case_id: str) -> list[dict]:
                     }
                     for sequence in sequences
                 ],
-            }
-        )
-    for job in list_jobs_for_case(case_id):
-        result = job.get("result") or {}
-        if isinstance(result, str):
-            try:
-                result = json.loads(result)
-            except json.JSONDecodeError:
-                result = {}
-        summary.append(
-            {
-                "job_id": job["id"],
-                "status": job["status"],
-                "vendor": result.get("vendor"),
-                "adapter": result.get("adapter"),
-                "segment_count": result.get("segments_found", 0),
-                "segment_evidence": result.get("evidence", []),
             }
         )
     return summary

@@ -3,24 +3,24 @@ from __future__ import annotations
 from pathlib import Path
 
 from engine.app.parsers.schemas.dhav import (
-    DHAV_FOOTER,
     DhavHeaderStruct,
-    compute_dhav_checksum,
+    seal_dhav_frame,
 )
-from engine.app.parsers.unwrap import NAL_START_4
-
-_H264_IDR_STUB = NAL_START_4 + bytes([0x65, 0x88, 0x84, 0x00, 0x10]) + (b"\x00" * 120)
+from engine.app.verification.media_fixture import NalPayloadSource
 
 # Base Unix time for synthetic recorder clock in lab specimens.
 _LAB_EPOCH_UNIX = 1_700_000_000
+_nal_source = NalPayloadSource()
 
 
 def _dhav_frame(payload_len: int, channel: int, *, recorder_unix: int) -> bytes:
     """Build a 4-check-valid DHAV frame (header + payload + checksum + footer)."""
     body_len = payload_len - 32 - 1 - 4
-    if body_len < len(_H264_IDR_STUB):
+    if body_len < 8:
         raise ValueError("payload_len too small for specimen frame")
-    payload = _H264_IDR_STUB + (b"\x00" * (body_len - len(_H264_IDR_STUB)))
+    payload = _nal_source.next_payload(body_len)
+    if len(payload) > body_len:
+        payload = payload[:body_len]
     header = DhavHeaderStruct.build(
         {
             "frame_len": payload_len,
@@ -30,9 +30,7 @@ def _dhav_frame(payload_len: int, channel: int, *, recorder_unix: int) -> bytes:
             "header_pad": [0] * 15,
         }
     )
-    body = header + payload
-    checksum = compute_dhav_checksum(body)
-    return body + bytes([checksum]) + DHAV_FOOTER
+    return seal_dhav_frame(header, payload)
 
 
 def build_dahua_lab_specimen() -> bytes:

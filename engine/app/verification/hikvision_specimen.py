@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from engine.app.parsers.schemas.hkvi import seal_hkvi_block
+from engine.app.verification.media_fixture import NalPayloadSource
 
 # Signatures from published Hikvision forensic literature (512/1024/2048 byte offsets).
 HIKVISION_OEM_MARKERS = [
@@ -10,6 +11,15 @@ HIKVISION_OEM_MARKERS = [
     b"HIKVISION-DVR\x00",
     b"HIKV\x00",
 ]
+
+_nal_source = NalPayloadSource()
+
+
+def _hkvi_payload(min_len: int) -> bytes:
+    payload = _nal_source.next_payload(min_len)
+    if len(payload) > min_len:
+        return payload[:min_len]
+    return payload + b"\x00" * (min_len - len(payload))
 
 
 def build_hikvision_lab_specimen() -> bytes:
@@ -23,17 +33,16 @@ def build_hikvision_lab_specimen() -> bytes:
     ]
 
     for channel in (1, 1, 2, 1):
-        payload = b"\x00" * 96 + b"\x00\x00\x00\x01\x65" + (b"\xab" * 80)
+        payload = _hkvi_payload(176)
         chunks.append(seal_hkvi_block(payload, channel=channel))
         chunks.append(b"\xff" * 48)
 
     chunks.append(b"\x00" * 16384)
-    orphan_payload = b"\x00" * 128 + b"\x00\x00\x00\x01\x65" + (b"\xcd" * 64)
-    chunks.append(seal_hkvi_block(orphan_payload, channel=2))
+    chunks.append(seal_hkvi_block(_hkvi_payload(192), channel=2))
     chunks.append(b"\x00" * 8192)
 
     for channel in (3, 3, 1):
-        payload = b"\x00" * 64 + b"\x00\x00\x00\x01\x41" + (b"\xee" * 96)
+        payload = _hkvi_payload(160)
         chunks.append(seal_hkvi_block(payload, channel=channel))
         chunks.append(b"\xee" * 32)
 

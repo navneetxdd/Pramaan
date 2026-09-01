@@ -29,8 +29,9 @@ class SigningPersistenceTests(unittest.TestCase):
         signing._signer_cache = None
         signing._fingerprint_cache = None
         first = certificate_fingerprint()
-        self.assertTrue(KEY_PATH.exists())
-        self.assertTrue(CERT_PATH.exists())
+        self.assertTrue(CERT_PATH.exists(), "signing certificate must be persisted")
+        if signing.signing_storage_backend() == "restricted_file_fallback":
+            self.assertTrue(KEY_PATH.exists(), "file-backed signing key must exist")
 
         signing._signer_cache = None
         signing._fingerprint_cache = None

@@ -9,6 +9,7 @@ from engine.app.core.db import append_custody, get_db
 from engine.app.core.job_manager import job_manager
 from engine.app.core.repository import (
     case_storage_dir,
+    delete_sequences_for_device,
     get_device,
     insert_sequence,
     list_sequences,
@@ -125,6 +126,22 @@ async def run_recovery_job(
         await job_manager.update(job_id, progress=10, message=f"Scanning with {adapter_key}")
         segments = await asyncio.to_thread(adapter.scan, image_path, max_bytes=max_scan_bytes)
 
+        superseded = delete_sequences_for_device(device_id)
+        if superseded:
+            with get_db() as conn:
+                append_custody(
+                    conn,
+                    actor=actor,
+                    action="recovery_superseded_prior_results",
+                    target_type="case",
+                    target_id=case_id,
+                )
+            await job_manager.update(
+                job_id,
+                progress=12,
+                message=f"Superseded {superseded} prior segment(s) before re-run",
+            )
+
         stored = 0
         evidence_rows: list[dict] = []
         artifact_dir = case_storage_dir(case_id) / "sequences"
@@ -188,7 +205,15 @@ async def run_recovery_job(
                     evidence_digest=f"sha256:{output_sha256}",
                 )
             progress = 10 + (80 * (seq_index + 1) / max(len(segments), 1))
-            await job_manager.update(job_id, progress=progress, message=f"Sequenced {stored} segments")
+            await job_manager.update(
+                job_id,
+                progress=progress,
+                message=(
+                    f"{seg.parser_name} ch{int(seg.channel or 0)} "
+                    f"@{seg.offset_start:#x} len={seg.offset_end - seg.offset_start} "
+                    f"→ {seg.validation} ({seg.confidence:.2f})"
+                ),
+            )
 
         result = {
             "case_id": case_id,

@@ -285,5 +285,5 @@ def export_sequence(device_id: str, segment_id: str) -> dict:
     return {
         "filename": out_path.name,
         "download_url": f"/api/v1/files/{out_path.name}",
-        "media_type": "video/mp4" if out_path.suffix == ".mp4" else "application/octet-stream",
+        "media_type": "video/mp4" if out_path.suffix == ".mp4" else "h264",
     }

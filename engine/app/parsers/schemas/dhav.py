@@ -52,9 +52,16 @@ class DhavValidationResult:
 
 def compute_dhav_checksum(frame: bytes) -> int:
     """Checksum covers header + payload (all bytes before checksum + footer)."""
-    if len(frame) < DHAV_HEADER_SIZE + DHAV_CHECKSUM_SIZE + DHAV_FOOTER_SIZE:
+    if len(frame) < DHAV_HEADER_SIZE:
         return 0
-    return sum(frame[:- (DHAV_CHECKSUM_SIZE + DHAV_FOOTER_SIZE)]) & 0xFF
+    if (
+        len(frame) >= DHAV_HEADER_SIZE + DHAV_CHECKSUM_SIZE + DHAV_FOOTER_SIZE
+        and frame[-DHAV_FOOTER_SIZE:] == DHAV_FOOTER
+    ):
+        payload = frame[: -(DHAV_CHECKSUM_SIZE + DHAV_FOOTER_SIZE)]
+    else:
+        payload = frame
+    return sum(payload) & 0xFF
 
 
 def seal_dhav_frame(header: bytes, payload: bytes) -> bytes:
