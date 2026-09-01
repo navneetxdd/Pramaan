@@ -5,6 +5,7 @@ import { AnalyzePage } from "@/pages/AnalyzePage";
 import { CaseDetailPage } from "@/pages/CaseDetailPage";
 import { CasesPage } from "@/pages/CasesPage";
 import { CustodyPage } from "@/pages/CustodyPage";
+import { RecoverPage } from "@/pages/RecoverPage";
 import { ReportPage } from "@/pages/ReportPage";
 
 export default function App() {

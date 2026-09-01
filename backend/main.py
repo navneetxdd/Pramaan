@@ -15,7 +15,7 @@ from pramaan.modules.analysis.router import router as analysis_router
 from pramaan.modules.recovery.registry import bootstrap_defaults
 from pramaan.modules.reporting.router import router as reporting_router
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 
 app = FastAPI(
