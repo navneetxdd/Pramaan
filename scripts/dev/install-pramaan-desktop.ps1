@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $IconPath = Join-Path $ProjectRoot "src-tauri\icons\icon.ico"
 $DesktopPy = Join-Path $ProjectRoot "desktop.py"
 $LaunchArgs = ('"{0}" --production' -f $DesktopPy)
@@ -85,7 +85,7 @@ Write-Host "  Desktop:    $DesktopLink"
 Write-Host "  Start menu: $StartMenuLink"
 Write-Host ""
 Write-Host "Double-click Pramaan to launch the desktop app (WebView2 + forensic engine)."
-Write-Host "For a signed Tauri installer, download the CI artifact (see docs/DESKTOP.md)."
+Write-Host "For a signed Tauri installer, download the CI artifact (see README Desktop install)."
 
 if ($Launch) {
     Start-Process -FilePath $Pythonw -ArgumentList $LaunchArgs -WorkingDirectory $ProjectRoot

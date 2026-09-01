@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 
 if (-not $TargetTriple) {
     $TargetTriple = (& rustc --print host-tuple).Trim()

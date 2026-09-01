@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from engine.app.services.ai_analytics import SAMPLE_FPS, _analyze_sequence  # noqa: E402
@@ -82,7 +82,7 @@ def _metrics(expected: set[int], predicted: set[int]) -> dict:
 
 def main() -> int:
     if not VIDEO.exists() or not GROUND_TRUTH.exists():
-        print("CAVIAR assets are absent. Run: python scripts/fetch_validation_assets.py --surveillance")
+        print("CAVIAR assets are absent. Run: python scripts/validation/fetch_validation_assets.py --surveillance")
         return 2
 
     findings, warnings = _analyze_sequence(VIDEO)

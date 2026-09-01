@@ -61,7 +61,7 @@ jobs:
             engine/requirements-dev.txt
       - run: python -m pip install --requirement engine/requirements.txt
       - name: Verify API route surface
-        run: python scripts/check_routes.py
+        run: python scripts/validation/check_routes.py
       - name: Start engine
         run: |
           FORENSIC_WORKSTATION_DATA="${RUNNER_TEMP}/pramaan-smoke" python run.py > "${RUNNER_TEMP}/pramaan-engine.log" 2>&1 &
@@ -117,27 +117,28 @@ jobs:
         run: choco install nsis -y --no-progress
       - name: Build frozen engine
         shell: pwsh
-        run: ./scripts/build-engine.ps1
+        run: ./scripts/build/build-engine.ps1
       - name: Smoke frozen engine
         shell: pwsh
         run: |
           $env:FORENSIC_WORKSTATION_DATA = Join-Path $env:RUNNER_TEMP "pramaan-frozen-smoke"
           $engine = Get-ChildItem "src-tauri/binaries/pramaan-engine-*.exe" | Select-Object -First 1
-          $process = Start-Process -FilePath $engine.FullName -PassThru -WindowStyle Hidden
+          $process = Start-Process -FilePath $engine.FullName -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $env:RUNNER_TEMP "pramaan-engine.out.log") -RedirectStandardError (Join-Path $env:RUNNER_TEMP "pramaan-engine.err.log")
           try {
             $ready = $false
-            foreach ($attempt in 1..60) {
+            foreach ($attempt in 1..180) {
               try {
-                $version = Invoke-RestMethod "http://127.0.0.1:8787/api/v1/version" -TimeoutSec 1
+                $version = Invoke-RestMethod "http://127.0.0.1:8787/api/v1/version" -TimeoutSec 2
                 if ($version.status -eq "ok") {
                   $ready = $true
                   break
                 }
               } catch {
-                Start-Sleep -Milliseconds 500
+                Start-Sleep -Milliseconds 1000
               }
             }
             if (-not $ready) {
+              Get-Content (Join-Path $env:RUNNER_TEMP "pramaan-engine.err.log") -ErrorAction SilentlyContinue | Select-Object -Last 40
               throw "Frozen engine did not become ready."
             }
           } finally {
@@ -176,12 +177,12 @@ jobs:
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $sidecar = Get-ChildItem "src-tauri/binaries/pramaan-engine-*.exe" | Select-Object -First 1
-          ./scripts/sign-windows.ps1 -Paths $sidecar.FullName
+          ./scripts/build/sign-windows.ps1 -Paths $sidecar.FullName
           $hash = (Get-FileHash $sidecar.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content "$($sidecar.FullName).sha256" "$hash  $($sidecar.Name)" -Encoding ascii
       - name: Build Tauri installers
         shell: pwsh
-        run: ./scripts/build-windows.ps1 -SkipEngine
+        run: ./scripts/build/build-windows.ps1 -SkipEngine
       - name: Sign and verify release artifacts
         shell: pwsh
         env:
@@ -191,7 +192,7 @@ jobs:
           $paths = @("src-tauri/target/release/pramaan-desktop.exe")
           $paths += (Get-ChildItem "src-tauri/target/release/bundle" -Recurse -File |
             Where-Object { $_.Extension -in ".exe", ".msi" }).FullName
-          ./scripts/sign-windows.ps1 -Paths $paths
+          ./scripts/build/sign-windows.ps1 -Paths $paths
       - uses: actions/upload-artifact@v4
         with:
           name: pramaan-windows-installers

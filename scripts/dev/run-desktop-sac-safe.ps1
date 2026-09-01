@@ -10,7 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 Set-Location $ProjectRoot
 
 function Test-EngineReady {
@@ -83,7 +83,7 @@ SAC workaround options (free):
    gh run download <run-id> -n pramaan-windows-release
 
 5. install — one-time Desktop shortcut with icon (recommended on SAC hosts):
-   powershell -ExecutionPolicy Bypass -File scripts/install-pramaan-desktop.ps1
+   powershell -ExecutionPolicy Bypass -File scripts/dev/install-pramaan-desktop.ps1
 
 Release installers are built on windows-latest in GitHub Actions (no local SAC).
 

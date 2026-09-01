@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $SpecPath = Join-Path $ProjectRoot "engine\pyinstaller.spec"
 $BuildRoot = Join-Path $ProjectRoot "artifacts\pyinstaller"
 $DistRoot = Join-Path $BuildRoot "dist"

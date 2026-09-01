@@ -12,7 +12,7 @@ import hashlib
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OEM_DIR = ROOT / "validation_data" / "oem"
 DISK_SIZE = 4 * 1024 * 1024
 

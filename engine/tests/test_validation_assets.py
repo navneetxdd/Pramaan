@@ -12,7 +12,7 @@ class ValidationAssetsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         if not (VALIDATION_DIR / "manifest.json").exists():
-            raise unittest.SkipTest("Run scripts/fetch_validation_assets.py first")
+            raise unittest.SkipTest("Run scripts/validation/fetch_validation_assets.py first")
 
     def test_tier1_fixtures_recover(self) -> None:
         from engine.app.parsers.dahua_dhfs import DahuaDhavAdapter

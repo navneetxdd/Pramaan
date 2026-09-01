@@ -12,7 +12,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "validation_data"
 MANIFEST_PATH = DATA_DIR / "manifest.json"
 
@@ -230,7 +230,7 @@ def main() -> int:
     try:
         import subprocess
 
-        subprocess.run([sys.executable, str(ROOT / "scripts" / "build_oem_disk_fixtures.py")], check=True)
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "validation" / "build_oem_disk_fixtures.py")], check=True)
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"  WARN: could not build OEM disk fixtures: {exc}")
 

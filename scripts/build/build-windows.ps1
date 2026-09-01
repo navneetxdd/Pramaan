@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 
 if ($env:OS -ne "Windows_NT") {
     throw "Windows desktop packages must be built on Windows."
