@@ -307,6 +307,9 @@ def segments_as_legacy(device_id: str, job_meta: dict | None = None) -> list[dic
                 "parser_version": seq.get("parser_version"),
                 "signature_evidence": seq.get("signature_evidence", {}),
                 "validation_evidence": seq.get("validation_evidence", {}),
+                "output_md5": seq.get("output_md5"),
+                "output_sha256": seq.get("output_sha256"),
+                "recovery_job_id": seq.get("recovery_job_id"),
             }
         )
     return legacy

@@ -139,6 +139,49 @@ export type Segment = {
   parser_version?: string | null;
   signature_evidence?: Record<string, unknown>;
   validation_evidence?: Record<string, unknown>;
+  output_md5?: string | null;
+  output_sha256?: string | null;
+  recovery_job_id?: string | null;
+};
+
+export type SegmentDetail = {
+  id: string;
+  device_id: string;
+  channel: number | null;
+  byte_start: number | null;
+  byte_end: number | null;
+  byte_length: number | null;
+  frame_count: number;
+  confidence: string | null;
+  validation_level: string | null;
+  output_path: string | null;
+  output_md5: string | null;
+  output_sha256: string | null;
+  recovery_job_id: string | null;
+  recorder_start_ts: string | null;
+  recorder_end_ts: string | null;
+  corrected_start_ts: string | null;
+  corrected_end_ts: string | null;
+  timestamp_source: string | null;
+  timestamp_confidence: number | null;
+  codec: string | null;
+  parser_name: string | null;
+  parser_version: string | null;
+  signature_evidence: Record<string, unknown>;
+  validation_evidence: Record<string, unknown>;
+  vendor: string | null;
+};
+
+export type CustodyLogEntry = {
+  id: number;
+  timestamp_utc: string;
+  actor: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  prev_row_hash: string;
+  this_row_hash: string;
+  evidence_digest?: string | null;
 };
 
 export type TimelineChannel = {
@@ -492,6 +535,28 @@ export const api = {
       ascii: string;
     }>(`/api/v1/devices/${deviceId}/bytes?offset=${offset}&length=${length}`),
 
+  findDeviceBytes: (
+    deviceId: string,
+    pattern: string,
+    fromOffset = 0,
+    encoding: "ascii" | "hex" = "ascii",
+  ) =>
+    request<{
+      device_id: string;
+      offset: number | null;
+      length: number;
+      encoding: string;
+      pattern: string;
+      scanned_bytes?: number;
+    }>(
+      `/api/v1/devices/${deviceId}/bytes/find?q=${encodeURIComponent(pattern)}&from_offset=${fromOffset}&encoding=${encoding}`,
+    ),
+
+  getSegmentDetail: (deviceId: string, segmentId: string) =>
+    request<SegmentDetail>(
+      `/api/v1/devices/${deviceId}/sequences/${segmentId}`,
+    ),
+
   deviceStructure: (deviceId: string) =>
     request<{
       device_id: string;
@@ -583,6 +648,11 @@ export const api = {
       first_broken_row_id: number | null;
       tip_hash?: string | null;
     }>(`/api/v1/cases/${caseId}/custody-log/status`),
+
+  custodyLogByDigest: (caseId: string, digest: string) =>
+    request<CustodyLogEntry[]>(
+      `/api/v1/cases/${caseId}/custody-log?digest=${encodeURIComponent(digest)}`,
+    ),
 
   cancelJob: (jobId: string) =>
     request<{ id: string; status: string }>(`/api/v1/jobs/${jobId}/cancel`, {

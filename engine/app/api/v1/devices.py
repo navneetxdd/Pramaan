@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from engine.app.core.config import EXPORTS_DIR, FFMPEG_BIN
@@ -170,6 +170,107 @@ def read_device_bytes(device_id: str, offset: int = 0, length: int = 256) -> dic
         "hex": chunk.hex(),
         "ascii": "".join(chr(b) if 32 <= b < 127 else "." for b in chunk),
     }
+
+
+def _sequence_payload(seq: dict, device: dict) -> dict:
+    return {
+        "id": seq["id"],
+        "device_id": seq["device_id"],
+        "channel": seq.get("channel"),
+        "byte_start": seq.get("byte_start"),
+        "byte_end": seq.get("byte_end"),
+        "byte_length": seq.get("byte_length"),
+        "frame_count": seq.get("frame_count"),
+        "confidence": seq.get("confidence"),
+        "validation_level": seq.get("validation_level"),
+        "output_path": seq.get("output_path"),
+        "output_md5": seq.get("output_md5"),
+        "output_sha256": seq.get("output_sha256"),
+        "recovery_job_id": seq.get("recovery_job_id"),
+        "recorder_start_ts": seq.get("recorder_start_ts"),
+        "recorder_end_ts": seq.get("recorder_end_ts"),
+        "corrected_start_ts": seq.get("corrected_start_ts"),
+        "corrected_end_ts": seq.get("corrected_end_ts"),
+        "timestamp_source": seq.get("timestamp_source"),
+        "timestamp_confidence": seq.get("timestamp_confidence"),
+        "codec": seq.get("codec"),
+        "parser_name": seq.get("parser_name"),
+        "parser_version": seq.get("parser_version"),
+        "signature_evidence": seq.get("signature_evidence") or {},
+        "validation_evidence": seq.get("validation_evidence") or {},
+        "vendor": device.get("declared_brand"),
+    }
+
+
+@router.get("/devices/{device_id}/bytes/find")
+def find_device_bytes(
+    device_id: str,
+    q: str = Query(..., min_length=1, max_length=128),
+    from_offset: int = 0,
+    encoding: Literal["ascii", "hex"] = "ascii",
+    max_scan_bytes: int = 16 * 1024 * 1024,
+) -> dict:
+    device = get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if from_offset < 0:
+        raise HTTPException(status_code=400, detail="from_offset must be >= 0")
+    path = Path(device["image_path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Evidence file missing on disk")
+    if encoding == "hex":
+        try:
+            needle = bytes.fromhex(q.replace(" ", ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid hex pattern") from exc
+    else:
+        needle = q.encode("utf-8")
+    if not needle:
+        raise HTTPException(status_code=400, detail="Empty search pattern")
+
+    file_size = evidence_size(path)
+    if from_offset >= file_size:
+        raise HTTPException(status_code=400, detail="from_offset beyond file size")
+
+    chunk_size = 65536
+    scanned = 0
+    cursor = from_offset
+    while cursor < file_size and scanned < max_scan_bytes:
+        read_len = min(chunk_size, file_size - cursor, max_scan_bytes - scanned)
+        block = read_image_bytes(path, cursor, read_len)
+        scanned += len(block)
+        hit = block.find(needle)
+        if hit >= 0:
+            return {
+                "device_id": device_id,
+                "offset": cursor + hit,
+                "length": len(needle),
+                "encoding": encoding,
+                "pattern": q,
+            }
+        if len(block) < read_len:
+            break
+        cursor += max(len(block) - len(needle) + 1, 1)
+
+    return {
+        "device_id": device_id,
+        "offset": None,
+        "length": 0,
+        "encoding": encoding,
+        "pattern": q,
+        "scanned_bytes": scanned,
+    }
+
+
+@router.get("/devices/{device_id}/sequences/{segment_id}")
+def get_device_sequence(device_id: str, segment_id: str) -> dict:
+    device = get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    seq = next((s for s in list_sequences(device_id) if s["id"] == segment_id), None)
+    if not seq:
+        raise HTTPException(status_code=404, detail="Segment not found")
+    return _sequence_payload(seq, device)
 
 
 @router.get("/devices/{device_id}/verify")

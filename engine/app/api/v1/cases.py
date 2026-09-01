@@ -179,20 +179,33 @@ def delete_case(case_id: str) -> Response:
 
 
 @router.get("/{case_id}/custody-log", response_model=list[CustodyLogEntry])
-def get_custody_log(case_id: str) -> list[CustodyLogEntry]:
+def get_custody_log(case_id: str, digest: str | None = None) -> list[CustodyLogEntry]:
     with get_db() as conn:
         case = conn.execute("SELECT id FROM cases WHERE id = ?", (case_id,)).fetchone()
         if not case:
             raise HTTPException(status_code=404, detail="Case not found")
-        rows = conn.execute(
-            """
-            SELECT id, timestamp_utc, actor, action, target_type, target_id, prev_row_hash, this_row_hash
-            FROM custody_log
-            WHERE target_type = 'case' AND target_id = ?
-            ORDER BY id ASC
-            """,
-            (case_id,),
-        ).fetchall()
+        if digest:
+            rows = conn.execute(
+                """
+                SELECT id, timestamp_utc, actor, action, target_type, target_id,
+                       prev_row_hash, this_row_hash, evidence_digest
+                FROM custody_log
+                WHERE target_type = 'case' AND target_id = ? AND evidence_digest = ?
+                ORDER BY id ASC
+                """,
+                (case_id, digest),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, timestamp_utc, actor, action, target_type, target_id,
+                       prev_row_hash, this_row_hash, evidence_digest
+                FROM custody_log
+                WHERE target_type = 'case' AND target_id = ?
+                ORDER BY id ASC
+                """,
+                (case_id,),
+            ).fetchall()
     return [CustodyLogEntry(**dict(row)) for row in rows]
 
 

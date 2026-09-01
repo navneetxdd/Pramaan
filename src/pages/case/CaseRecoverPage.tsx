@@ -9,6 +9,7 @@ import {
   ConfidenceDonut,
   RecoveryLogPanel,
 } from "@/components/forensic/ConfidenceDonut";
+import { SegmentInspector } from "@/components/forensic/SegmentInspector";
 import { VirtualTable } from "@/components/ui/virtual-table";
 import { subscribeJobEvents } from "@/lib/sse";
 import { useActivity } from "@/context/ActivityContext";
@@ -34,6 +35,9 @@ export function CaseRecoverPage() {
   const [log, setLog] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
+    null,
+  );
   const [adapters, setAdapters] = useState<string[]>([]);
   const [selectedAdapter, setSelectedAdapter] = useState("");
   const { setWorking, setIdle } = useActivity();
@@ -151,6 +155,11 @@ export function CaseRecoverPage() {
   const adapterHintDisplay = workspace?.evidence.find((e) => e.id === deviceId)
     ?.identification?.recommended_adapter;
 
+  const selectedSegment = useMemo(
+    () => segments.find((s) => s.id === selectedSegmentId) ?? null,
+    [segments, selectedSegmentId],
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <section className="visily-card flex flex-wrap items-end gap-3 p-4">
@@ -235,6 +244,9 @@ export function CaseRecoverPage() {
           rows={segments}
           maxHeight={288}
           emptyMessage="No segments for this device yet."
+          getRowKey={(seg) => seg.id}
+          selectedRowKey={selectedSegmentId}
+          onRowClick={(seg) => setSelectedSegmentId(seg.id)}
           columns={[
             { key: "ch", header: "Ch", cell: (seg) => seg.channel ?? "—" },
             {
@@ -289,6 +301,13 @@ export function CaseRecoverPage() {
           ]}
         />
       </section>
+
+      <SegmentInspector
+        caseId={caseId}
+        deviceId={deviceId}
+        segment={selectedSegment}
+        variant="recover"
+      />
     </div>
   );
 }

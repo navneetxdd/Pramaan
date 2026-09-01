@@ -104,6 +104,13 @@ REAL_DVR_SAMPLES: list[dict] = [
         "license": "PRONOM format sample — fetch-only",
     },
     {
+        "id": "dahua_dav_motion",
+        "url": "https://raw.githubusercontent.com/glepore70/pronom-research/master/sample_files/d/dav/20.49.55-20.50.21_M_0_0_0_.dav",
+        "dest": "external/dvr/dahua/20.49.55-20.50.21_M_0_0_0_.dav",
+        "purpose": "Real Dahua DHAV motion-event recording",
+        "license": "PRONOM format sample — fetch-only",
+    },
+    {
         "id": "hikvision_nvr_export",
         "url": "https://samples.ffmpeg.org/camera-dvr/hikvision/DVR_NVR_IP%20Camera01_20130321162325_20130321162358_576877.mp4",
         "dest": "external/dvr/hikvision/DVR_NVR_IP_Camera01_20130321162325.mp4",

@@ -28,6 +28,8 @@ Sidebar steps unlock after case creation and acquisition:
 
 - Byte-offset ticks use integer hex (no fractional labels).
 - Play/pause on shared transport; lane videos have no separate controls.
+- **Segment inspector** (META / FINDINGS / VALIDATION) and **AI findings lane** on the timeline when analytics have run.
+- **Recover** page: select a segment row for hex view and provenance (hashes + custody digest match).
 
 ## Report
 

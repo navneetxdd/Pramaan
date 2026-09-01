@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useCaseContext } from "@/context/CaseContext";
 import { api, type Segment, type TimelineChannel } from "@/lib/api";
@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { resolveApiUrl } from "@/lib/apiBase";
 import { formatBytes, formatOffset } from "@/lib/utils";
 import { formatTimestampSource } from "@/lib/integrity";
+import { FindingsTrack } from "@/components/forensic/FindingsTrack";
+import { SegmentInspector } from "@/components/forensic/SegmentInspector";
 
 function parseSegmentStart(seg: Segment, useTime: boolean): number {
   if (useTime) {
@@ -27,7 +29,6 @@ function parseSegmentStart(seg: Segment, useTime: boolean): number {
 
 export function CaseTimelinePage() {
   const { caseId, workspace } = useCaseContext();
-  const navigate = useNavigate();
   const [deviceId, setDeviceId] = useState("");
   const [segments, setSegments] = useState<Segment[]>([]);
   const [channels, setChannels] = useState<TimelineChannel[]>([]);
@@ -141,6 +142,11 @@ export function CaseTimelinePage() {
     }
   }
 
+  const selectedSegment = useMemo(
+    () => segments.find((s) => s.id === selectedSegmentId) ?? null,
+    [segments, selectedSegmentId],
+  );
+
   return (
     <div className="flex flex-col gap-3">
       <div className="visily-hero-dark px-5 py-4">
@@ -247,7 +253,13 @@ export function CaseTimelinePage() {
             channels={channels}
             selectedSegmentId={selectedSegmentId}
             onSelect={seekToSegment}
-            onSelectFinding={() => navigate(`/cases/${caseId}/ai-analytics`)}
+            onSelectFinding={(segmentId) => seekToSegment(segmentId)}
+          />
+          <FindingsTrack
+            channels={channels}
+            useTime={useTime}
+            selectedSegmentId={selectedSegmentId}
+            onSelectSegment={seekToSegment}
           />
           <PlaybackDeck
             channels={channels}
@@ -256,6 +268,12 @@ export function CaseTimelinePage() {
             playhead={playhead}
             onPlayheadChange={setPlayhead}
             onSelectSegment={setSelectedSegmentId}
+          />
+          <SegmentInspector
+            caseId={caseId}
+            deviceId={deviceId}
+            segment={selectedSegment}
+            variant="timeline"
           />
           <section className="visily-card overflow-hidden">
             <div className="visily-card-header">

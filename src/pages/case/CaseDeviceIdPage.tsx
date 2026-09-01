@@ -1,57 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
-
 import { Link } from "react-router-dom";
-
 import { toast } from "sonner";
-
 import { useCaseContext } from "@/context/CaseContext";
-
 import { api, type IdentificationReport } from "@/lib/api";
-
 import { capabilityTierLabel } from "@/lib/integrity";
-
 import { ConfidenceBadge } from "@/components/forensic/ConfidenceBadge";
-
+import { HexViewer } from "@/components/forensic/HexViewer";
 import { Button } from "@/components/ui/button";
-
 import { formatBytes, formatOffset } from "@/lib/utils";
 
 type StructureNode = {
   label: string;
-
   offset: number;
-
   size: number;
-
   type: string;
-
   meta?: Record<string, unknown>;
-
   children?: StructureNode[];
 };
-
-function formatHexDump(hex: string, ascii: string, offset: number): string {
-  const bytes = hex.match(/.{1,2}/g) ?? [];
-
-  const lines: string[] = [];
-
-  for (let i = 0; i < bytes.length; i += 16) {
-    const slice = bytes.slice(i, i + 16);
-
-    const addr = (offset + i).toString(16).padStart(8, "0");
-
-    const hexPart = slice
-      .map((b) => b.toUpperCase())
-      .join(" ")
-      .padEnd(47, " ");
-
-    const asciiPart = ascii.slice(i, i + 16);
-
-    lines.push(`${addr}  ${hexPart}  ${asciiPart}`);
-  }
-
-  return lines.join("\n");
-}
 
 function flattenNodes(
   nodes: StructureNode[],
@@ -80,13 +45,7 @@ export function CaseDeviceIdPage() {
   const [scanning, setScanning] = useState(false);
 
   const [hexOffset, setHexOffset] = useState(0);
-
-  const [hexDump, setHexDump] = useState<string | null>(null);
-
-  const [hexLoading, setHexLoading] = useState(false);
-
   const [structure, setStructure] = useState<StructureNode[]>([]);
-
   const [selectedNode, setSelectedNode] = useState<StructureNode | null>(null);
 
   const evidence = workspace?.evidence ?? [];
@@ -101,37 +60,17 @@ export function CaseDeviceIdPage() {
 
   useEffect(() => {
     if (!deviceId) {
-      setHexDump(null);
-
       setStructure([]);
-
       return;
     }
-
-    setHexLoading(true);
-
     void api
-
-      .readDeviceBytes(deviceId, hexOffset, 256)
-
-      .then((r) => setHexDump(formatHexDump(r.hex, r.ascii, r.offset)))
-
-      .catch(() => setHexDump(null))
-
-      .finally(() => setHexLoading(false));
-
-    void api
-
       .deviceStructure(deviceId)
-
       .then((result) => {
         setStructure(result.nodes as StructureNode[]);
-
         setSelectedNode((result.nodes[0] ?? null) as StructureNode | null);
       })
-
       .catch(() => setStructure([]));
-  }, [deviceId, hexOffset]);
+  }, [deviceId]);
 
   async function runIdentify() {
     if (!deviceId) return;
@@ -359,34 +298,17 @@ export function CaseDeviceIdPage() {
             </section>
 
             <section className="visily-card flex min-h-0 flex-1 flex-col p-4">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="visily-card-title text-[11px]">
-                  Hex at {formatOffset(hexOffset)}
+              {deviceId ? (
+                <HexViewer
+                  deviceId={deviceId}
+                  baseOffset={selectedNode?.offset ?? hexOffset}
+                  title={`Hex at ${formatOffset(selectedNode?.offset ?? hexOffset)}`}
+                />
+              ) : (
+                <p className="text-[13px] text-[var(--text-tertiary)]">
+                  Select evidence to preview bytes.
                 </p>
-
-                <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={hexOffset <= 0}
-                    onClick={() => setHexOffset((o) => Math.max(0, o - 256))}
-                  >
-                    −256 B
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setHexOffset((o) => o + 256)}
-                  >
-                    +256 B
-                  </Button>
-                </div>
-              </div>
-
-              <pre className="min-h-[180px] flex-1 overflow-auto rounded-lg bg-[#1a1d21] p-3 font-mono text-[10px] leading-relaxed text-emerald-100/90">
-                {hexLoading ? "Reading bytes…" : (hexDump ?? "Unavailable")}
-              </pre>
+              )}
 
               {report?.filesystem_hints &&
               report.filesystem_hints.length > 0 ? (

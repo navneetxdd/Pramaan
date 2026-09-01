@@ -61,6 +61,7 @@ class CustodyLogEntry(BaseModel):
     target_id: str
     prev_row_hash: str
     this_row_hash: str
+    evidence_digest: str | None = None
 
 
 class CustodyLogStatus(BaseModel):
