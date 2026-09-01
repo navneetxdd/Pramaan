@@ -116,6 +116,8 @@ export const api = {
 
   reportHtmlUrl: (caseId: string) => `/api/cases/${caseId}/report.html`,
 
+  reportPdfUrl: (caseId: string) => `/api/cases/${caseId}/report.pdf`,
+
   verify: (imageId: string) =>
     request<{ ok: boolean; expected?: string; actual?: string }>(`/api/evidence/${imageId}/verify`),
 

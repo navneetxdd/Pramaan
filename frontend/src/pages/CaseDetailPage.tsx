@@ -45,7 +45,7 @@ export function CaseDetailPage() {
         </div>
         <StatusBadge status={caseRecord.status} />
         <div className="flex gap-2">
-          <a className="btn-ghost" href={api.reportHtmlUrl(caseId)} target="_blank" rel="noreferrer">Report</a>
+          <a className="btn-ghost" href={api.reportPdfUrl(caseId)} download>PDF</a>
         </div>
       </div>
       {verifyMsg ? <p className="text-sm text-solved">{verifyMsg}</p> : null}

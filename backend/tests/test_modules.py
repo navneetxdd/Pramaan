@@ -38,3 +38,12 @@ def test_hash_chain_valid():
         prev = event_hash
     result = verify_chain(events, case_id)
     assert result["ok"]
+
+
+def test_pdf_report_bytes():
+    from pramaan.core import cases as case_store
+    from pramaan.modules.reporting.service import build_pdf_report
+
+    case = case_store.create_case("PDF Test", "Examiner A")
+    pdf = build_pdf_report(case["id"])
+    assert pdf[:4] == b"%PDF"
