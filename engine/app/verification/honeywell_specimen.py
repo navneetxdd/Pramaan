@@ -13,13 +13,12 @@ from engine.app.parsers.schemas.honeywell import (
     SECTOR_SIZE,
     rounded_frame_length_u16,
 )
-from engine.app.verification.media_fixture import NalPayloadSource
+from engine.app.verification.media_fixture import get_nal_source
 
 SECTOR_34_OFFSET = 34 * SECTOR_SIZE
 PARTITION_BASE = 0x10000
 CHANNEL_LIST_BASE = PARTITION_BASE + 0x400000
 VIDEO_DATA_BASE = 0x200000
-_nal_source = NalPayloadSource()
 
 
 def _gpt_sector() -> bytes:
@@ -38,7 +37,7 @@ def _machine_data_sector() -> bytes:
 
 
 def _build_nal_frame(*, frame_type: int, timestamp_us: int, payload_extra: int = 64) -> bytes:
-    nal_body = _nal_source.next_decodable_access_unit(payload_extra + 8)
+    nal_body = get_nal_source().next_decodable_access_unit(payload_extra + 8)
     payload = nal_body
     header = HoneywellNalHeader.build(
         {
@@ -52,7 +51,7 @@ def _build_nal_frame(*, frame_type: int, timestamp_us: int, payload_extra: int =
 
 
 def build_honeywell_lab_specimen() -> bytes:
-    _nal_source.reset()
+    get_nal_source().reset()
     """Synthetic Honeywell GPT disk with both deletion-recovery mechanisms."""
     header_start_time = 1_700_000_000
     deleted_ts = header_start_time - 3600

@@ -9,10 +9,9 @@ from engine.app.parsers.schemas.dhav import (
     build_h264_ext_tlvs,
     seal_dhav_video_frame,
 )
-from engine.app.verification.media_fixture import NalPayloadSource
+from engine.app.verification.media_fixture import get_nal_source
 
 _LAB_EPOCH = datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc)
-_nal_source = NalPayloadSource()
 
 
 def _frame_time(index: int) -> datetime:
@@ -21,9 +20,9 @@ def _frame_time(index: int) -> datetime:
 
 def _video_frame(frame_type: int, channel: int, frame_number: int, index: int) -> bytes:
     if frame_type == DHAV_TYPE_I:
-        payload = _nal_source.next_decodable_access_unit(min_len=64)
+        payload = get_nal_source().next_decodable_access_unit(min_len=64)
     else:
-        payload = _nal_source.next_single_nal()
+        payload = get_nal_source().next_single_nal()
     return seal_dhav_video_frame(
         frame_type=frame_type,
         channel=channel,
@@ -39,7 +38,7 @@ def build_dahua_lab_specimen() -> bytes:
     Synthetic DHAV stream aligned with libavformat/dhav.c.
     Starts with DAHUA 0x400 header block containing DHFS4.1 marker for detection.
     """
-    _nal_source.reset()
+    get_nal_source().reset()
     header_block = bytearray(0x400)
     header_block[0:5] = b"DAHUA"
     header_block[0x200 : 0x200 + 7] = b"DHFS4.1"

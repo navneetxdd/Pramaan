@@ -22,6 +22,15 @@ def existing_data_files():
     if manifest.is_file():
         files.append((str(manifest), "validation_data"))
 
+    # Bundle the small known-answer fixtures. lab_specimen.py builds NalPayloadSource at
+    # import time from validation_data/fixtures/media/caviar_walk1_320x240.h264; if that
+    # file is missing the whole engine fails to start ("Frozen engine did not become ready").
+    fixtures = VALIDATION_ROOT / "fixtures"
+    if fixtures.is_dir():
+        for source in sorted(path for path in fixtures.rglob("*") if path.is_file()):
+            destination = Path("validation_data/fixtures") / source.parent.relative_to(fixtures)
+            files.append((str(source), destination.as_posix()))
+
     models = VALIDATION_ROOT / "models"
     if models.is_dir():
         for source in sorted(path for path in models.rglob("*") if path.is_file()):

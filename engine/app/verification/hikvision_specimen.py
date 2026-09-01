@@ -11,11 +11,10 @@ from engine.app.parsers.schemas.hikvision_fs import (
     build_master_block,
     wrap_mpegps,
 )
-from engine.app.verification.media_fixture import NalPayloadSource
+from engine.app.verification.media_fixture import get_nal_source
 
 _LAB_EPOCH = 1_700_000_000
 DISK_SIZE = 4 * 1024 * 1024
-_nal_source = NalPayloadSource()
 
 HIKBTREE_OFFSET = 0x1000
 PAGE_OFFSET = 0x1800
@@ -24,14 +23,14 @@ DATA_BASE = 0x100000
 
 def build_hikvision_lab_specimen() -> bytes:
     """Synthetic Hikvision disk: master @ 0x200, HIKBTREE index, MPEG-PS data blocks."""
-    _nal_source.reset()
+    get_nal_source().reset()
     disk = bytearray(DISK_SIZE)
 
     entries: list[HikbtreeEntry] = []
     data_cursor = DATA_BASE
     frame_index = 0
     for channel in (1, 1, 2, 1):
-        access_unit = _nal_source.next_decodable_access_unit(min_len=64)
+        access_unit = get_nal_source().next_decodable_access_unit(min_len=64)
         ps_blob = wrap_mpegps(access_unit)
         disk[data_cursor : data_cursor + len(ps_blob)] = ps_blob
         start = _LAB_EPOCH + frame_index * 60

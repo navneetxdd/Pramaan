@@ -114,6 +114,22 @@ def caviar_nal_units() -> list[bytes]:
     return _nal_cache
 
 
+_shared_nal_source: "NalPayloadSource | None" = None
+
+
+def get_nal_source() -> "NalPayloadSource":
+    """Lazily build the shared specimen NAL source.
+
+    Specimen builders must NOT instantiate NalPayloadSource at import time: if the CAVIAR
+    fixture media is missing (e.g. a frozen bundle that did not package it) the raise would
+    abort engine startup ("Frozen engine did not become ready").
+    """
+    global _shared_nal_source
+    if _shared_nal_source is None:
+        _shared_nal_source = NalPayloadSource()
+    return _shared_nal_source
+
+
 class NalPayloadSource:
     """Round-robin whole-NAL payloads for specimen builders."""
 
