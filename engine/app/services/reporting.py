@@ -94,7 +94,7 @@ def build_json_report(case_id: str, *, require_intact_chain: bool = True) -> dic
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "generated_by": "Forensic Workstation",
         "app_version": APP_VERSION,
-        "methodology": "Tier 1 dual-signature DHAV/HKVI + Tier 2 H.264 carve (SIH26150)",
+        "methodology": "Tier 1 DHAV + HIKBTREE/MPEG-PS + Tier 2 filesystem/H.264 carve (SIH26150)",
         "report_kind": "standard" if require_intact_chain else "integrity",
     }
 

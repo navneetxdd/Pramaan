@@ -16,6 +16,7 @@ Sidebar steps unlock after case creation and acquisition:
 
 - Enter examiner name (required for custody).
 - Left column scrolls at 720p — OEM drop and logical pull sections remain reachable.
+- **Network logical pull** (requires `PRAMAAN_ALLOW_LOGICAL_ACQUIRE=1`): HTTP Digest auth to Hikvision ISAPI or Dahua CGI. Choose HTTP/HTTPS scheme. Exports accessible clips only — not a substitute for disk imaging.
 
 ## Recovery screen
 
@@ -35,5 +36,6 @@ Sidebar steps unlock after case creation and acquisition:
 
 ## Settings
 
-- Working directory: set `FORENSIC_WORKSTATION_DATA` before launch.
-- Parser sanity check runs tier-1 fixture verification.
+- Working directory: set `FORENSIC_WORKSTATION_DATA` before launch (read-only in UI).
+- **Validation datasets**: fetch Digital Corpora E01, PRONOM `.dav`, and other manifest entries.
+- Parser sanity check runs tier-1 fixture verification and optional real-media stages.

@@ -20,7 +20,7 @@ Official reference: [SIH Buddy — SIH26150](https://sih-buddy.vercel.app/ps/SIH
 
 Investigators depend on multiple vendor-specific tools because Dahua, CP Plus, Honeywell, TP-Link, Godrej, Uniview, Hikvision, and Matrix use proprietary storage layouts. Pramaan is a **local, offline case-centric workstation** that unifies acquisition, OEM identification, recovery, timeline review, optional analytics, hash-chained custody, and signed reporting.
 
-**Validation scope (read this):** Dahua, Hikvision, and Honeywell parsers are **experimental** — proven on in-repo fixtures and optional public corpora. They are **not field-validated** on independent recorder disks. CP Plus, TP-Link, Godrej, Matrix, and Uniview are acquisition plus generic analysis unless family signatures route to an experimental adapter. No public Hikvision/Dahua DVR disk images exist on Digital Corpora or CFReDS; use operator captures in `validation_data/oem/`.
+**Validation scope (read this):** Dahua DHAV, Hikvision HIKBTREE/MPEG-PS, and Honeywell parsers are **experimental** — proven on in-repo fixtures, optional PRONOM `.dav`, and Digital Corpora E01 undelete (`nps-2009-canon2`, ≥6 deleted root entries via `generic_tier2`). They are **not field-validated** on independent recorder disks. CP Plus, TP-Link, Godrej, Matrix, and Uniview use acquisition plus generic analysis unless family signatures route to an experimental adapter. Fetch corpora with `fetch_validation_assets.py`; place operator captures in `validation_data/oem/`.
 
 ---
 
@@ -123,12 +123,12 @@ flowchart TB
 
 | OEM | Level | Route | Caveat |
 |-----|-------|-------|--------|
-| Dahua | Experimental parser | `dahua_dhav` | Fixture-tested; no real disk |
-| Hikvision | Experimental parser | `hikvision` | No HIKBTREE; fixture-tested |
-| Honeywell | Experimental parser | `honeywell` | Fixture-tested |
+| Dahua | Experimental parser | `dahua_dhav` | FFmpeg DHAV layout; fixture + optional PRONOM `.dav` (`--real-dvr`) |
+| Hikvision | Experimental parser | `hikvision` | HIKBTREE index + MPEG-PS blocks; fixture-tested |
+| Honeywell | Experimental parser | `honeywell` | Expired-index heuristic; fixture-tested |
 | CP Plus | Generic / lineage route | `dahua_dhav` if DHAV/DHFS signatures | Hypothesis only |
-| Uniview | Generic / lineage route | `hikvision` if HKVI signatures | Hypothesis only |
-| TP-Link, Godrej, Matrix | Acquisition + generic | `generic_tier2` | Filesystem undelete or H.264 carve |
+| Uniview | Generic / lineage route | `hikvision` if HIKBTREE signatures | Hypothesis only |
+| TP-Link, Godrej, Matrix | Acquisition + generic | `generic_tier2` | pytsk3 undelete or H.264 carve; E01 via pyewf |
 
 **Known limitations:** No encryption/RAID/chip-off support. Self-signed PDF/bundle certificates (use org PKI for production). Client-supplied custody actor (bind to examiner session in hardened deploy). Analytics findings are not identification evidence.
 
@@ -158,13 +158,16 @@ npm run build
 python scripts/validation/check_routes.py
 ```
 
-**Fetch public corpora** (Digital Corpora E01, CAVIAR, tier-1 fixtures):
+**Fetch public corpora** (Digital Corpora E01, CAVIAR, tier-1 fixtures, optional PRONOM Dahua `.dav`):
 
 ```powershell
 python scripts/validation/fetch_validation_assets.py --real-fs --surveillance
+python scripts/validation/fetch_validation_assets.py --real-dvr   # optional PRONOM .dav
 python scripts/validation/build_oem_disk_fixtures.py
 python scripts/validation/test_public_media.py   # engine on :8787
 ```
+
+Settings → **Validation datasets** can fetch individual manifest entries without the CLI.
 
 Place real DVR field captures in `validation_data/oem/` (gitignored) or set `PRAMAAN_OEM_IMAGE_DIR`.
 

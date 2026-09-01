@@ -109,6 +109,7 @@ export function CaseAcquirePage() {
   const [logicalVendor, setLogicalVendor] = useState<"hikvision" | "dahua">(
     "hikvision",
   );
+  const [logicalScheme, setLogicalScheme] = useState<"http" | "https">("http");
 
   const { setWorking, setIdle } = useActivity();
 
@@ -420,6 +421,8 @@ export function CaseAcquirePage() {
 
         port: Number(logicalPort) || 80,
 
+        scheme: logicalScheme,
+
         user: logicalUser.trim(),
 
         password: logicalPassword,
@@ -723,8 +726,20 @@ export function CaseAcquirePage() {
 
             <div className="mt-2 space-y-2">
               <p className="text-[11px] text-amber-900">
-                Clips only — no deleted/unallocated recovery.
+                HTTP Digest to Hikvision ISAPI or Dahua CGI. Accessible clips
+                only — no deleted or unallocated recovery.
               </p>
+
+              <select
+                className="field w-full"
+                value={logicalScheme}
+                onChange={(e) =>
+                  setLogicalScheme(e.target.value as typeof logicalScheme)
+                }
+              >
+                <option value="http">HTTP</option>
+                <option value="https">HTTPS</option>
+              </select>
 
               <Input
                 placeholder="NVR IP"

@@ -13,14 +13,14 @@ Pramaan is a SIH26150-oriented forensic workstation for CCTV/DVR evidence. This 
 | Honeywell end-to-end (recover → timeline → analytics) | **Pass** | `test_e2e_honeywell.py` |
 | Hikvision HIKBTREE + MPEG-PS model | **Pass** | `test_e2e_hikvision.py`, `hikbtree_indexed` validation |
 | E01 decode for identify/structure/bytes | **Pass** | `image_io.open_evidence_readonly` + pyewf; structure probe uses decoded bytes |
-| NIST nps-2009-canon2-gen6.E01 | **Present** | sha256 `10483722d84e…`; run `fetch_validation_assets.py --real-fs` |
-| Real Dahua `.dav` (PRONOM sample) | **Fetch-on-demand** | `fetch_validation_assets.py --real-dvr` when wired |
+| NIST nps-2009-canon2-gen6.E01 | **Pass** | pyewf + pytsk3 FAT16 undelete → **6** deleted root entries (`test_canon2_real_recovery.py`) |
+| Real Dahua `.dav` (PRONOM sample) | **Fetch-on-demand** | `fetch_validation_assets.py --real-dvr`; `test_canon2_real_recovery.py::DahuaRealDavTests` when present |
 | Public DVR **disk images** | **Unavailable** | No authoritative Dahua/Hikvision/Honeywell disk images on Digital Corpora or CFReDS |
 
 ## Test suite (engine)
 
 ```
-python -m pytest engine/tests -q          → 57 passed
+python -m pytest engine/tests -q          → 61 passed, 1 skipped
 python -m pytest engine/tests/test_export_playable.py -q  → pass (isolated)
 python -c "… build_dahua_lab_specimen twice …" → identical SHA-256
 ```
@@ -33,8 +33,8 @@ python -c "… build_dahua_lab_specimen twice …" → identical SHA-256
 
 ## Real-media claims (run after `--real-fs` / `--real-dvr`)
 
-1. **Canon2 E01**: Acquire → identify shows filesystem hints → recover with **`generic_tier2`** adapter → JPEG SOI or filesystem validation tags. Record exact count in this section after `test_canon2_real_recovery.py` run.
-2. **Real Dahua `.dav`**: When fetched, `test_dahua_real_dav.py` validates ≥50 segments and ffprobe ≥10 frames on unwrapped H.264.
+1. **Canon2 E01**: `recover_filesystem` on `nps-2009-canon2-gen6.E01` returns **6** segments tagged `filesystem_deleted_inode` (DCIM, $FAT*, volume label). Use **`generic_tier2`** adapter in the Recover UI.
+2. **Real Dahua `.dav`**: When fetched, `DahuaRealDavTests` validates ≥10 segments and slice/IDR NALs in the first unwrapped chunk.
 
 ## AI analytics
 
@@ -45,7 +45,7 @@ python -c "… build_dahua_lab_specimen twice …" → identical SHA-256
 ## Known limitations
 
 - No field DVR disk validation; synthetic + PRONOM/FFmpeg samples only for OEM parsers.
-- Logical network pull tested against simulators; production Hikvision ISAPI / Dahua CGI require HTTP Digest.
+- Logical network pull uses **HTTP Digest** (Hikvision ISAPI / Dahua CGI). Clips only — no deleted-data recovery. Enable with `PRAMAAN_ALLOW_LOGICAL_ACQUIRE=1`.
 - SQLite global write lock serialises heavy jobs (acceptable for demo, not multi-examiner production).
 
 ## Non-deterministic fixture fix

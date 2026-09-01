@@ -282,7 +282,7 @@ def main() -> int:
                 hik_segments = body.get("segments", []) if isinstance(body, dict) else []
                 hik_vals = {s.get("validation") for s in hik_segments}
                 record(
-                    "M3 hikvision HKVI recovery",
+                    "M3 hikvision HIKBTREE recovery",
                     status == 200 and len(hik_segments) > 0,
                     f"count={len(hik_segments)} vals={list(hik_vals)[:3]}",
                 )

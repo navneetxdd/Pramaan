@@ -381,6 +381,7 @@ export const api = {
       actor: string;
       host: string;
       port?: number;
+      scheme?: "http" | "https";
       user: string;
       password: string;
       vendor?: "hikvision" | "dahua";
