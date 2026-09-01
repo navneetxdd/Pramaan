@@ -40,7 +40,8 @@ export class AppErrorBoundary extends Component<Props, State> {
             Pramaan could not render this screen
           </h1>
           <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-            Your case data remains in the local engine. Reload the interface, or return to the case registry.
+            Your case data remains in the local engine. Reload the interface, or
+            return to the case registry.
           </p>
           <pre className="mt-4 max-h-40 overflow-auto rounded-md bg-[var(--surface-3)] p-3 font-mono text-[11px] text-[var(--text-secondary)]">
             {this.state.error.message}
@@ -49,7 +50,11 @@ export class AppErrorBoundary extends Component<Props, State> {
             <button type="button" className="btn-primary" onClick={this.reload}>
               Reload interface
             </button>
-            <button type="button" className="btn-secondary" onClick={this.openCases}>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={this.openCases}
+            >
               Open case registry
             </button>
           </div>

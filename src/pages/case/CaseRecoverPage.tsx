@@ -5,7 +5,10 @@ import { api, type Segment } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfidenceBadge } from "@/components/forensic/ConfidenceBadge";
-import { ConfidenceDonut, RecoveryLogPanel } from "@/components/forensic/ConfidenceDonut";
+import {
+  ConfidenceDonut,
+  RecoveryLogPanel,
+} from "@/components/forensic/ConfidenceDonut";
 import { VirtualTable } from "@/components/ui/virtual-table";
 import { subscribeJobEvents } from "@/lib/sse";
 import { useActivity } from "@/context/ActivityContext";
@@ -15,7 +18,11 @@ import { formatTimestampSource } from "@/lib/integrity";
 function tierOf(seg: Segment) {
   return (
     seg.confidence_tier ??
-    (seg.validation?.includes("_4") || seg.confidence >= 0.85 ? "high" : seg.confidence >= 0.5 ? "medium" : "low")
+    (seg.validation?.includes("_4") || seg.confidence >= 0.85
+      ? "high"
+      : seg.confidence >= 0.5
+        ? "medium"
+        : "low")
   );
 }
 
@@ -27,10 +34,31 @@ export function CaseRecoverPage() {
   const [log, setLog] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
+  const [adapters, setAdapters] = useState<string[]>([]);
+  const [selectedAdapter, setSelectedAdapter] = useState("");
   const { setWorking, setIdle } = useActivity();
 
   useEffect(() => {
-    if (workspace?.evidence[0] && !deviceId) setDeviceId(workspace.evidence[0].id);
+    void api
+      .version()
+      .then((v) => setAdapters(v.capabilities.recovery_adapters ?? []));
+  }, []);
+
+  const adapterHint = workspace?.evidence.find((e) => e.id === deviceId)
+    ?.identification?.recommended_adapter;
+
+  useEffect(() => {
+    if (selectedAdapter) return;
+    if (adapterHint && adapterHint !== "needs_selection") {
+      setSelectedAdapter(adapterHint);
+    } else if (adapters[0]) {
+      setSelectedAdapter(adapters[0]);
+    }
+  }, [adapterHint, adapters, selectedAdapter, deviceId]);
+
+  useEffect(() => {
+    if (workspace?.evidence[0] && !deviceId)
+      setDeviceId(workspace.evidence[0].id);
   }, [workspace, deviceId]);
 
   useEffect(() => {
@@ -63,7 +91,10 @@ export function CaseRecoverPage() {
   );
 
   useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
+    logRef.current?.scrollTo({
+      top: logRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [log]);
 
   async function handleRecover() {
@@ -76,14 +107,28 @@ export function CaseRecoverPage() {
     setWorking("Recovery running…");
 
     try {
-      const started = await api.recover(caseId, deviceId, actor.trim());
+      const started = await api.recover(
+        caseId,
+        deviceId,
+        actor.trim(),
+        selectedAdapter || undefined,
+      );
       await new Promise<void>((resolve, reject) => {
         subscribeJobEvents(started.job.id, {
           onEvent: (event) => {
-            if (event.message) setLog((prev) => [...prev.slice(-200), event.message!]);
+            if (event.message)
+              setLog((prev) => [...prev.slice(-200), event.message!]);
             if (event.status === "completed") resolve();
-            if (event.status === "failed" || event.status === "cancelled" || event.status === "interrupted") {
-              reject(new Error(event.error || event.message || `Recovery ${event.status}`));
+            if (
+              event.status === "failed" ||
+              event.status === "cancelled" ||
+              event.status === "interrupted"
+            ) {
+              reject(
+                new Error(
+                  event.error || event.message || `Recovery ${event.status}`,
+                ),
+              );
             }
           },
           onError: reject,
@@ -94,21 +139,28 @@ export function CaseRecoverPage() {
       toast.success(`${result.segments.length} sequences recovered`);
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Recovery failed", { duration: Infinity });
+      toast.error(err instanceof Error ? err.message : "Recovery failed", {
+        duration: Infinity,
+      });
     } finally {
       setBusy(false);
       setIdle();
     }
   }
 
-  const adapterHint = workspace?.evidence.find((e) => e.id === deviceId)?.identification?.recommended_adapter;
+  const adapterHintDisplay = workspace?.evidence.find((e) => e.id === deviceId)
+    ?.identification?.recommended_adapter;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <section className="visily-card flex flex-wrap items-end gap-3 p-4">
         <div className="min-w-[180px] flex-1">
           <label className="label">Evidence image</label>
-          <select className="field w-full" value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+          <select
+            className="field w-full"
+            value={deviceId}
+            onChange={(e) => setDeviceId(e.target.value)}
+          >
             {(workspace?.evidence ?? []).map((e) => (
               <option key={e.id} value={e.id}>
                 {e.filename}
@@ -120,12 +172,33 @@ export function CaseRecoverPage() {
           <label className="label">Examiner</label>
           <Input value={actor} onChange={(e) => setActor(e.target.value)} />
         </div>
-        <Button disabled={busy || !deviceId || recoveryRunning} onClick={() => void handleRecover()}>
+        <div className="min-w-[200px]">
+          <label className="label">Recovery adapter</label>
+          <select
+            className="field w-full"
+            value={selectedAdapter}
+            onChange={(e) => setSelectedAdapter(e.target.value)}
+          >
+            {adapters.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button
+          disabled={busy || !deviceId || recoveryRunning}
+          onClick={() => void handleRecover()}
+        >
           {recoveryRunning ? "Recovery in progress…" : "Run recovery"}
         </Button>
-        {adapterHint ? (
+        {adapterHintDisplay ? (
           <p className="w-full text-[12px] text-[var(--text-secondary)]">
-            Recommended adapter from identification: <span className="mono font-medium">{adapterHint}</span>
+            Identification recommends:{" "}
+            <span className="mono font-medium">{adapterHintDisplay}</span>
+            {adapterHintDisplay === "needs_selection"
+              ? " — pick an adapter above."
+              : null}
           </p>
         ) : null}
       </section>
@@ -135,13 +208,21 @@ export function CaseRecoverPage() {
           <div className="visily-card-header">
             <span className="visily-card-title">Engine log</span>
           </div>
-          <div ref={logRef} className="flex min-h-[240px] flex-1 flex-col overflow-hidden">
+          <div
+            ref={logRef}
+            className="flex min-h-[240px] flex-1 flex-col overflow-hidden"
+          >
             <RecoveryLogPanel lines={log} />
           </div>
         </section>
         <section className="visily-card p-4">
           <p className="visily-card-title mb-3">Confidence tiers</p>
-          <ConfidenceDonut high={tierCounts.high} medium={tierCounts.medium} low={tierCounts.low} />
+          <ConfidenceDonut
+            high={tierCounts.high}
+            medium={tierCounts.medium}
+            low={tierCounts.low}
+            total={segments.length}
+          />
         </section>
       </div>
 
@@ -163,29 +244,47 @@ export function CaseRecoverPage() {
               cell: (seg) =>
                 seg.offset_start != null && seg.offset_end != null
                   ? `${seg.offset_start}–${seg.offset_end}`
-                  : seg.offset_time_label ?? "—",
+                  : (seg.offset_time_label ?? "—"),
             },
             {
               key: "size",
               header: "Size",
               className: "mono",
-              cell: (seg) => formatBytes(seg.byte_length ?? (seg.offset_end ?? 0) - (seg.offset_start ?? 0)),
+              cell: (seg) =>
+                formatBytes(
+                  seg.byte_length ??
+                    (seg.offset_end ?? 0) - (seg.offset_start ?? 0),
+                ),
             },
             {
               key: "ts",
               header: "Timestamp",
               cell: (seg) => (
                 <div className="text-[11px]">
-                  <div>{seg.corrected_start_ts ?? seg.recorder_start_ts ?? "—"}</div>
-                  <div className="text-[var(--text-tertiary)]">{formatTimestampSource(seg.timestamp_source)}</div>
+                  <div>
+                    {seg.corrected_start_ts ?? seg.recorder_start_ts ?? "—"}
+                  </div>
+                  <div className="text-[var(--text-tertiary)]">
+                    {formatTimestampSource(seg.timestamp_source)}
+                  </div>
                 </div>
               ),
             },
-            { key: "parser", header: "Parser", className: "mono text-[10px]", cell: (seg) => seg.parser_name ?? "—" },
+            {
+              key: "parser",
+              header: "Parser",
+              className: "mono text-[10px]",
+              cell: (seg) => seg.parser_name ?? "—",
+            },
             {
               key: "validation",
               header: "Validation",
-              cell: (seg) => <ConfidenceBadge tier={tierOf(seg)} label={seg.validation?.replace(/_/g, " ")} />,
+              cell: (seg) => (
+                <ConfidenceBadge
+                  tier={tierOf(seg)}
+                  label={seg.validation?.replace(/_/g, " ")}
+                />
+              ),
             },
           ]}
         />

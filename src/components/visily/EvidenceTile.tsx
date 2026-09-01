@@ -20,21 +20,45 @@ const icons = {
   memory: MemoryStick,
 };
 
-export function EvidenceTile({ id, caseId, label, sizeBytes, sha256, kind = "disk", status }: EvidenceTileProps) {
+export function EvidenceTile({
+  id,
+  caseId,
+  label,
+  sizeBytes,
+  sha256,
+  kind = "disk",
+  status,
+}: EvidenceTileProps) {
   const Icon = icons[kind];
 
   return (
-    <Link to={`/cases/${caseId}/evidence`} className="visily-evidence-tile group">
+    <Link
+      to={`/cases/${caseId}/evidence`}
+      className="visily-evidence-tile group"
+    >
       <div className="visily-evidence-thumb">
-        <Icon className="h-8 w-8 text-[var(--accent-400)] opacity-80" strokeWidth={1.25} />
+        <Icon
+          className="h-8 w-8 text-[var(--accent-400)] opacity-80"
+          strokeWidth={1.25}
+        />
       </div>
       <div className="mt-3 space-y-1">
         <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">{label}</p>
-          {status ? <span className="visily-badge visily-badge-neutral text-[9px]">{status}</span> : null}
+          <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">
+            {label}
+          </p>
+          {status ? (
+            <span className="visily-badge visily-badge-neutral text-[9px]">
+              {status}
+            </span>
+          ) : null}
         </div>
-        <p className="mono text-[11px] text-[var(--text-tertiary)]">{formatBytes(sizeBytes)}</p>
-        <p className="mono text-[10px] text-[var(--text-tertiary)]">SHA {shortHash(sha256)}</p>
+        <p className="mono text-[11px] text-[var(--text-tertiary)]">
+          {formatBytes(sizeBytes)}
+        </p>
+        <p className="mono text-[10px] text-[var(--text-tertiary)]">
+          SHA {shortHash(sha256)}
+        </p>
       </div>
     </Link>
   );

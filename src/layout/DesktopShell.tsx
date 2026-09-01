@@ -10,7 +10,10 @@ export function DesktopShell() {
   const location = useLocation();
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden" style={{ background: "var(--surface-0)" }}>
+    <div
+      className="flex h-[100dvh] flex-col overflow-hidden"
+      style={{ background: "var(--surface-0)" }}
+    >
       <TitleBar />
       <FfmpegWarningBanner />
 
@@ -22,7 +25,9 @@ export function DesktopShell() {
 
           <main
             className={`flex-1 overflow-x-hidden p-4 md:p-5 ${
-              location.pathname.includes("/evidence") ? "overflow-hidden" : "overflow-y-auto"
+              location.pathname.includes("/evidence")
+                ? "overflow-hidden"
+                : "overflow-y-auto"
             }`}
           >
             <Outlet />
@@ -37,7 +42,8 @@ export function DesktopShell() {
         position="bottom-right"
         toastOptions={{
           classNames: {
-            toast: "visily-card border-[var(--border-subtle)] bg-white text-[var(--text-primary)]",
+            toast:
+              "visily-card border-[var(--border-subtle)] bg-white text-[var(--text-primary)]",
             description: "text-[var(--text-secondary)]",
           },
         }}

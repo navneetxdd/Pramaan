@@ -8,15 +8,30 @@ type JobProgressCardProps = {
   meta?: string[];
 };
 
-export function JobProgressCard({ title, subtitle, progress, status, meta = [] }: JobProgressCardProps) {
+export function JobProgressCard({
+  title,
+  subtitle,
+  progress,
+  status,
+  meta = [],
+}: JobProgressCardProps) {
   const pct = progress ?? (status === "completed" ? 100 : 0);
 
   return (
-    <div className={cn("visily-job-card", status === "running" && "visily-job-card-active")}>
+    <div
+      className={cn(
+        "visily-job-card",
+        status === "running" && "visily-job-card-active",
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="mono text-[12px] font-medium text-[var(--text-primary)]">{title}</p>
-          <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">{subtitle}</p>
+          <p className="mono text-[12px] font-medium text-[var(--text-primary)]">
+            {title}
+          </p>
+          <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
+            {subtitle}
+          </p>
         </div>
         <span
           className={cn(
@@ -27,7 +42,11 @@ export function JobProgressCard({ title, subtitle, progress, status, meta = [] }
             status === "idle" && "visily-badge-neutral",
           )}
         >
-          {status === "completed" ? "Completed" : status === "running" ? `${pct.toFixed(0)}%` : status}
+          {status === "completed"
+            ? "Completed"
+            : status === "running"
+              ? `${pct.toFixed(0)}%`
+              : status}
         </span>
       </div>
       {status === "running" || status === "completed" ? (
@@ -41,7 +60,10 @@ export function JobProgressCard({ title, subtitle, progress, status, meta = [] }
       {meta.length > 0 ? (
         <ul className="mt-3 space-y-1">
           {meta.map((line) => (
-            <li key={line} className="mono text-[10px] text-[var(--text-tertiary)]">
+            <li
+              key={line}
+              className="mono text-[10px] text-[var(--text-tertiary)]"
+            >
               {line}
             </li>
           ))}

@@ -14,7 +14,8 @@ import { formatTimestampSource } from "@/lib/integrity";
 
 function parseSegmentStart(seg: Segment, useTime: boolean): number {
   if (useTime) {
-    const raw = seg.corrected_start_ts ?? seg.recorder_start_ts ?? seg.offset_time_label;
+    const raw =
+      seg.corrected_start_ts ?? seg.recorder_start_ts ?? seg.offset_time_label;
     if (raw) {
       if (/^\d+(\.\d+)?$/.test(raw)) return Number(raw) * 1000;
       const parsed = Date.parse(raw);
@@ -30,7 +31,9 @@ export function CaseTimelinePage() {
   const [deviceId, setDeviceId] = useState("");
   const [segments, setSegments] = useState<Segment[]>([]);
   const [channels, setChannels] = useState<TimelineChannel[]>([]);
-  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
+    null,
+  );
   const [playhead, setPlayhead] = useState<number | null>(null);
   const [wallUnix, setWallUnix] = useState("");
   const [deviceUnix, setDeviceUnix] = useState("");
@@ -42,7 +45,14 @@ export function CaseTimelinePage() {
   const useTime = useMemo(
     () =>
       channels.some((channel) =>
-        channel.segments.some((seg) => !!(seg.corrected_start_ts ?? seg.recorder_start_ts ?? seg.offset_time_label)),
+        channel.segments.some(
+          (seg) =>
+            !!(
+              seg.corrected_start_ts ??
+              seg.recorder_start_ts ??
+              seg.offset_time_label
+            ),
+        ),
       ),
     [channels],
   );
@@ -63,7 +73,14 @@ export function CaseTimelinePage() {
         const first = d.channels.flatMap((channel) => channel.segments)[0];
         if (first) {
           const timeMode = d.channels.some((channel) =>
-            channel.segments.some((seg) => !!(seg.corrected_start_ts ?? seg.recorder_start_ts ?? seg.offset_time_label)),
+            channel.segments.some(
+              (seg) =>
+                !!(
+                  seg.corrected_start_ts ??
+                  seg.recorder_start_ts ??
+                  seg.offset_time_label
+                ),
+            ),
           );
           setPlayhead(parseSegmentStart(first, timeMode));
           setSelectedSegmentId(first.id);
@@ -75,7 +92,9 @@ export function CaseTimelinePage() {
   const seekToSegment = useCallback(
     (segmentId: string) => {
       setSelectedSegmentId(segmentId);
-      const seg = channels.flatMap((channel) => channel.segments).find((item) => item.id === segmentId);
+      const seg = channels
+        .flatMap((channel) => channel.segments)
+        .find((item) => item.id === segmentId);
       if (seg) {
         setPlayhead(parseSegmentStart(seg, useTime));
       }
@@ -87,10 +106,16 @@ export function CaseTimelinePage() {
     if (!deviceId) return;
     try {
       const result = await api.exportSegment(deviceId, segmentId);
-      window.open(resolveApiUrl(result.download_url), "_blank", "noopener,noreferrer");
+      window.open(
+        resolveApiUrl(result.download_url),
+        "_blank",
+        "noopener,noreferrer",
+      );
       toast.success("Segment exported");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Export failed", { duration: Infinity });
+      toast.error(err instanceof Error ? err.message : "Export failed", {
+        duration: Infinity,
+      });
     }
   }
 
@@ -100,11 +125,19 @@ export function CaseTimelinePage() {
       return;
     }
     try {
-      const result = await api.calibrateDrift(deviceId, Number(wallUnix), Number(deviceUnix));
+      const result = await api.calibrateDrift(
+        deviceId,
+        Number(wallUnix),
+        Number(deviceUnix),
+      );
       setDriftOffset(result.drift_offset_seconds);
-      toast.success(`Drift offset ${result.drift_offset_seconds.toFixed(1)}s stored`);
+      toast.success(
+        `Drift offset ${result.drift_offset_seconds.toFixed(1)}s stored`,
+      );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Calibration failed", { duration: Infinity });
+      toast.error(err instanceof Error ? err.message : "Calibration failed", {
+        duration: Infinity,
+      });
     }
   }
 
@@ -113,10 +146,15 @@ export function CaseTimelinePage() {
       <div className="visily-hero-dark px-5 py-4">
         <div className="visily-hero-dark-bg" aria-hidden />
         <div className="relative z-[1]">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">Temporal review</p>
-          <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">Recovery timeline</h1>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">
+            Temporal review
+          </p>
+          <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">
+            Recovery timeline
+          </h1>
           <p className="mt-1 text-[12px] text-[var(--text-muted-on-dark)]">
-            Multi-camera playback deck with shared transport. Deleted recoveries are highlighted on each lane.
+            Multi-camera playback deck with shared transport. Deleted recoveries
+            are highlighted on each lane.
           </p>
         </div>
       </div>
@@ -125,7 +163,14 @@ export function CaseTimelinePage() {
         <label className="label">Evidence device</label>
         {evidenceList.length === 0 ? (
           <p className="text-[13px] text-[var(--text-secondary)]">
-            No evidence. <Link to={`/cases/${caseId}/acquire`} className="text-[var(--accent-500)] underline">Acquire</Link> first.
+            No evidence.{" "}
+            <Link
+              to={`/cases/${caseId}/acquire`}
+              className="text-[var(--accent-500)] underline"
+            >
+              Acquire
+            </Link>{" "}
+            first.
           </p>
         ) : (
           <select
@@ -145,9 +190,12 @@ export function CaseTimelinePage() {
 
       {deviceId ? (
         <section className="visily-card space-y-2 p-3">
-          <p className="visily-card-title text-[11px]">Clock drift calibration</p>
+          <p className="visily-card-title text-[11px]">
+            Clock drift calibration
+          </p>
           <p className="text-[12px] text-[var(--text-tertiary)]">
-            Supply one known event: wall-clock Unix time and the same moment on the DVR clock.
+            Supply one known event: wall-clock Unix time and the same moment on
+            the DVR clock.
           </p>
           <div className="grid max-w-lg gap-2 sm:grid-cols-2">
             <input
@@ -167,18 +215,25 @@ export function CaseTimelinePage() {
             Apply offset
           </Button>
           {driftOffset !== null ? (
-            <p className="mono text-[12px] text-[var(--text-secondary)]">Stored offset: {driftOffset.toFixed(3)}s</p>
+            <p className="mono text-[12px] text-[var(--text-secondary)]">
+              Stored offset: {driftOffset.toFixed(3)}s
+            </p>
           ) : null}
         </section>
       ) : null}
 
       {deviceId && channels.length === 0 ? (
         <section className="visily-card p-6 text-center">
-          <p className="text-[14px] font-medium text-[var(--text-primary)]">Timeline empty</p>
+          <p className="text-[14px] font-medium text-[var(--text-primary)]">
+            Timeline empty
+          </p>
           <p className="mx-auto mt-2 max-w-lg text-[13px] text-[var(--text-secondary)]">
-            Recovery has not produced indexed sequences for this device, or the image has no vendor DVR structure (e.g. a
-            camera-card E01). Complete{" "}
-            <Link to={`/cases/${caseId}/recover`} className="text-[var(--accent-500)] underline">
+            Recovery has not produced indexed sequences for this device, or the
+            image has no vendor DVR structure (e.g. a camera-card E01). Complete{" "}
+            <Link
+              to={`/cases/${caseId}/recover`}
+              className="text-[var(--accent-500)] underline"
+            >
               recovery
             </Link>{" "}
             on DVR/NVR media to unlock multi-channel playback.
@@ -205,7 +260,9 @@ export function CaseTimelinePage() {
           <section className="visily-card overflow-hidden">
             <div className="visily-card-header">
               <span className="visily-card-title">Sequences</span>
-              <span className="mono text-[10px] text-[var(--text-tertiary)]">{segments.length} total</span>
+              <span className="mono text-[10px] text-[var(--text-tertiary)]">
+                {segments.length} total
+              </span>
             </div>
             <VirtualTable
               rows={segments}
@@ -217,7 +274,10 @@ export function CaseTimelinePage() {
                   key: "start",
                   header: "Byte start",
                   className: "mono",
-                  cell: (seg) => (seg.offset_start != null ? formatOffset(seg.offset_start) : "—"),
+                  cell: (seg) =>
+                    seg.offset_start != null
+                      ? formatOffset(seg.offset_start)
+                      : "—",
                 },
                 {
                   key: "rec",
@@ -241,13 +301,21 @@ export function CaseTimelinePage() {
                   key: "size",
                   header: "Size",
                   className: "mono",
-                  cell: (seg) => formatBytes(seg.byte_length ?? (seg.offset_end ?? 0) - (seg.offset_start ?? 0)),
+                  cell: (seg) =>
+                    formatBytes(
+                      seg.byte_length ??
+                        (seg.offset_end ?? 0) - (seg.offset_start ?? 0),
+                    ),
                 },
                 {
                   key: "export",
                   header: "",
                   cell: (seg) => (
-                    <Button variant="ghost" size="icon" onClick={() => void handleExport(seg.id)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => void handleExport(seg.id)}
+                    >
                       <Download className="h-4 w-4" />
                     </Button>
                   ),

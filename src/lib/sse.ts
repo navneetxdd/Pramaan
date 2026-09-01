@@ -37,7 +37,12 @@ export function subscribeJobEvents(
       try {
         const payload = JSON.parse(msg.data) as JobStreamEvent;
         onEvent(payload);
-        if (payload.status && ["completed", "failed", "cancelled", "interrupted"].includes(payload.status)) {
+        if (
+          payload.status &&
+          ["completed", "failed", "cancelled", "interrupted"].includes(
+            payload.status,
+          )
+        ) {
           cleanup();
         }
       } catch {
@@ -81,7 +86,11 @@ export function waitForJobCompletion(
           unsubscribe();
           resolve(event);
         }
-        if (event.status === "failed" || event.status === "cancelled" || event.status === "interrupted") {
+        if (
+          event.status === "failed" ||
+          event.status === "cancelled" ||
+          event.status === "interrupted"
+        ) {
           window.clearTimeout(timer);
           unsubscribe();
           reject(new Error(event.error || "Job failed"));

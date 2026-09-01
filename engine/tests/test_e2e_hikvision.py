@@ -62,7 +62,7 @@ class HikvisionE2ETests(unittest.TestCase):
         segments = job_detail.get("segments") or []
         self.assertGreater(len(segments), 0)
         validations = {s.get("validation") for s in segments}
-        self.assertTrue(any(v in {"hkvi_block_4", "hkvi_block"} for v in validations), validations)
+        self.assertTrue(any(v in {"hikbtree_indexed", "hikbtree_stale_entry", "hkvi_block_4", "hkvi_block"} for v in validations), validations)
         stored = list_sequences(device_id)
         device = get_device(device_id)
         assert device is not None
@@ -77,9 +77,9 @@ class HikvisionE2ETests(unittest.TestCase):
                 source_bytes[sequence["byte_start"] : sequence["byte_end"]],
             )
             self.assertIsNotNone(sequence["recorder_start_ts"])
-            self.assertEqual(sequence["timestamp_source"], "hkvi_block_epoch")
+            self.assertEqual(sequence["timestamp_source"], "hikbtree_entry")
             self.assertEqual(sequence["parser_name"], "hikvision")
-            self.assertTrue(sequence["signature_evidence"].get("block_header"))
+            self.assertTrue(sequence["signature_evidence"].get("hikbtree_index"))
 
 
 if __name__ == "__main__":

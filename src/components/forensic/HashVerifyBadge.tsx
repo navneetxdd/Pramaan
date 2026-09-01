@@ -3,13 +3,34 @@ import { cn } from "@/lib/utils";
 
 export type HashVerifyState = "pending" | "verified" | "mismatch" | "idle";
 
-export function HashVerifyBadge({ state, className }: { state: HashVerifyState; className?: string }) {
+export function HashVerifyBadge({
+  state,
+  className,
+}: {
+  state: HashVerifyState;
+  className?: string;
+}) {
   if (state === "idle") return null;
 
   const config = {
-    pending: { icon: Loader2, color: "var(--status-info)", label: "Verifying…", spin: true },
-    verified: { icon: Check, color: "var(--status-success)", label: "Hash verified", spin: false },
-    mismatch: { icon: X, color: "var(--status-danger)", label: "Hash mismatch", spin: false },
+    pending: {
+      icon: Loader2,
+      color: "var(--status-info)",
+      label: "Verifying…",
+      spin: true,
+    },
+    verified: {
+      icon: Check,
+      color: "var(--status-success)",
+      label: "Hash verified",
+      spin: false,
+    },
+    mismatch: {
+      icon: X,
+      color: "var(--status-danger)",
+      label: "Hash mismatch",
+      spin: false,
+    },
   }[state];
 
   const Icon = config.icon;

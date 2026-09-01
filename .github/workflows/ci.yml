@@ -42,6 +42,8 @@ jobs:
           node-version: "20"
           cache: npm
       - run: npm ci
+      - name: Prettier check
+        run: npm run format:check
       - name: Type-check frontend
         run: npx tsc --noEmit
       - name: Build frontend

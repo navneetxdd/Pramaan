@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from engine.app.core.repository import get_device
+from engine.app.parsers.image_io import evidence_size, read_image_bytes
 
 OEM_MARKERS: list[tuple[bytes, str]] = [
     (b"DHFS4.1", "Dahua DHFS4.1"),
@@ -38,10 +39,10 @@ def probe_device_structure(device_id: str) -> dict:
     if not path.is_file():
         raise ValueError("Evidence file missing on disk")
 
-    size = path.stat().st_size
+    size = evidence_size(path)
     root_children: list[dict] = []
 
-    mbr = path.read_bytes()[:512]
+    mbr = read_image_bytes(path, 0, 512)
     if len(mbr) >= 512 and mbr[510:512] == b"\x55\xaa":
         partitions = []
         for index in range(4):
@@ -61,7 +62,7 @@ def probe_device_structure(device_id: str) -> dict:
         )
 
     if size > 512:
-        gpt_header = path.read_bytes()[512:1024]
+        gpt_header = read_image_bytes(path, 512, 512)
         if gpt_header.startswith(b"EFI PART"):
             root_children.append(
                 {
@@ -75,7 +76,7 @@ def probe_device_structure(device_id: str) -> dict:
             )
 
     sample_len = min(size, 64 * 1024 * 1024)
-    sample = path.read_bytes()[:sample_len]
+    sample = read_image_bytes(path, 0, sample_len)
     seen_offsets: set[int] = set()
     for token, label in OEM_MARKERS:
         start = 0

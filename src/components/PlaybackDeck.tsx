@@ -35,7 +35,8 @@ function segmentDeleted(seg: Segment): boolean {
 
 function parseSegmentStart(seg: Segment, useTime: boolean): number {
   if (useTime) {
-    const raw = seg.corrected_start_ts ?? seg.recorder_start_ts ?? seg.offset_time_label;
+    const raw =
+      seg.corrected_start_ts ?? seg.recorder_start_ts ?? seg.offset_time_label;
     if (raw) {
       if (/^\d+(\.\d+)?$/.test(raw)) return Number(raw) * 1000;
       const parsed = Date.parse(raw);
@@ -45,7 +46,11 @@ function parseSegmentStart(seg: Segment, useTime: boolean): number {
   return seg.offset_start ?? seg.offset_order ?? 0;
 }
 
-function parseSegmentEnd(seg: Segment, start: number, useTime: boolean): number {
+function parseSegmentEnd(
+  seg: Segment,
+  start: number,
+  useTime: boolean,
+): number {
   if (useTime) {
     const raw = seg.corrected_end_ts ?? seg.recorder_end_ts;
     if (raw) {
@@ -55,7 +60,8 @@ function parseSegmentEnd(seg: Segment, start: number, useTime: boolean): number 
     }
     return start + 5000;
   }
-  const byteLen = seg.byte_length ?? (seg.offset_end ?? start) - (seg.offset_start ?? start);
+  const byteLen =
+    seg.byte_length ?? (seg.offset_end ?? start) - (seg.offset_start ?? start);
   return start + Math.max(byteLen, 1);
 }
 
@@ -81,20 +87,32 @@ export function PlaybackDeck({
   const rafRef = useRef<number | null>(null);
 
   const flatSegments = useMemo(
-    () => channels.flatMap((ch) => ch.segments.map((seg) => ({ ...seg, channel: ch.channel }))),
+    () =>
+      channels.flatMap((ch) =>
+        ch.segments.map((seg) => ({ ...seg, channel: ch.channel })),
+      ),
     [channels],
   );
 
   const useTime = useMemo(
     () =>
-      flatSegments.some((seg) => !!(seg.corrected_start_ts ?? seg.recorder_start_ts ?? seg.offset_time_label)),
+      flatSegments.some(
+        (seg) =>
+          !!(
+            seg.corrected_start_ts ??
+            seg.recorder_start_ts ??
+            seg.offset_time_label
+          ),
+      ),
     [flatSegments],
   );
 
   const domain = useMemo(() => {
     if (flatSegments.length === 0) return { min: 0, max: 1 };
     const starts = flatSegments.map((s) => parseSegmentStart(s, useTime));
-    const ends = flatSegments.map((s, i) => parseSegmentEnd(s, starts[i], useTime));
+    const ends = flatSegments.map((s, i) =>
+      parseSegmentEnd(s, starts[i], useTime),
+    );
     return { min: Math.min(...starts), max: Math.max(...ends) };
   }, [flatSegments, useTime]);
 
@@ -208,20 +226,40 @@ export function PlaybackDeck({
     };
   }, [playing, domain, effectivePlayhead, onPlayheadChange, useTime]);
 
+  useEffect(() => {
+    for (const channel of channels) {
+      const video = videoRefs.current[channel.channel];
+      if (!video) continue;
+      const active = segmentAtPlayhead(channel.channel);
+      if (playing && active && laneUrls[channel.channel]) {
+        void video.play().catch(() => undefined);
+      } else {
+        video.pause();
+      }
+    }
+  }, [playing, channels, laneUrls, segmentAtPlayhead, effectivePlayhead]);
+
   if (channels.length === 0) {
     return (
       <section className="visily-card p-6 text-center">
-        <p className="text-[14px] font-medium text-[var(--text-primary)]">No recovered video lanes yet</p>
+        <p className="text-[14px] font-medium text-[var(--text-primary)]">
+          No recovered video lanes yet
+        </p>
         <p className="mx-auto mt-2 max-w-md text-[13px] text-[var(--text-secondary)]">
-          Run recovery on Step 3 first. Playback appears here when sequences with decodable video are indexed — generic
-          disk images may only yield filesystem or carve hits without a camera timeline.
+          Run recovery on Step 3 first. Playback appears here when sequences
+          with decodable video are indexed — generic disk images may only yield
+          filesystem or carve hits without a camera timeline.
         </p>
       </section>
     );
   }
 
   const gridCols =
-    channels.length <= 1 ? "grid-cols-1" : channels.length <= 4 ? "grid-cols-2" : "grid-cols-3";
+    channels.length <= 1
+      ? "grid-cols-1"
+      : channels.length <= 4
+        ? "grid-cols-2"
+        : "grid-cols-3";
 
   return (
     <section className="visily-card space-y-3 p-3">
@@ -240,7 +278,11 @@ export function PlaybackDeck({
           onClick={() => setPlaying((value) => !value)}
           aria-label={playing ? "Pause" : "Play"}
         >
-          {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          {playing ? (
+            <Pause className="h-4 w-4" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
         </Button>
       </div>
 
@@ -256,7 +298,10 @@ export function PlaybackDeck({
               }`}
               style={{ borderColor: "var(--border-subtle)" }}
             >
-              <div className="flex items-center justify-between border-b px-2 py-1 text-[11px]" style={{ borderColor: "var(--border-subtle)" }}>
+              <div
+                className="flex items-center justify-between border-b px-2 py-1 text-[11px]"
+                style={{ borderColor: "var(--border-subtle)" }}
+              >
                 <span>{channel.label}</span>
                 {deleted ? (
                   <span className="font-semibold uppercase tracking-wide text-[var(--status-warning)]">
@@ -278,13 +323,14 @@ export function PlaybackDeck({
                       ? `${laneUrls[channel.channel]}${laneUrls[channel.channel].includes("?") ? "&" : "?"}transcode=1`
                       : laneUrls[channel.channel]
                   }
-                  controls
                   muted
                   playsInline
                 />
               ) : (
                 <div className="flex aspect-video items-center justify-center bg-[var(--surface-4)] text-[12px] text-[var(--text-tertiary)]">
-                  {laneGaps[channel.channel] ? "No segment at playhead" : "Exporting…"}
+                  {laneGaps[channel.channel]
+                    ? "No segment at playhead"
+                    : "Exporting…"}
                 </div>
               )}
             </div>

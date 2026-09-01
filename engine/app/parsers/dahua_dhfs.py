@@ -47,7 +47,7 @@ class DahuaDhavAdapter:
                             validation = "unreferenced_carve"
                         recorder_ts = parsed.recorder_iso
                         ts_source = parsed.timestamp_source if recorder_ts else "unavailable"
-                        ts_confidence = 0.8 if ts_source == "dhav_ext_0x72" else (0.85 if recorder_ts else None)
+                        ts_confidence = 0.85 if ts_source == "dhav_header_date" else (0.85 if recorder_ts else None)
                         segments.append(
                             RecoveredSegment(
                                 channel=parsed.channel,

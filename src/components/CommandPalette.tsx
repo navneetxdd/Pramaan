@@ -31,7 +31,10 @@ export function CommandPalette() {
 
   useEffect(() => {
     if (!open) return;
-    void api.listCaseRegistry().then(setCases).catch(() => setCases([]));
+    void api
+      .listCaseRegistry()
+      .then(setCases)
+      .catch(() => setCases([]));
   }, [open]);
 
   const recentIds = loadRecentCaseIds();
@@ -59,7 +62,10 @@ export function CommandPalette() {
             <Command.Empty className="px-2 py-6 text-center text-[13px] text-[var(--text-tertiary)]">
               No matches.
             </Command.Empty>
-            <Command.Group heading="Actions" className="text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
+            <Command.Group
+              heading="Actions"
+              className="text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]"
+            >
               <Command.Item
                 className="cursor-pointer rounded px-2 py-2 text-[13px] aria-selected:bg-[var(--surface-3)]"
                 onSelect={() => go("/cases?new=1")}
@@ -74,7 +80,10 @@ export function CommandPalette() {
               </Command.Item>
             </Command.Group>
             {recentCases.length > 0 ? (
-              <Command.Group heading="Recent cases" className="mt-2 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
+              <Command.Group
+                heading="Recent cases"
+                className="mt-2 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]"
+              >
                 {recentCases.map((c) => (
                   <Command.Item
                     key={c.id}
@@ -86,7 +95,10 @@ export function CommandPalette() {
                 ))}
               </Command.Group>
             ) : null}
-            <Command.Group heading="All cases" className="mt-2 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
+            <Command.Group
+              heading="All cases"
+              className="mt-2 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]"
+            >
               {cases.map((c) => (
                 <Command.Item
                   key={c.id}

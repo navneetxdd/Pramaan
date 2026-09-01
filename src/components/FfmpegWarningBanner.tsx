@@ -48,9 +48,10 @@ export function FfmpegWarningBanner() {
       role="status"
     >
       <p>
-        <span className="font-semibold">MP4 export unavailable.</span> FFmpeg was not found on
-        this workstation. Segment recovery still works; exports remain raw H.264 until you install
-        a licensed FFmpeg build and add it to PATH, or set{" "}
+        <span className="font-semibold">MP4 export unavailable.</span> FFmpeg
+        was not found on this workstation. Segment recovery still works; exports
+        remain raw H.264 until you install a licensed FFmpeg build and add it to
+        PATH, or set{" "}
         <code className="rounded bg-amber-100/80 px-1 py-0.5 font-mono text-[11px]">
           FORENSIC_FFMPEG
         </code>

@@ -6,11 +6,23 @@ type PramaanMarkProps = SVGProps<SVGSVGElement> & {
 };
 
 /** Compact shutter mark — crisp at 16–32px. */
-export function PramaanMark({ className, variant = "mono", ...props }: PramaanMarkProps) {
+export function PramaanMark({
+  className,
+  variant = "mono",
+  ...props
+}: PramaanMarkProps) {
   const stroke =
-    variant === "on-color" ? "#ffffff" : variant === "brand" ? "var(--accent-500)" : "currentColor";
+    variant === "on-color"
+      ? "#ffffff"
+      : variant === "brand"
+        ? "var(--accent-500)"
+        : "currentColor";
   const fill =
-    variant === "on-color" ? "#ffffff" : variant === "brand" ? "var(--accent-500)" : "currentColor";
+    variant === "on-color"
+      ? "#ffffff"
+      : variant === "brand"
+        ? "var(--accent-500)"
+        : "currentColor";
 
   return (
     <svg
@@ -26,7 +38,15 @@ export function PramaanMark({ className, variant = "mono", ...props }: PramaanMa
         <line x1="12" y1="12" x2="16.2" y2="15.8" strokeWidth="1.35" />
         <line x1="12" y1="12" x2="12" y2="17.5" strokeWidth="1.35" />
         <line x1="12" y1="12" x2="7.8" y2="15.8" strokeWidth="1.35" />
-        <line x1="12" y1="12" x2="7.8" y2="8.2" strokeWidth="1.35" opacity="0.45" strokeDasharray="2 2" />
+        <line
+          x1="12"
+          y1="12"
+          x2="7.8"
+          y2="8.2"
+          strokeWidth="1.35"
+          opacity="0.45"
+          strokeDasharray="2 2"
+        />
       </g>
       <circle cx="12" cy="12" r="1.35" fill={fill} />
     </svg>

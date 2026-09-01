@@ -14,7 +14,9 @@
     "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build/build-windows.ps1",
     "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build/release-windows.ps1",
     "desktop:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/install-pramaan-desktop.ps1",
-    "version:bump": "node scripts/dev/version-bump.mjs"
+    "version:bump": "node scripts/dev/version-bump.mjs",
+    "format": "prettier --write src",
+    "format:check": "prettier --check src"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -53,6 +55,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
+    "prettier": "^3.9.6",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"

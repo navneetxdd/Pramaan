@@ -48,7 +48,7 @@ def _write_bounded_artifact(
 def _confidence_label(value: float, validation: str) -> str:
     if validation in {"dual_signature_4", "dual_signature"} and value >= 0.85:
         return "high"
-    if validation in {"hkvi_block_4", "hkvi_block"} and value >= 0.8:
+    if validation in {"hkvi_block_4", "hkvi_block", "hikbtree_indexed"} and value >= 0.8:
         return "high"
     if validation in {"honeywell_index_4", "honeywell_format_carve_4", "filesystem_deleted_inode"}:
         return "high"
@@ -66,6 +66,7 @@ async def run_recovery_job(
     actor: str,
     *,
     max_scan_bytes: int | None = None,
+    adapter: str | None = None,
     gap_multiplier: float = 2.0,
     min_sequence_frames: int = 10,
 ) -> None:
@@ -118,13 +119,24 @@ async def run_recovery_job(
     try:
         bootstrap_defaults()
         vendors = detect_vendors(image_path)
-        adapter_key = vendors[0].adapter if vendors else "h264_carve"
-        adapter = get(adapter_key)
-        if not adapter:
+        adapter_key = adapter or (vendors[0].adapter if vendors else "needs_selection")
+        if adapter_key == "needs_selection":
+            raise RuntimeError("Identification inconclusive — select a recovery adapter manually")
+        adapter_impl = get(adapter_key)
+        if not adapter_impl:
             raise RuntimeError(f"Adapter not registered: {adapter_key}")
+        if adapter and adapter != (vendors[0].adapter if vendors else None):
+            with get_db() as conn:
+                append_custody(
+                    conn,
+                    actor=actor,
+                    action=f"recovery_adapter_manually_selected:{adapter_key}",
+                    target_type="case",
+                    target_id=case_id,
+                )
 
         await job_manager.update(job_id, progress=10, message=f"Scanning with {adapter_key}")
-        segments = await asyncio.to_thread(adapter.scan, image_path, max_bytes=max_scan_bytes)
+        segments = await asyncio.to_thread(adapter_impl.scan, image_path, max_bytes=max_scan_bytes)
 
         superseded = delete_sequences_for_device(device_id)
         if superseded:

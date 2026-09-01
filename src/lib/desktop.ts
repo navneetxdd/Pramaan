@@ -13,7 +13,10 @@ export async function pickDiskImage(): Promise<File | null> {
     multiple: false,
     directory: false,
     filters: [
-      { name: "Disk images", extensions: ["bin", "img", "dd", "raw", "001", "e01"] },
+      {
+        name: "Disk images",
+        extensions: ["bin", "img", "dd", "raw", "001", "e01"],
+      },
       { name: "All files", extensions: ["*"] },
     ],
   });

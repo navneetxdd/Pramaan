@@ -8,12 +8,37 @@ type CatalogStatStripProps = {
   auditErrors: number;
 };
 
-export function CatalogStatStrip({ storageBytes, artefactCount, processingJobs, auditErrors }: CatalogStatStripProps) {
+export function CatalogStatStrip({
+  storageBytes,
+  artefactCount,
+  processingJobs,
+  auditErrors,
+}: CatalogStatStripProps) {
   const stats = [
-    { label: "Storage load", value: formatBytes(storageBytes), icon: Database, tone: "info" as const },
-    { label: "Artefact count", value: artefactCount.toLocaleString(), icon: FileStack, tone: "neutral" as const },
-    { label: "Processing jobs", value: String(processingJobs).padStart(2, "0"), icon: Clock, tone: "neutral" as const },
-    { label: "Failed jobs", value: String(auditErrors).padStart(2, "0"), icon: AlertTriangle, tone: auditErrors > 0 ? "danger" as const : "success" as const },
+    {
+      label: "Storage load",
+      value: formatBytes(storageBytes),
+      icon: Database,
+      tone: "info" as const,
+    },
+    {
+      label: "Artefact count",
+      value: artefactCount.toLocaleString(),
+      icon: FileStack,
+      tone: "neutral" as const,
+    },
+    {
+      label: "Processing jobs",
+      value: String(processingJobs).padStart(2, "0"),
+      icon: Clock,
+      tone: "neutral" as const,
+    },
+    {
+      label: "Failed jobs",
+      value: String(auditErrors).padStart(2, "0"),
+      icon: AlertTriangle,
+      tone: auditErrors > 0 ? ("danger" as const) : ("success" as const),
+    },
   ];
 
   return (
@@ -21,8 +46,12 @@ export function CatalogStatStrip({ storageBytes, artefactCount, processingJobs, 
       {stats.map((s) => (
         <div key={s.label} className="visily-catalog-stat">
           <div>
-            <p className="text-[20px] font-semibold leading-none text-[var(--text-primary)]">{s.value}</p>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{s.label}</p>
+            <p className="text-[20px] font-semibold leading-none text-[var(--text-primary)]">
+              {s.value}
+            </p>
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">
+              {s.label}
+            </p>
           </div>
           <s.icon
             className="h-5 w-5"

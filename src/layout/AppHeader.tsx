@@ -21,7 +21,10 @@ export function AppHeader() {
   const [custodyState, setCustodyState] = useState<ChainLinkState>("unknown");
 
   useEffect(() => {
-    void api.listCaseRegistry().then(setCases).catch(() => setCases([]));
+    void api
+      .listCaseRegistry()
+      .then(setCases)
+      .catch(() => setCases([]));
   }, [location.pathname]);
 
   useEffect(() => {
@@ -61,7 +64,8 @@ export function AppHeader() {
           return;
         }
         const status = await api.getJobStatus(active.id);
-        if (!cancelled && typeof status.progress === "number") setLiveProgress(Math.round(status.progress));
+        if (!cancelled && typeof status.progress === "number")
+          setLiveProgress(Math.round(status.progress));
       } catch {
         if (!cancelled) setLiveProgress(null);
       }
@@ -75,7 +79,10 @@ export function AppHeader() {
   }, [caseId, location.pathname]);
 
   return (
-    <header className="relative shrink-0 border-b bg-white px-4 py-2" style={{ borderColor: "var(--border-subtle)" }}>
+    <header
+      className="relative shrink-0 border-b bg-white px-4 py-2"
+      style={{ borderColor: "var(--border-subtle)" }}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {caseId && activeCase ? (
@@ -94,13 +101,21 @@ export function AppHeader() {
               <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-tertiary)]" />
             </div>
           ) : (
-            <Link to="/cases" className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+            <Link
+              to="/cases"
+              className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            >
               Cases
             </Link>
           )}
-          <span className="hidden text-[var(--text-tertiary)] sm:inline">|</span>
+          <span className="hidden text-[var(--text-tertiary)] sm:inline">
+            |
+          </span>
           <span className="hidden text-[11px] text-[var(--text-secondary)] sm:inline">
-            Workspace: <span className="font-semibold uppercase text-[var(--text-primary)]">{page}</span>
+            Workspace:{" "}
+            <span className="font-semibold uppercase text-[var(--text-primary)]">
+              {page}
+            </span>
           </span>
         </div>
 
@@ -120,7 +135,8 @@ export function AppHeader() {
               <span
                 className={cn(
                   "visily-pill hidden lg:inline-flex",
-                  custodyState === "broken" && "border-[var(--status-danger)] text-[var(--status-danger)]",
+                  custodyState === "broken" &&
+                    "border-[var(--status-danger)] text-[var(--status-danger)]",
                 )}
               >
                 <Shield
@@ -142,7 +158,10 @@ export function AppHeader() {
                       ? "Checking custody…"
                       : "Custody unknown"}
               </span>
-              <span className="visily-pill hidden xl:inline-flex" title="Engine opens sources read-only; writes go to case storage only">
+              <span
+                className="visily-pill hidden xl:inline-flex"
+                title="Engine opens sources read-only; writes go to case storage only"
+              >
                 <Lock className="h-3 w-3" />
                 Read-only imaging
               </span>
@@ -151,15 +170,21 @@ export function AppHeader() {
           <div
             className={cn(
               "hidden rounded-full border px-2.5 py-1 font-mono text-[10px] xl:block",
-              mode === "error" ? "border-[var(--status-danger)] text-[var(--status-danger)]" : "border-[var(--border-subtle)] text-[var(--text-tertiary)]",
+              mode === "error"
+                ? "border-[var(--status-danger)] text-[var(--status-danger)]"
+                : "border-[var(--border-subtle)] text-[var(--text-tertiary)]",
             )}
           >
             {message ?? "Local engine"}
           </div>
         </div>
       </div>
-      {mode === "working" ? <div className="progress-strip absolute inset-x-0 bottom-0" /> : null}
-      {mode === "success" ? <div className="progress-strip progress-strip-success absolute inset-x-0 bottom-0" /> : null}
+      {mode === "working" ? (
+        <div className="progress-strip absolute inset-x-0 bottom-0" />
+      ) : null}
+      {mode === "success" ? (
+        <div className="progress-strip progress-strip-success absolute inset-x-0 bottom-0" />
+      ) : null}
     </header>
   );
 }

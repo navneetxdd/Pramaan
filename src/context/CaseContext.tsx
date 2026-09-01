@@ -42,37 +42,40 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
 
-  const refresh = useCallback(async (options?: { silent?: boolean }) => {
-    if (!caseId) return;
-    if (!options?.silent) {
-      setLoading(true);
-      setError(null);
-      setNotFound(false);
-    }
-    try {
-      const data = await api.getCase(caseId);
-      setWorkspace(data);
+  const refresh = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!caseId) return;
       if (!options?.silent) {
+        setLoading(true);
         setError(null);
         setNotFound(false);
       }
-    } catch (err) {
-      const missing = isNotFound(err);
-      if (missing) setNotFound(true);
-      if (!options?.silent) {
-        setError(
-          missing
-            ? "This case no longer exists. It may have been deleted or was a temporary verification run."
-            : err instanceof Error
-              ? err.message
-              : "Failed to load case",
-        );
-        setWorkspace(null);
+      try {
+        const data = await api.getCase(caseId);
+        setWorkspace(data);
+        if (!options?.silent) {
+          setError(null);
+          setNotFound(false);
+        }
+      } catch (err) {
+        const missing = isNotFound(err);
+        if (missing) setNotFound(true);
+        if (!options?.silent) {
+          setError(
+            missing
+              ? "This case no longer exists. It may have been deleted or was a temporary verification run."
+              : err instanceof Error
+                ? err.message
+                : "Failed to load case",
+          );
+          setWorkspace(null);
+        }
+      } finally {
+        if (!options?.silent) setLoading(false);
       }
-    } finally {
-      if (!options?.silent) setLoading(false);
-    }
-  }, [caseId]);
+    },
+    [caseId],
+  );
 
   useEffect(() => {
     if (!caseId) return;

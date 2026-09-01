@@ -31,8 +31,12 @@ export function CaseJobsPage() {
 
   const filtered = useMemo(() => {
     let list = jobs;
-    if (tab === "active") list = jobs.filter((j) => j.status === "running" || j.status === "pending");
-    if (tab === "completed") list = jobs.filter((j) => j.status === "completed");
+    if (tab === "active")
+      list = jobs.filter(
+        (j) => j.status === "running" || j.status === "pending",
+      );
+    if (tab === "completed")
+      list = jobs.filter((j) => j.status === "completed");
     const q = query.trim().toLowerCase();
     if (!q) return list;
     return list.filter(
@@ -43,13 +47,22 @@ export function CaseJobsPage() {
     );
   }, [jobs, tab, query, evidenceName]);
 
-  const activeCount = jobs.filter((j) => j.status === "running" || j.status === "pending").length;
-  const failedCount = jobs.filter((j) => j.status === "failed" || j.status === "error").length;
+  const activeCount = jobs.filter(
+    (j) => j.status === "running" || j.status === "pending",
+  ).length;
+  const failedCount = jobs.filter(
+    (j) => j.status === "failed" || j.status === "error",
+  ).length;
   const recoveryRunning = jobs.some(
-    (job) => job.kind === "recovery" && (job.status === "running" || job.status === "pending"),
+    (job) =>
+      job.kind === "recovery" &&
+      (job.status === "running" || job.status === "pending"),
   );
   const parsedVolume = evidence.reduce((s, e) => s + e.size_bytes, 0);
-  const artifactTotal = jobs.reduce((s, j) => s + (parseJobStats(j.stats_json).segmentsFound ?? 0), 0);
+  const artifactTotal = jobs.reduce(
+    (s, j) => s + (parseJobStats(j.stats_json).segmentsFound ?? 0),
+    0,
+  );
 
   async function runRecoveryOnFirst() {
     const device = evidence[0];
@@ -65,17 +78,22 @@ export function CaseJobsPage() {
       toast.success("Recovery job completed");
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to start job", { duration: Infinity });
+      toast.error(err instanceof Error ? err.message : "Failed to start job", {
+        duration: Infinity,
+      });
     } finally {
       setBusy(false);
     }
   }
 
   function hashMetric(imageId: string, status: string) {
-    if (status === "failed" || status === "error") return { label: "Job failed", tone: "danger" as const };
+    if (status === "failed" || status === "error")
+      return { label: "Job failed", tone: "danger" as const };
     const ev = evidence.find((e) => e.id === imageId);
-    if (!ev?.sha256) return { label: "Pending verify", tone: "neutral" as const };
-    if (status === "completed") return { label: "SHA-256 on file", tone: "success" as const };
+    if (!ev?.sha256)
+      return { label: "Pending verify", tone: "neutral" as const };
+    if (status === "completed")
+      return { label: "SHA-256 on file", tone: "success" as const };
     return { label: "In progress", tone: "info" as const };
   }
 
@@ -85,18 +103,30 @@ export function CaseJobsPage() {
         <div className="visily-hero-dark-bg" aria-hidden />
         <div className="relative z-[1] flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">Parsing queue</p>
-            <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">DVR/NVR extraction jobs</h1>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">
+              Parsing queue
+            </p>
+            <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">
+              DVR/NVR extraction jobs
+            </h1>
             <p className="mt-1 text-[12px] text-[var(--text-muted-on-dark)]">
-              Recovery and imaging jobs for this case — live progress from the forensic engine.
+              Recovery and imaging jobs for this case — live progress from the
+              forensic engine.
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" className="border-white/20 bg-white/10 text-white hover:bg-white/15" onClick={() => void refresh()}>
+            <Button
+              variant="secondary"
+              className="border-white/20 bg-white/10 text-white hover:bg-white/15"
+              onClick={() => void refresh()}
+            >
               <RefreshCw className="h-4 w-4" />
               Refresh
             </Button>
-            <Button disabled={busy || evidence.length === 0 || recoveryRunning} onClick={() => void runRecoveryOnFirst()}>
+            <Button
+              disabled={busy || evidence.length === 0 || recoveryRunning}
+              onClick={() => void runRecoveryOnFirst()}
+            >
               <Play className="h-4 w-4" />
               {recoveryRunning ? "Recovery running…" : "Start recovery job"}
             </Button>
@@ -105,10 +135,28 @@ export function CaseJobsPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <DashboardStat label="Active jobs" value={String(activeCount)} icon={Activity} tone="info" />
-        <DashboardStat label="Evidence volume" value={formatBytes(parsedVolume)} icon={Database} />
-        <DashboardStat label="Artifacts total" value={artifactTotal.toLocaleString()} icon={Layers} />
-        <DashboardStat label="Failed jobs" value={String(failedCount).padStart(2, "0")} icon={AlertTriangle} tone={failedCount > 0 ? "danger" : "success"} />
+        <DashboardStat
+          label="Active jobs"
+          value={String(activeCount)}
+          icon={Activity}
+          tone="info"
+        />
+        <DashboardStat
+          label="Evidence volume"
+          value={formatBytes(parsedVolume)}
+          icon={Database}
+        />
+        <DashboardStat
+          label="Artifacts total"
+          value={artifactTotal.toLocaleString()}
+          icon={Layers}
+        />
+        <DashboardStat
+          label="Failed jobs"
+          value={String(failedCount).padStart(2, "0")}
+          icon={AlertTriangle}
+          tone={failedCount > 0 ? "danger" : "success"}
+        />
       </div>
 
       <section className="visily-card flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -119,7 +167,9 @@ export function CaseJobsPage() {
                 key={t}
                 type="button"
                 className={`rounded px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                  tab === t ? "bg-[var(--accent-soft)] text-[var(--accent-500)]" : "text-[var(--text-tertiary)]"
+                  tab === t
+                    ? "bg-[var(--accent-soft)] text-[var(--accent-500)]"
+                    : "text-[var(--text-tertiary)]"
                 }`}
                 onClick={() => setTab(t)}
               >
@@ -150,9 +200,17 @@ export function CaseJobsPage() {
               {
                 key: "source",
                 header: "Source",
-                cell: (job) => <span className="max-w-[160px] truncate">{evidenceName(job.image_id)}</span>,
+                cell: (job) => (
+                  <span className="max-w-[160px] truncate">
+                    {evidenceName(job.image_id)}
+                  </span>
+                ),
               },
-              { key: "vendor", header: "Vendor", cell: (job) => job.vendor ?? "—" },
+              {
+                key: "vendor",
+                header: "Vendor",
+                cell: (job) => job.vendor ?? "—",
+              },
               {
                 key: "status",
                 header: "Status",
@@ -182,13 +240,20 @@ export function CaseJobsPage() {
                   const liveJob = live[job.id];
                   const progress =
                     liveJob?.progress ??
-                    (job.status === "completed" ? 100 : parseJobStats(job.stats_json).progress ?? 0);
+                    (job.status === "completed"
+                      ? 100
+                      : (parseJobStats(job.stats_json).progress ?? 0));
                   return (
                     <div>
                       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-4)]">
-                        <div className="h-full bg-[var(--accent-500)]" style={{ width: `${Math.min(100, progress)}%` }} />
+                        <div
+                          className="h-full bg-[var(--accent-500)]"
+                          style={{ width: `${Math.min(100, progress)}%` }}
+                        />
                       </div>
-                      <span className="mono mt-0.5 block text-[10px] text-[var(--text-tertiary)]">{progress.toFixed(0)}%</span>
+                      <span className="mono mt-0.5 block text-[10px] text-[var(--text-tertiary)]">
+                        {progress.toFixed(0)}%
+                      </span>
                     </div>
                   );
                 },
@@ -198,7 +263,10 @@ export function CaseJobsPage() {
                 header: "Hash",
                 cell: (job) => {
                   const liveJob = live[job.id];
-                  const metric = hashMetric(job.image_id, liveJob?.status ?? job.status);
+                  const metric = hashMetric(
+                    job.image_id,
+                    liveJob?.status ?? job.status,
+                  );
                   return (
                     <span
                       className={`text-[10px] font-semibold uppercase ${

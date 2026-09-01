@@ -11,7 +11,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // keep raw text
     }
-    throw new ApiError(response.status, detail || `Request failed (${response.status})`);
+    throw new ApiError(
+      response.status,
+      detail || `Request failed (${response.status})`,
+    );
   }
   if (response.status === 204) {
     return undefined as T;
@@ -269,26 +272,31 @@ export const api = {
     const form = new FormData();
     form.append("actor", actor);
     form.append("file", file);
-    return request<{ evidence: EvidenceRecord; identification: IdentificationReport; vendor_hints: VendorHit[] }>(
-      `/api/v1/cases/${caseId}/devices/acquire`,
-      { method: "POST", body: form },
-    );
+    return request<{
+      evidence: EvidenceRecord;
+      identification: IdentificationReport;
+      vendor_hints: VendorHit[];
+    }>(`/api/v1/cases/${caseId}/devices/acquire`, {
+      method: "POST",
+      body: form,
+    });
   },
 
-  createLabSpecimen: (caseId: string, actor: string, vendor: "dahua" | "honeywell" | "hikvision" = "dahua") =>
+  createLabSpecimen: (
+    caseId: string,
+    actor: string,
+    vendor: "dahua" | "honeywell" | "hikvision" = "dahua",
+  ) =>
     request<{
       evidence: EvidenceRecord;
       identification: IdentificationReport;
       vendor?: string;
       specimen_type?: string;
-    }>(
-      `/api/v1/cases/${caseId}/devices/acquire/synthetic`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actor, source: "synthetic_specimen", vendor }),
-      },
-    ),
+    }>(`/api/v1/cases/${caseId}/devices/acquire/synthetic`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor, source: "synthetic_specimen", vendor }),
+    }),
 
   listImagingDisks: () =>
     request<{ disks: ImagingDisk[]; count: number; read_only_policy: string }>(
@@ -302,10 +310,21 @@ export const api = {
 
   acquirePhysical: (
     caseId: string,
-    body: { actor: string; source_path: string; source_type?: "file" | "physical" | "e01"; max_bytes?: number },
+    body: {
+      actor: string;
+      source_path: string;
+      source_type?: "file" | "physical" | "e01";
+      max_bytes?: number;
+    },
   ) =>
     request<{
-      job: { id: string; case_id: string; device_id: string; status: string; kind: string };
+      job: {
+        id: string;
+        case_id: string;
+        device_id: string;
+        status: string;
+        kind: string;
+      };
       device: Record<string, unknown>;
       poll_url: string;
       events_url: string;
@@ -326,19 +345,24 @@ export const api = {
     ),
 
   listOemImages: () =>
-    request<{ env_var: string; configured: boolean; label: string; images: Array<{ filename: string; size_bytes: number }>; count: number }>(
-      "/api/v1/acquisition/oem-images",
-    ),
+    request<{
+      env_var: string;
+      configured: boolean;
+      label: string;
+      images: Array<{ filename: string; size_bytes: number }>;
+      count: number;
+    }>("/api/v1/acquisition/oem-images"),
 
   acquireOemImage: (caseId: string, actor: string, filename: string) =>
-    request<{ evidence: EvidenceRecord; identification: IdentificationReport; source: string }>(
-      `/api/v1/cases/${caseId}/devices/acquire/oem`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actor, filename }),
-      },
-    ),
+    request<{
+      evidence: EvidenceRecord;
+      identification: IdentificationReport;
+      source: string;
+    }>(`/api/v1/cases/${caseId}/devices/acquire/oem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor, filename }),
+    }),
 
   acquireLogical: (
     caseId: string,
@@ -357,7 +381,11 @@ export const api = {
       host: string;
       vendor: string;
       clips_acquired: number;
-      devices: Array<{ evidence: EvidenceRecord; remote_path: string; logical_only: boolean }>;
+      devices: Array<{
+        evidence: EvidenceRecord;
+        remote_path: string;
+        logical_only: boolean;
+      }>;
       note: string;
     }>(`/api/v1/cases/${caseId}/devices/acquire/logical`, {
       method: "POST",
@@ -365,7 +393,11 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  calibrateDrift: (deviceId: string, referenceWallUnix: number, referenceDeviceUnix: number) =>
+  calibrateDrift: (
+    deviceId: string,
+    referenceWallUnix: number,
+    referenceDeviceUnix: number,
+  ) =>
     request<{ device_id: string; drift_offset_seconds: number; note: string }>(
       `/api/v1/devices/${deviceId}/drift-calibration`,
       {
@@ -381,7 +413,10 @@ export const api = {
   exportCase: async (caseId: string, actor: string) => {
     const form = new FormData();
     form.append("actor", actor);
-    const response = await fetch(`${getApiBase()}/api/v1/cases/${caseId}/export`, { method: "POST", body: form });
+    const response = await fetch(
+      `${getApiBase()}/api/v1/cases/${caseId}/export`,
+      { method: "POST", body: form },
+    );
     if (!response.ok) {
       const detail = await response.text();
       throw new Error(detail || "Export failed");
@@ -398,7 +433,10 @@ export const api = {
     const form = new FormData();
     form.append("actor", actor);
     form.append("bundle", file);
-    const response = await fetch(`${getApiBase()}/api/v1/cases/import`, { method: "POST", body: form });
+    const response = await fetch(`${getApiBase()}/api/v1/cases/import`, {
+      method: "POST",
+      body: form,
+    });
     if (!response.ok) {
       const detail = await response.text();
       throw new Error(detail || "Import failed");
@@ -412,14 +450,15 @@ export const api = {
   },
 
   runAiAnalytics: (deviceId: string, actor: string) =>
-    request<{ job: { id: string; status: string; kind: string }; poll_url: string; events_url: string }>(
-      `/api/v1/devices/${deviceId}/ai-analytics`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actor }),
-      },
-    ),
+    request<{
+      job: { id: string; status: string; kind: string };
+      poll_url: string;
+      events_url: string;
+    }>(`/api/v1/devices/${deviceId}/ai-analytics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor }),
+    }),
 
   listAiFindings: (deviceId: string) =>
     request<{ device_id: string; findings: AiFinding[]; count: number }>(
@@ -427,7 +466,9 @@ export const api = {
     ),
 
   identify: (imageId: string) =>
-    request<IdentificationReport>(`/api/v1/devices/${imageId}/identification`, { method: "POST" }),
+    request<IdentificationReport>(`/api/v1/devices/${imageId}/identification`, {
+      method: "POST",
+    }),
 
   readDeviceBytes: (deviceId: string, offset = 0, length = 256) =>
     request<{
@@ -460,20 +501,28 @@ export const api = {
       }>;
     }>(`/api/v1/devices/${deviceId}/structure`),
 
-  recover: (_caseId: string, imageId: string, actor: string) =>
+  recover: (
+    _caseId: string,
+    imageId: string,
+    actor: string,
+    adapter?: string,
+  ) =>
     request<{ job: RecoveryJob; status: string; poll_url: string }>(
       `/api/v1/devices/${imageId}/recover`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actor }),
+        body: JSON.stringify({ actor, adapter: adapter || undefined }),
       },
     ),
 
   getJob: (jobId: string) =>
-    request<{ job: RecoveryJob; segments: Segment[]; progress?: number; message?: string }>(
-      `/api/v1/jobs/${jobId}`,
-    ),
+    request<{
+      job: RecoveryJob;
+      segments: Segment[];
+      progress?: number;
+      message?: string;
+    }>(`/api/v1/jobs/${jobId}`),
 
   getJobStatus: (jobId: string) =>
     request<{
@@ -489,7 +538,9 @@ export const api = {
     }>(`/api/v1/jobs/${jobId}/status`),
 
   listDeviceSegments: (deviceId: string) =>
-    request<{ device_id: string; segments: Segment[] }>(`/api/v1/devices/${deviceId}/sequences`),
+    request<{ device_id: string; segments: Segment[] }>(
+      `/api/v1/devices/${deviceId}/sequences`,
+    ),
 
   getTimeline: (caseId: string, deviceId: string) =>
     request<{
@@ -503,31 +554,48 @@ export const api = {
   custody: (caseId: string) =>
     request<{
       custody: CustodyEvent[];
-      chain: { ok: boolean; intact: boolean; first_broken_row_id: number | null; tip_hash?: string | null };
-    }>(
-      `/api/v1/cases/${caseId}/workspace`,
-    ).then((w) => ({ events: w.custody, chain: w.chain })),
+      chain: {
+        ok: boolean;
+        intact: boolean;
+        first_broken_row_id: number | null;
+        tip_hash?: string | null;
+      };
+    }>(`/api/v1/cases/${caseId}/workspace`).then((w) => ({
+      events: w.custody,
+      chain: w.chain,
+    })),
 
   custodyStatus: (caseId: string) =>
-    request<{ intact: boolean; first_broken_row_id: number | null; tip_hash?: string | null }>(
-      `/api/v1/cases/${caseId}/custody-log/status`,
-    ),
+    request<{
+      intact: boolean;
+      first_broken_row_id: number | null;
+      tip_hash?: string | null;
+    }>(`/api/v1/cases/${caseId}/custody-log/status`),
 
   cancelJob: (jobId: string) =>
-    request<{ id: string; status: string }>(`/api/v1/jobs/${jobId}/cancel`, { method: "POST" }),
+    request<{ id: string; status: string }>(`/api/v1/jobs/${jobId}/cancel`, {
+      method: "POST",
+    }),
 
   integrityReport: (caseId: string) =>
-    request<Record<string, unknown>>(`/api/v1/cases/${caseId}/report/integrity`),
+    request<Record<string, unknown>>(
+      `/api/v1/cases/${caseId}/report/integrity`,
+    ),
 
-  integrityReportHtmlUrl: (caseId: string) => resolveApiUrl(`/api/v1/cases/${caseId}/report/integrity.html`),
+  integrityReportHtmlUrl: (caseId: string) =>
+    resolveApiUrl(`/api/v1/cases/${caseId}/report/integrity.html`),
 
-  integrityReportPdfUrl: (caseId: string) => resolveApiUrl(`/api/v1/cases/${caseId}/report/integrity.pdf`),
+  integrityReportPdfUrl: (caseId: string) =>
+    resolveApiUrl(`/api/v1/cases/${caseId}/report/integrity.pdf`),
 
-  report: (caseId: string) => request<Record<string, unknown>>(`/api/v1/cases/${caseId}/report`),
+  report: (caseId: string) =>
+    request<Record<string, unknown>>(`/api/v1/cases/${caseId}/report`),
 
-  reportHtmlUrl: (caseId: string) => resolveApiUrl(`/api/v1/cases/${caseId}/report.html`),
+  reportHtmlUrl: (caseId: string) =>
+    resolveApiUrl(`/api/v1/cases/${caseId}/report.html`),
 
-  reportPdfUrl: (caseId: string) => resolveApiUrl(`/api/v1/cases/${caseId}/report.pdf`),
+  reportPdfUrl: (caseId: string) =>
+    resolveApiUrl(`/api/v1/cases/${caseId}/report.pdf`),
 
   verify: (imageId: string) =>
     request<{
@@ -547,17 +615,25 @@ export const api = {
     ),
 
   getSettings: () =>
-    request<{ working_directory: string; signing_certificate_fingerprint: string }>("/api/v1/settings"),
+    request<{
+      working_directory: string;
+      signing_certificate_fingerprint: string;
+    }>("/api/v1/settings"),
 
   updateSettings: (body: { working_directory: string }) =>
-    request<{ working_directory: string; signing_certificate_fingerprint: string }>("/api/v1/settings", {
+    request<{
+      working_directory: string;
+      signing_certificate_fingerprint: string;
+    }>("/api/v1/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
 
   runToolVerification: () =>
-    request<{ job_id: string }>("/api/v1/tool-verification/run", { method: "POST" }),
+    request<{ job_id: string }>("/api/v1/tool-verification/run", {
+      method: "POST",
+    }),
 
   acquisitionCapabilities: () =>
     request<{

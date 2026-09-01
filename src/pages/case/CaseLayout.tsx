@@ -17,7 +17,11 @@ function CaseLayoutInner() {
   }, [notFound, caseId, navigate]);
 
   if (loading && !workspace) {
-    return <p className="text-[13px] text-[var(--text-tertiary)]">Loading case workspace…</p>;
+    return (
+      <p className="text-[13px] text-[var(--text-tertiary)]">
+        Loading case workspace…
+      </p>
+    );
   }
   if (error && !notFound) {
     return (

@@ -45,7 +45,10 @@ export function StatusBar() {
       return;
     }
     setCustody("checking");
-    void api.getCase(caseId).then((w) => setCaseName(w.case.name)).catch(() => setCaseName(null));
+    void api
+      .getCase(caseId)
+      .then((w) => setCaseName(w.case.name))
+      .catch(() => setCaseName(null));
     void api
       .custodyStatus(caseId)
       .then((s) => setCustody(s.intact ? "intact" : "broken"))
@@ -80,14 +83,20 @@ export function StatusBar() {
     <footer id="tour-status" className="status-footer">
       <div className="flex min-w-0 items-center gap-3 text-[11px]">
         {online === false ? (
-          <span className="font-medium text-[var(--status-danger)]">Engine not running — start Pramaan or run python run.py</span>
+          <span className="font-medium text-[var(--status-danger)]">
+            Engine not running — start Pramaan or run python run.py
+          </span>
         ) : caseName ? (
           <>
-            <span className="truncate font-medium text-[var(--text-secondary)]">{caseName}</span>
+            <span className="truncate font-medium text-[var(--text-secondary)]">
+              {caseName}
+            </span>
             {custodyLabel ? (
               <span
                 className={
-                  custody === "broken" ? "text-[var(--status-danger)]" : "text-[var(--text-tertiary)]"
+                  custody === "broken"
+                    ? "text-[var(--status-danger)]"
+                    : "text-[var(--text-tertiary)]"
                 }
               >
                 {custodyLabel}
@@ -96,7 +105,11 @@ export function StatusBar() {
           </>
         ) : null}
       </div>
-      {time ? <span className="shrink-0 tabular-nums text-[var(--text-tertiary)]">{time}</span> : null}
+      {time ? (
+        <span className="shrink-0 tabular-nums text-[var(--text-tertiary)]">
+          {time}
+        </span>
+      ) : null}
     </footer>
   );
 }

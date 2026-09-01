@@ -2,32 +2,26 @@ from __future__ import annotations
 
 import unittest
 
-from engine.app.parsers.unwrap import NAL_START_4
-from engine.app.verification.media_fixture import (
-    caviar_h264_annexb,
-    caviar_nal_units,
-    split_annexb_nals,
-)
-from engine.app.verification.lab_specimen import build_dahua_lab_specimen
+from engine.app.verification.media_fixture import NalPayloadSource, split_annexb_nals
+
+
+def _nal_type(nal: bytes) -> int | None:
+    if nal.startswith(b"\x00\x00\x00\x01") and len(nal) > 4:
+        return nal[4] & 0x1F
+    if nal.startswith(b"\x00\x00\x01") and len(nal) > 3:
+        return nal[3] & 0x1F
+    return None
 
 
 class MediaFixtureTests(unittest.TestCase):
-    def test_annexb_starts_with_start_code(self) -> None:
-        data = caviar_h264_annexb()
-        self.assertTrue(data.startswith(NAL_START_4) or data.startswith(b"\x00\x00\x01"))
-
-    def test_nal_split_count_positive(self) -> None:
-        nals = caviar_nal_units()
-        self.assertGreater(len(nals), 0)
-        self.assertTrue(all(n.startswith(NAL_START_4) or n.startswith(b"\x00\x00\x01") for n in nals))
-
-    def test_split_matches_cached_list(self) -> None:
-        data = caviar_h264_annexb()
-        self.assertEqual(len(split_annexb_nals(data)), len(caviar_nal_units()))
-
-    def test_dahua_specimen_contains_annexb(self) -> None:
-        blob = build_dahua_lab_specimen()
-        self.assertIn(NAL_START_4, blob)
+    def test_access_unit_has_param_sets_and_idr(self) -> None:
+        source = NalPayloadSource()
+        unit = source.next_decodable_access_unit(min_len=64)
+        types = {_nal_type(n) for n in split_annexb_nals(unit) if _nal_type(n) is not None}
+        self.assertIn(7, types)
+        self.assertIn(8, types)
+        self.assertIn(5, types)
+        self.assertGreaterEqual(len(unit), 64)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,8 @@ export function parseJobStats(statsJson: string | null | undefined): JobStats {
           : typeof parsed.segmentsFound === "number"
             ? parsed.segmentsFound
             : undefined,
-      progress: typeof parsed.progress === "number" ? parsed.progress : undefined,
+      progress:
+        typeof parsed.progress === "number" ? parsed.progress : undefined,
       message: typeof parsed.message === "string" ? parsed.message : undefined,
     };
   } catch {
@@ -26,18 +27,25 @@ export function parseJobStats(statsJson: string | null | undefined): JobStats {
 }
 
 export function totalRecoveredSegments(jobs: RecoveryJob[]): number {
-  return jobs.reduce((sum, job) => sum + (parseJobStats(job.stats_json).segmentsFound ?? 0), 0);
+  return jobs.reduce(
+    (sum, job) => sum + (parseJobStats(job.stats_json).segmentsFound ?? 0),
+    0,
+  );
 }
 
 export function failedJobCount(jobs: RecoveryJob[]): number {
-  return jobs.filter((j) => j.status === "failed" || j.status === "error").length;
+  return jobs.filter((j) => j.status === "failed" || j.status === "error")
+    .length;
 }
 
 export function runningJobs(jobs: RecoveryJob[]): RecoveryJob[] {
   return jobs.filter((j) => j.status === "running" || j.status === "pending");
 }
 
-export function jobDisplayProgress(job: RecoveryJob, liveProgress?: number): number | undefined {
+export function jobDisplayProgress(
+  job: RecoveryJob,
+  liveProgress?: number,
+): number | undefined {
   if (job.status === "completed") return 100;
   if (typeof liveProgress === "number") return liveProgress;
   const fromStats = parseJobStats(job.stats_json).progress;

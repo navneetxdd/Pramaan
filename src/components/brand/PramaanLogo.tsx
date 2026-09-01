@@ -8,7 +8,12 @@ type PramaanLogoProps = {
   compact?: boolean;
 };
 
-export function PramaanLogo({ className, markClassName, showTagline = true, compact = false }: PramaanLogoProps) {
+export function PramaanLogo({
+  className,
+  markClassName,
+  showTagline = true,
+  compact = false,
+}: PramaanLogoProps) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
       <PramaanMark

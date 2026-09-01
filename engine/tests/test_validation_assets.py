@@ -22,7 +22,7 @@ class ValidationAssetsTests(unittest.TestCase):
         cases = [
             ("fixtures/tier1/dahua_known_answer.bin", DahuaDhavAdapter(), {"dual_signature_4"}),
             ("fixtures/tier1/honeywell_known_answer.bin", HoneywellAdapter(), {"honeywell_expired_index", "honeywell_format_carve_4", "honeywell_index_4"}),
-            ("fixtures/tier1/hikvision_known_answer.bin", HikvisionAdapter(), {"hkvi_block_4"}),
+            ("fixtures/tier1/hikvision_known_answer.bin", HikvisionAdapter(), {"hikbtree_indexed", "hikbtree_stale_entry"}),
         ]
         for rel, adapter, expected_vals in cases:
             path = VALIDATION_DIR / rel

@@ -252,7 +252,9 @@
   .visily-nav-item {
     @apply flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide;
     color: var(--text-tertiary);
-    transition: color 120ms ease, background-color 120ms ease;
+    transition:
+      color 120ms ease,
+      background-color 120ms ease;
   }
 
   .visily-nav-item:hover {
@@ -304,7 +306,10 @@
 
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-[13px] font-medium;
-    transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease;
+    transition:
+      background-color 100ms ease,
+      border-color 100ms ease,
+      color 100ms ease;
   }
 
   .btn:disabled {
@@ -401,7 +406,9 @@
   .module-nav-item {
     @apply relative flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium;
     color: var(--text-secondary);
-    transition: color 100ms ease, background-color 100ms ease;
+    transition:
+      color 100ms ease,
+      background-color 100ms ease;
   }
 
   .module-nav-item:hover {
@@ -453,7 +460,13 @@
 
   .job-card-running {
     animation: job-border 3s linear infinite;
-    border-image: linear-gradient(90deg, var(--surface-2), var(--accent-500), var(--surface-2)) 1;
+    border-image: linear-gradient(
+        90deg,
+        var(--surface-2),
+        var(--accent-500),
+        var(--surface-2)
+      )
+      1;
   }
 
   .toast {
@@ -575,15 +588,27 @@
 }
 
 @keyframes scan {
-  0% { opacity: 0.4; }
-  50% { opacity: 1; }
-  100% { opacity: 0.4; }
+  0% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.4;
+  }
 }
 
 @keyframes job-border {
-  0% { border-color: var(--border-subtle); }
-  50% { border-color: var(--accent-500); }
-  100% { border-color: var(--border-subtle); }
+  0% {
+    border-color: var(--border-subtle);
+  }
+  50% {
+    border-color: var(--accent-500);
+  }
+  100% {
+    border-color: var(--border-subtle);
+  }
 }
 
 .titlebar-btn {
@@ -606,8 +631,12 @@
 }
 
 @keyframes status-pulse {
-  from { background: rgba(59, 166, 118, 0.12); }
-  to { background: transparent; }
+  from {
+    background: rgba(59, 166, 118, 0.12);
+  }
+  to {
+    background: transparent;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -26,6 +26,7 @@ from engine.app.core.repository import (
 from engine.app.parsers.manufacturer_detect import identify_image
 from engine.app.parsers.unwrap import NAL_START_3, NAL_START_4, unwrap_to_h264
 from engine.app.services.acquisition import acquire_upload, create_lab_specimen, _device_as_evidence
+from engine.app.parsers.image_io import evidence_size, read_image_bytes
 from engine.app.services.recovery import run_recovery_job, segments_as_legacy
 from engine.app.services.timeline import build_timeline_for_device
 
@@ -43,6 +44,7 @@ class SyntheticAcquireRequest(BaseModel):
 class RecoveryRequest(BaseModel):
     actor: str = Field(min_length=1)
     max_scan_bytes: int | None = None
+    adapter: str | None = None
 
 
 class DriftCalibrationRequest(BaseModel):
@@ -150,18 +152,16 @@ def read_device_bytes(device_id: str, offset: int = 0, length: int = 256) -> dic
     device = get_device(device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    if offset < 0 or length <= 0 or length > 4096:
-        raise HTTPException(status_code=400, detail="offset must be >= 0 and 1 <= length <= 4096")
+    if offset < 0 or length <= 0 or length > 65536:
+        raise HTTPException(status_code=400, detail="offset must be >= 0 and 1 <= length <= 65536")
     path = Path(device["image_path"])
     if not path.exists():
         raise HTTPException(status_code=404, detail="Evidence file missing on disk")
-    file_size = path.stat().st_size
+    file_size = evidence_size(path)
     if offset >= file_size:
         raise HTTPException(status_code=400, detail="offset beyond file size")
     read_len = min(length, file_size - offset)
-    with path.open("rb") as handle:
-        handle.seek(offset)
-        chunk = handle.read(read_len)
+    chunk = read_image_bytes(path, offset, read_len)
     return {
         "device_id": device_id,
         "offset": offset,
@@ -222,6 +222,7 @@ async def recover_device(
             device_id,
             body.actor,
             max_scan_bytes=body.max_scan_bytes,
+            adapter=body.adapter,
         )
 
     background_tasks.add_task(_run)

@@ -14,7 +14,11 @@ export function resolveIntegrityState(
   const acquisition = (acquisitionStatus ?? "complete").toLowerCase();
   const verification = (verificationStatus ?? "pending").toLowerCase();
 
-  if (acquisition === "interrupted" || acquisition === "in_progress" || acquisition === "pending") {
+  if (
+    acquisition === "interrupted" ||
+    acquisition === "in_progress" ||
+    acquisition === "pending"
+  ) {
     return "interrupted";
   }
   if (verification === "missing") return "missing";

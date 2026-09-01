@@ -52,6 +52,7 @@ def _build_nal_frame(*, frame_type: int, timestamp_us: int, payload_extra: int =
 
 
 def build_honeywell_lab_specimen() -> bytes:
+    _nal_source.reset()
     """Synthetic Honeywell GPT disk with both deletion-recovery mechanisms."""
     header_start_time = 1_700_000_000
     deleted_ts = header_start_time - 3600

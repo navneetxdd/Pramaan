@@ -33,7 +33,10 @@ export default function App() {
             <Route path="report" element={<CaseReportPage />} />
             <Route path="ai-analytics" element={<CaseAiAnalyticsPage />} />
           </Route>
-          <Route path="/tool-verification" element={<Navigate to="/settings" replace />} />
+          <Route
+            path="/tool-verification"
+            element={<Navigate to="/settings" replace />}
+          />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/cases" replace />} />
         </Route>

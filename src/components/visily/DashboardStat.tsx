@@ -9,7 +9,13 @@ type DashboardStatProps = {
   tone?: "default" | "success" | "danger" | "info";
 };
 
-export function DashboardStat({ label, value, hint, icon: Icon, tone = "default" }: DashboardStatProps) {
+export function DashboardStat({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  tone = "default",
+}: DashboardStatProps) {
   const toneClass =
     tone === "success"
       ? "text-[var(--status-success)]"
@@ -25,7 +31,11 @@ export function DashboardStat({ label, value, hint, icon: Icon, tone = "default"
         <div>
           <p className="visily-stat-value">{value}</p>
           <p className="visily-stat-label">{label}</p>
-          {hint ? <p className="mono mt-1 text-[10px] text-[var(--text-tertiary)]">{hint}</p> : null}
+          {hint ? (
+            <p className="mono mt-1 text-[10px] text-[var(--text-tertiary)]">
+              {hint}
+            </p>
+          ) : null}
         </div>
         <div className={cn("rounded-md bg-[var(--surface-4)] p-2", toneClass)}>
           <Icon className="h-4 w-4" strokeWidth={1.75} />

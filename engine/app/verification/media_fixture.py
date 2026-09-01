@@ -123,6 +123,9 @@ class NalPayloadSource:
             raise RuntimeError("CAVIAR NAL split produced no units")
         self._cursor = 0
 
+    def reset(self) -> None:
+        self._cursor = 0
+
     def next_payload(self, min_len: int) -> bytes:
         if min_len <= 0:
             raise ValueError("min_len must be positive")
@@ -145,8 +148,8 @@ class NalPayloadSource:
         self._cursor += 1
         return nal
 
-    def next_decodable_access_unit(self, min_len: int = 256) -> bytes:
-        """Return SPS+PPS+slice NALs from one CAVIAR access unit (field-decodable chunk)."""
+    def next_decodable_access_unit(self, min_len: int = 64) -> bytes:
+        """Return SPS+PPS+IDR NALs from one CAVIAR access unit."""
         nals = self._nals
         for index, nal in enumerate(nals):
             if _nal_type(nal) != 5:
@@ -159,12 +162,24 @@ class NalPayloadSource:
                 elif nal_type == 5 and back < index - 1:
                     break
             chunk = b"".join(nals[start : index + 1])
-            if len(chunk) >= min_len:
-                return chunk
-            if chunk:
-                padded = chunk + b"\x00" * (min_len - len(chunk))
-                return padded[: max(len(chunk), min_len)]
-        return self.next_payload(min_len)
+            if len(chunk) >= min_len and _nal_type(chunk) is not None:
+                types = {_nal_type(n) for n in split_annexb_nals(chunk) if _nal_type(n) is not None}
+                if {7, 8}.issubset(types) and 5 in types:
+                    return chunk
+        # Fallback: scan for first IDR with param sets in stream order
+        for index, nal in enumerate(nals):
+            if _nal_type(nal) == 5:
+                prefix = b"".join(n for n in nals[: index + 1] if _nal_type(n) in {7, 8, 5})
+                if len(prefix) >= min_len and 5 in {_nal_type(n) for n in split_annexb_nals(prefix)}:
+                    return prefix
+        raise RuntimeError("no decodable access unit in CAVIAR NAL cache")
+
+
+def reset_nal_source() -> None:
+    """Reset module-global specimen cursor for deterministic builds."""
+    global _nal_cache, _annexb_cache
+    _annexb_cache = None
+    _nal_cache = None
 
 
 def _nal_type(nal: bytes) -> int | None:

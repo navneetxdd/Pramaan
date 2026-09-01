@@ -39,7 +39,7 @@ class DhavParserGoldenTests(unittest.TestCase):
         self.assertTrue(any(s.validation == "dual_signature_4" for s in segments))
         self.assertTrue(any(s.validation == "unreferenced_carve" for s in segments))
         self.assertTrue(any(s.recorder_start_ts for s in segments))
-        self.assertTrue(any(s.timestamp_source == "dhav_ext_0x72" for s in segments))
+        self.assertTrue(any(s.timestamp_source == "dhav_header_date" for s in segments))
         unreferenced = [s for s in segments if s.validation == "unreferenced_carve"]
         self.assertEqual(unreferenced[0].validation_evidence.get("recovery_context"), "unreferenced_carve")
 

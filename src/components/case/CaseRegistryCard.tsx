@@ -34,7 +34,9 @@ export function CaseRegistryCard({ item }: { item: CaseRegistryRow }) {
             {item.name}
           </h2>
           {item.notes ? (
-            <p className="mt-1 line-clamp-2 text-[12px] text-[var(--text-secondary)]">{item.notes}</p>
+            <p className="mt-1 line-clamp-2 text-[12px] text-[var(--text-secondary)]">
+              {item.notes}
+            </p>
           ) : null}
         </div>
         <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-[var(--text-tertiary)] group-hover:text-[var(--accent-500)]" />
@@ -44,14 +46,20 @@ export function CaseRegistryCard({ item }: { item: CaseRegistryRow }) {
         <div className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
           <User className="h-3.5 w-3.5 shrink-0 text-[var(--text-tertiary)]" />
           <div>
-            <dt className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">Case handler</dt>
-            <dd className="font-medium text-[var(--text-primary)]">{item.examiner_name}</dd>
+            <dt className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
+              Case handler
+            </dt>
+            <dd className="font-medium text-[var(--text-primary)]">
+              {item.examiner_name}
+            </dd>
           </div>
         </div>
         <div className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
           <HardDrive className="h-3.5 w-3.5 shrink-0 text-[var(--text-tertiary)]" />
           <div>
-            <dt className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">Evidence</dt>
+            <dt className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
+              Evidence
+            </dt>
             <dd className="font-medium text-[var(--text-primary)]">
               {hasEvidence
                 ? `${item.evidence_count} item${item.evidence_count === 1 ? "" : "s"} · ${formatBytes(item.total_bytes)}`
@@ -61,21 +69,32 @@ export function CaseRegistryCard({ item }: { item: CaseRegistryRow }) {
         </div>
       </dl>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3" style={{ borderColor: "var(--border-subtle)" }}>
+      <div
+        className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3"
+        style={{ borderColor: "var(--border-subtle)" }}
+      >
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-            hasEvidence ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"
+            hasEvidence
+              ? "bg-emerald-50 text-emerald-800"
+              : "bg-amber-50 text-amber-900"
           }`}
         >
           {hasEvidence ? "In progress" : "Awaiting evidence"}
         </span>
         {item.recovery_jobs > 0 ? (
           <span className="text-[10px] text-[var(--text-tertiary)]">
-            {item.recovery_jobs} recovery run{item.recovery_jobs === 1 ? "" : "s"}
+            {item.recovery_jobs} recovery run
+            {item.recovery_jobs === 1 ? "" : "s"}
           </span>
         ) : null}
         <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">
-          Opened {opened.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+          Opened{" "}
+          {opened.toLocaleDateString(undefined, {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })}
         </span>
       </div>
     </Link>

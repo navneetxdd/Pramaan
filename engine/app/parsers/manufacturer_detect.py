@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from engine.app.parsers.image_io import evidence_size, read_image_bytes
+
 # OEM labels are routing hints only. A proprietary adapter is selected only when
 # its on-disk family signature is present; brand text alone never proves a filesystem.
 OEM_PROFILES: list[dict] = [
@@ -14,12 +16,13 @@ OEM_PROFILES: list[dict] = [
         "weight": 1.0,
         "capability_tier": "experimental_parser",
         "validation_scope": "synthetic_and_known_fixtures",
+        "user_label": "DHAV frame carver",
     },
     {
         "vendor": "Hikvision",
         "adapter": "hikvision",
         "family": "hikvision",
-        "tokens": [b"HKVI", b"HIKVISION", b"HIKV", b"hkvs", b"HIKVISION-DVR"],
+        "tokens": [b"HIKVISION@HANGZHOU", b"HIKBTREE", b"HIKVISION", b"HIKV", b"HIKVISION-DVR"],
         "weight": 1.0,
         "capability_tier": "experimental_parser",
         "validation_scope": "synthetic_and_known_fixtures",
@@ -33,6 +36,7 @@ OEM_PROFILES: list[dict] = [
         "required_signatures": [b"DHAV", b"DHFS4", b"DHFS4.1"],
         "capability_tier": "experimental_parser",
         "validation_scope": "signature_match_only",
+        "user_label": "DHAV frame carver",
     },
     {
         "vendor": "Honeywell",
@@ -67,7 +71,7 @@ OEM_PROFILES: list[dict] = [
         "family": "hikvision",
         "tokens": [b"UNIVIEW", b"UNV", b"uniview", b"Uniview"],
         "weight": 0.9,
-        "required_signatures": [b"HKVI", b"HIKBTREE"],
+        "required_signatures": [b"HIKBTREE", b"HIKVISION@HANGZHOU"],
         "capability_tier": "experimental_parser",
         "validation_scope": "signature_match_only",
     },
@@ -83,12 +87,18 @@ OEM_PROFILES: list[dict] = [
 ]
 
 FILESYSTEM_MARKERS = [
-    (b"DHFS4.1", "Dahua DHFS partition"),
+    (b"EFI PART", "GPT partition table"),
+    (b"NTFS    ", "NTFS volume"),
+    (b"FAT16   ", "FAT16 volume"),
+    (b"FAT32   ", "FAT32 volume"),
+    (b"\x55\xaa", "MBR boot signature @510"),
+    (b"DHFS4.1", "Dahua DHFS partition marker"),
     (b"DHFS4", "Dahua DHFS4 index"),
     (b"HIKBTREE", "Hikvision B-tree index"),
-    (b"HKVI", "Hikvision video index block"),
     (b"WFS0.4", "WFS 0.4 (common Indian OEM FAT variant)"),
 ]
+
+H264_NAL_TYPES = {0x67, 0x68, 0x65, 0x41, 0x61, 0x27, 0x28}
 
 
 @dataclass
@@ -107,13 +117,91 @@ class VendorHit:
 
 
 def _read_prefix(path: Path, nbytes: int) -> bytes:
-    with path.open("rb") as handle:
-        return handle.read(nbytes)
+    return read_image_bytes(path, 0, nbytes)
+
+
+def _filesystem_hits(data: bytes, mbr: bytes) -> list[VendorHit]:
+    hits: list[VendorHit] = []
+    if len(mbr) >= 512 and mbr[510:512] == b"\x55\xaa":
+        hits.append(
+            VendorHit(
+                vendor="Filesystem",
+                adapter="generic_tier2",
+                confidence=0.62,
+                markers=["MBR 0x55AA"],
+                family="generic",
+                capability_tier="filesystem_recovery",
+                validation_scope="pytsk3_tier2",
+                signature_evidence=["MBR"],
+            )
+        )
+    for token, label in FILESYSTEM_MARKERS:
+        if token == b"\x55\xaa":
+            continue
+        if token in data:
+            hits.append(
+                VendorHit(
+                    vendor="Filesystem",
+                    adapter="generic_tier2",
+                    confidence=0.6,
+                    markers=[label],
+                    family="generic",
+                    capability_tier="filesystem_recovery",
+                    validation_scope="pytsk3_tier2",
+                    signature_evidence=[token.decode("latin-1", errors="replace")],
+                )
+            )
+    if b"\x53EF" in data[1070:1090] if len(data) > 1090 else False:
+        hits.append(
+            VendorHit(
+                vendor="Filesystem",
+                adapter="generic_tier2",
+                confidence=0.6,
+                markers=["ext superblock"],
+                family="generic",
+                capability_tier="filesystem_recovery",
+                validation_scope="pytsk3_tier2",
+            )
+        )
+    return hits
+
+
+def _weak_h264_hit(data: bytes) -> VendorHit | None:
+    sample_len = len(data)
+    if sample_len < 4096:
+        return None
+    h264_hits = data.count(b"\x00\x00\x01") + data.count(b"\x00\x00\x00\x01")
+    density = h264_hits / max(1, sample_len / 4096)
+    typed = 0
+    for marker in (b"\x00\x00\x00\x01", b"\x00\x00\x01"):
+        idx = 0
+        while True:
+            hit = data.find(marker, idx)
+            if hit < 0 or hit + len(marker) >= len(data):
+                break
+            nal_header = data[hit + len(marker)]
+            if nal_header in H264_NAL_TYPES:
+                typed += 1
+            idx = hit + len(marker)
+    if density > 0.5 and typed >= 3:
+        return VendorHit(
+            vendor="Generic H.264",
+            adapter="h264_carve",
+            confidence=min(0.72, 0.35 + density * 0.05),
+            markers=[f"NAL×{h264_hits}", f"typed×{typed}"],
+            family="generic",
+            capability_tier="acquisition_generic_only",
+            validation_scope="annex_b_signature_only",
+            signature_evidence=["Annex B NAL start code"],
+        )
+    return None
 
 
 def identify_image(image_path: Path, sample_bytes: int = 64 * 1024 * 1024) -> dict:
-    data = _read_prefix(image_path, sample_bytes)
-    size = image_path.stat().st_size
+    size = evidence_size(image_path)
+    sample_len = min(sample_bytes, size)
+    data = _read_prefix(image_path, sample_len)
+    mbr = read_image_bytes(image_path, 0, 512)
     hits: list[VendorHit] = []
 
     for profile in OEM_PROFILES:
@@ -144,32 +232,26 @@ def identify_image(image_path: Path, sample_bytes: int = 64 * 1024 * 1024) -> di
                 )
             )
 
-    h264_hits = data.count(b"\x00\x00\x01") + data.count(b"\x00\x00\x00\x01")
-    if h264_hits > 20 and not hits:
-        hits.append(
-            VendorHit(
-                vendor="Generic H.264",
-                adapter="h264_carve",
-                confidence=min(0.72, 0.35 + h264_hits * 0.002),
-                markers=[f"NAL×{h264_hits}"],
-                family="generic",
-                capability_tier="acquisition_generic_only",
-                validation_scope="annex_b_signature_only",
-                signature_evidence=["Annex B NAL start code"],
-            )
-        )
+    hits.extend(_filesystem_hits(data, mbr))
+    weak_h264 = _weak_h264_hit(data)
+    if weak_h264:
+        hits.append(weak_h264)
 
-    hits.sort(key=lambda item: item.confidence, reverse=True)
+    hits.sort(key=lambda item: (0 if item.family not in {"generic"} else 1, -item.confidence))
 
     filesystem: list[dict] = []
     for token, label in FILESYSTEM_MARKERS:
-        if token in data:
+        if token in data or (token == b"\x55\xaa" and len(mbr) >= 512 and mbr[510:512] == token):
             filesystem.append({"marker": token.decode("latin-1", errors="replace"), "label": label})
 
-    recommended = hits[0].adapter if hits else "h264_carve"
+    if hits:
+        recommended = hits[0].adapter
+    else:
+        recommended = "needs_selection"
+
     return {
         "image_size_bytes": size,
-        "sample_bytes": min(sample_bytes, size),
+        "sample_bytes": sample_len,
         "hits": [hit.to_dict() for hit in hits],
         "filesystem_hints": filesystem,
         "recommended_adapter": recommended,
@@ -181,13 +263,15 @@ def identify_image(image_path: Path, sample_bytes: int = 64 * 1024 * 1024) -> di
                 "capability_tier": profile["capability_tier"],
                 "validation_scope": profile["validation_scope"],
                 "requires_signature_match": bool(profile.get("required_signatures")),
+                "user_label": profile.get("user_label"),
             }
             for profile in OEM_PROFILES
         ],
         "coverage_note": (
-            "No parser is field-validated without independent recorder media. Dahua, Hikvision, and Honeywell "
-            "have fixture-tested experimental parsers; CP Plus and Uniview require matching family signatures; "
-            "TP-Link, Godrej, and Matrix remain acquisition plus generic analysis only."
+            "No parser is field-validated without independent recorder media. Dahua recovery is a DHAV frame "
+            "carver (DHFS4.1 is a detection marker only). Hikvision uses HIKBTREE index + MPEG-PS carve. "
+            "Honeywell has a fixture-tested experimental parser. When identification is inconclusive, select an "
+            "adapter manually on Recovery."
         ),
     }
 

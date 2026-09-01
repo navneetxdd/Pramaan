@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 export type ActivityMode = "idle" | "working" | "success" | "error";
 
@@ -39,7 +47,10 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (mode !== "success" && mode !== "error") return;
-    const timer = window.setTimeout(() => setIdle(), mode === "success" ? 2400 : 3200);
+    const timer = window.setTimeout(
+      () => setIdle(),
+      mode === "success" ? 2400 : 3200,
+    );
     return () => window.clearTimeout(timer);
   }, [mode, setIdle]);
 
@@ -48,7 +59,11 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     [mode, message, setWorking, setSuccess, setError, setIdle],
   );
 
-  return <ActivityContext.Provider value={value}>{children}</ActivityContext.Provider>;
+  return (
+    <ActivityContext.Provider value={value}>
+      {children}
+    </ActivityContext.Provider>
+  );
 }
 
 export function useActivity() {

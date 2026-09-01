@@ -12,7 +12,9 @@ export function useLiveJobs(jobs: RecoveryJob[], refreshMs = 2000) {
   const [live, setLive] = useState<Record<string, LiveJobState>>({});
 
   useEffect(() => {
-    const active = jobs.filter((j) => j.status === "running" || j.status === "pending");
+    const active = jobs.filter(
+      (j) => j.status === "running" || j.status === "pending",
+    );
     if (active.length === 0) {
       setLive({});
       return;
@@ -31,7 +33,11 @@ export function useLiveJobs(jobs: RecoveryJob[], refreshMs = 2000) {
               status: s.status,
             };
           } catch {
-            next[job.id] = { progress: 0, message: job.status, status: job.status };
+            next[job.id] = {
+              progress: 0,
+              message: job.status,
+              status: job.status,
+            };
           }
         }),
       );

@@ -1,5 +1,13 @@
 /** Extensions the acquisition engine normalizes on ingest (see engine OEM_EXTENSIONS). */
-export const EVIDENCE_IMAGE_EXTENSIONS = [".bin", ".dd", ".img", ".raw", ".e01", ".ex01", ".001"] as const;
+export const EVIDENCE_IMAGE_EXTENSIONS = [
+  ".bin",
+  ".dd",
+  ".img",
+  ".raw",
+  ".e01",
+  ".ex01",
+  ".001",
+] as const;
 
 const EVIDENCE_IMAGE_RE = /\.(bin|dd|img|raw|e01|ex01|001)$/i;
 
@@ -19,7 +27,6 @@ export function classifyImportFile(file: File): ImportFileKind {
   return "unknown";
 }
 
-export const IMPORT_FILE_ACCEPT = [
-  ...EVIDENCE_IMAGE_EXTENSIONS,
-  ".zip",
-].join(",");
+export const IMPORT_FILE_ACCEPT = [...EVIDENCE_IMAGE_EXTENSIONS, ".zip"].join(
+  ",",
+);

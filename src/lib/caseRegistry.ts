@@ -14,12 +14,18 @@ const AUTOMATED_NAME_PATTERNS: RegExp[] = [
   /^dbg$/i,
 ];
 
-export function isAutomatedCase(record: Pick<CaseRecord, "name" | "ephemeral">): boolean {
+export function isAutomatedCase(
+  record: Pick<CaseRecord, "name" | "ephemeral">,
+): boolean {
   if (record.ephemeral) return true;
-  return AUTOMATED_NAME_PATTERNS.some((pattern) => pattern.test(record.name.trim()));
+  return AUTOMATED_NAME_PATTERNS.some((pattern) =>
+    pattern.test(record.name.trim()),
+  );
 }
 
-export function filterOperatorCases<T extends Pick<CaseRecord, "name" | "ephemeral">>(cases: T[]): T[] {
+export function filterOperatorCases<
+  T extends Pick<CaseRecord, "name" | "ephemeral">,
+>(cases: T[]): T[] {
   return cases.filter((item) => !isAutomatedCase(item));
 }
 

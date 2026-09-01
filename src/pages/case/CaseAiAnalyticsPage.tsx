@@ -28,7 +28,10 @@ export function CaseAiAnalyticsPage() {
 
   useEffect(() => {
     if (!deviceId) return;
-    void api.listAiFindings(deviceId).then((r) => setFindings(r.findings)).catch(() => setFindings([]));
+    void api
+      .listAiFindings(deviceId)
+      .then((r) => setFindings(r.findings))
+      .catch(() => setFindings([]));
   }, [deviceId]);
 
   async function handleRun() {
@@ -57,10 +60,14 @@ export function CaseAiAnalyticsPage() {
         });
       });
       const status = await api.getJobStatus(started.job.id);
-      const parsed = (status.result ?? {}) as { demo_mode_unavailable?: boolean; message?: string };
+      const parsed = (status.result ?? {}) as {
+        demo_mode_unavailable?: boolean;
+        message?: string;
+      };
       if (parsed.demo_mode_unavailable) {
         setDemoUnavailable(
-          parsed.message ?? "OpenCV/decodable video unavailable on this host — analytics skipped",
+          parsed.message ??
+            "OpenCV/decodable video unavailable on this host — analytics skipped",
         );
       }
       const resultFindings = await api.listAiFindings(deviceId);
@@ -72,27 +79,40 @@ export function CaseAiAnalyticsPage() {
       );
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Analytics failed", { duration: Infinity });
+      toast.error(err instanceof Error ? err.message : "Analytics failed", {
+        duration: Infinity,
+      });
     } finally {
       setBusy(false);
       setIdle();
     }
   }
 
-  const motionCount = findings.filter((f) => f.finding_type === "motion").length;
-  const sceneCount = findings.filter((f) => f.finding_type === "scene_change").length;
+  const motionCount = findings.filter(
+    (f) => f.finding_type === "motion",
+  ).length;
+  const sceneCount = findings.filter(
+    (f) => f.finding_type === "scene_change",
+  ).length;
   const faceCount = findings.filter((f) => f.finding_type === "face").length;
-  const objectCount = findings.filter((f) => f.finding_type === "object").length;
+  const objectCount = findings.filter(
+    (f) => f.finding_type === "object",
+  ).length;
 
   return (
     <div className="flex flex-col gap-3">
       <div className="visily-hero-dark px-5 py-4">
         <div className="visily-hero-dark-bg" aria-hidden />
         <div className="relative z-[1]">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">Investigative leads</p>
-          <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">Findings</h1>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">
+            Investigative leads
+          </p>
+          <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">
+            Findings
+          </h1>
           <p className="mt-1 text-[12px] text-[var(--text-muted-on-dark)]">
-            Four distinct pipelines: foreground motion, scene change, face candidate, and YOLOX object candidate — leads only.
+            Four distinct pipelines: foreground motion, scene change, face
+            candidate, and YOLOX object candidate — leads only.
           </p>
         </div>
       </div>
@@ -102,16 +122,36 @@ export function CaseAiAnalyticsPage() {
           <div className="visily-card col-span-full flex items-start gap-3 border border-amber-500/40 bg-amber-50 p-4 text-amber-950">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
-              <p className="text-[13px] font-semibold">Analytics unavailable on this host</p>
+              <p className="text-[13px] font-semibold">
+                Analytics unavailable on this host
+              </p>
               <p className="mt-1 text-[12px]">{demoUnavailable}</p>
             </div>
           </div>
         ) : null}
-        <DashboardStat label="Total findings" value={String(findings.length)} icon={ScanEye} />
-        <DashboardStat label="Motion" value={String(motionCount)} icon={ScanEye} tone="info" />
-        <DashboardStat label="Scene change" value={String(sceneCount)} icon={ScanEye} />
+        <DashboardStat
+          label="Total findings"
+          value={String(findings.length)}
+          icon={ScanEye}
+        />
+        <DashboardStat
+          label="Motion"
+          value={String(motionCount)}
+          icon={ScanEye}
+          tone="info"
+        />
+        <DashboardStat
+          label="Scene change"
+          value={String(sceneCount)}
+          icon={ScanEye}
+        />
         <DashboardStat label="Face" value={String(faceCount)} icon={ScanEye} />
-        <DashboardStat label="Object" value={String(objectCount)} icon={AlertTriangle} tone={objectCount > 0 ? "info" : undefined} />
+        <DashboardStat
+          label="Object"
+          value={String(objectCount)}
+          icon={AlertTriangle}
+          tone={objectCount > 0 ? "info" : undefined}
+        />
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[280px_1fr]">
@@ -122,17 +162,28 @@ export function CaseAiAnalyticsPage() {
           </div>
           {devices.length === 0 ? (
             <p className="text-[12px] text-[var(--text-secondary)]">
-              <Link to={`/cases/${caseId}/acquire`} className="text-[var(--accent-500)] underline">
+              <Link
+                to={`/cases/${caseId}/acquire`}
+                className="text-[var(--accent-500)] underline"
+              >
                 Acquire evidence
               </Link>{" "}
               and complete recovery before running findings analysis.
             </p>
           ) : (
             <>
-              <label className="block text-[12px] text-[var(--text-secondary)]">Examiner</label>
+              <label className="block text-[12px] text-[var(--text-secondary)]">
+                Examiner
+              </label>
               <Input value={actor} onChange={(e) => setActor(e.target.value)} />
-              <label className="block text-[12px] text-[var(--text-secondary)]">Device</label>
-              <select className="field w-full" value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+              <label className="block text-[12px] text-[var(--text-secondary)]">
+                Device
+              </label>
+              <select
+                className="field w-full"
+                value={deviceId}
+                onChange={(e) => setDeviceId(e.target.value)}
+              >
                 <option value="">Select device</option>
                 {devices.map((d) => (
                   <option key={d.id} value={d.id}>
@@ -140,7 +191,11 @@ export function CaseAiAnalyticsPage() {
                   </option>
                 ))}
               </select>
-              <Button className="w-full" disabled={busy || !deviceId} onClick={() => void handleRun()}>
+              <Button
+                className="w-full"
+                disabled={busy || !deviceId}
+                onClick={() => void handleRun()}
+              >
                 <Play className="h-4 w-4" />
                 Run 1 fps sampling
               </Button>
@@ -160,14 +215,24 @@ export function CaseAiAnalyticsPage() {
             maxHeight={420}
             emptyMessage="No findings yet. Complete recovery, then run analysis to populate timeline markers."
             columns={[
-              { key: "type", header: "Type", cell: (f) => f.finding_type.replace(/_/g, " ") },
-              { key: "offset", header: "Offset", className: "mono", cell: (f) => `${f.frame_offset_ms}ms` },
+              {
+                key: "type",
+                header: "Type",
+                cell: (f) => f.finding_type.replace(/_/g, " "),
+              },
+              {
+                key: "offset",
+                header: "Offset",
+                className: "mono",
+                cell: (f) => `${f.frame_offset_ms}ms`,
+              },
               { key: "label", header: "Label", cell: (f) => f.label ?? "—" },
               {
                 key: "conf",
                 header: "Conf.",
                 className: "mono",
-                cell: (f) => (f.confidence != null ? f.confidence.toFixed(2) : "—"),
+                cell: (f) =>
+                  f.confidence != null ? f.confidence.toFixed(2) : "—",
               },
               {
                 key: "detector",
