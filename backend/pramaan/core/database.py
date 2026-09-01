@@ -106,6 +106,15 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_custody_case ON custody_events(case_id);
             """
         )
+        _migrate(conn)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(custody_events)").fetchall()}
+    if "prev_hash" not in cols:
+        conn.execute("ALTER TABLE custody_events ADD COLUMN prev_hash TEXT")
+    if "event_hash" not in cols:
+        conn.execute("ALTER TABLE custody_events ADD COLUMN event_hash TEXT")
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:

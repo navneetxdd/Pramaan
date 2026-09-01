@@ -5,6 +5,7 @@ export function CustodyPage() {
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [caseId, setCaseId] = useState("");
   const [events, setEvents] = useState<CustodyEvent[]>([]);
+  const [chainOk, setChainOk] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -18,7 +19,10 @@ export function CustodyPage() {
     if (!caseId) return;
     void api
       .custody(caseId)
-      .then((data) => setEvents(data.events))
+      .then((data) => {
+        setEvents(data.events);
+        setChainOk(data.chain.ok);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load custody"));
   }, [caseId]);
 
@@ -41,7 +45,12 @@ export function CustodyPage() {
         </select>
       </div>
 
-      {error ? <p className="text-danger">{error}</p> : null}
+      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      {chainOk !== null ? (
+        <p className={chainOk ? "text-sm text-solved" : "text-sm text-danger"}>
+          Custody chain: {chainOk ? "VALID" : "BROKEN"}
+        </p>
+      ) : null}
 
       <section className="panel overflow-hidden">
         <div className="border-b border-hairline px-5 py-4">

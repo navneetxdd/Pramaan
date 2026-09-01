@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -9,16 +8,21 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from pramaan import __version__
-from pramaan.analysis.export import build_case_report, export_segment_h264
-from pramaan.api.routes import router
+from pramaan.api.router import router as core_router
 from pramaan.config import EXPORTS_DIR
-from pramaan.core import cases as case_store
 from pramaan.core.database import init_db
+from pramaan.modules.analysis.router import router as analysis_router
+from pramaan.modules.recovery.registry import bootstrap_defaults
+from pramaan.modules.reporting.router import router as reporting_router
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 
-app = FastAPI(title="Pramaan", version=__version__, description="DVR/NVR forensic analysis")
+app = FastAPI(
+    title="Pramaan",
+    version=__version__,
+    description="Multi-vendor DVR/NVR forensic analysis",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,48 +30,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(router)
+app.include_router(core_router)
+app.include_router(analysis_router)
+app.include_router(reporting_router)
 
 
 @app.on_event("startup")
 def startup() -> None:
     init_db()
-
-
-@app.get("/api/cases/{case_id}/report")
-def case_report(case_id: str) -> dict:
-    case = case_store.get_case(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-    return build_case_report(
-        case,
-        case_store.list_evidence(case_id),
-        case_store.list_jobs_for_case(case_id),
-        case_store.list_custody(case_id),
-    )
-
-
-@app.post("/api/jobs/{job_id}/segments/{segment_id}/export")
-def export_segment(job_id: str, segment_id: str) -> dict:
-    job = case_store.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    segments = case_store.list_segments(job_id)
-    segment = next((s for s in segments if s["id"] == segment_id), None)
-    if not segment:
-        raise HTTPException(status_code=404, detail="Segment not found")
-
-    evidence_list = case_store.list_evidence(job["case_id"])
-    image = next((e for e in evidence_list if e["id"] == job["image_id"]), None)
-    if not image:
-        raise HTTPException(status_code=404, detail="Source image not found")
-
-    out = export_segment_h264(
-        Path(image["storage_path"]),
-        segment["offset_start"],
-        segment["offset_end"],
-    )
-    return {"filename": out.name, "download_url": f"/api/exports/{out.name}"}
+    bootstrap_defaults()
 
 
 @app.get("/api/exports/{filename}")

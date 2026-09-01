@@ -7,12 +7,13 @@ const links = [
   { to: "/recover", label: "Recover" },
   { to: "/analyze", label: "Analyze" },
   { to: "/custody", label: "Custody" },
+  { to: "/report", label: "Report" },
 ];
 
 export function TopBar() {
   return (
     <header className="sticky top-0 z-40 border-b border-hairline bg-canvas/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-4">
+      <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-accent-line bg-accent-soft font-serif text-lg text-accent">
             P
@@ -23,7 +24,7 @@ export function TopBar() {
           </div>
         </div>
 
-        <nav className="hidden items-center gap-1 rounded-full border border-hairline bg-surface p-1 md:flex">
+        <nav className="flex flex-wrap items-center gap-1 rounded-full border border-hairline bg-surface p-1">
           {links.map((link) => (
             <NavLink
               key={link.to}
@@ -31,10 +32,8 @@ export function TopBar() {
               end={link.to === "/"}
               className={({ isActive }) =>
                 cn(
-                  "rounded-full px-4 py-2 text-sm transition",
-                  isActive
-                    ? "bg-raised text-ink"
-                    : "text-ink-muted hover:text-ink",
+                  "rounded-full px-3 py-2 text-sm transition md:px-4",
+                  isActive ? "bg-raised text-ink" : "text-ink-muted hover:text-ink",
                 )
               }
             >

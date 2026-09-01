@@ -1,10 +1,39 @@
 from __future__ import annotations
 
-import hashlib
 import uuid
 from pathlib import Path
 
 from pramaan.core.database import get_db, sha256_file, _utc_now
+from pramaan.modules.custody.hash_chain import chain_seed, compute_event_hash
+
+
+def _insert_custody(
+    conn,
+    case_id: str,
+    actor: str,
+    action: str,
+    detail: str | None = None,
+    image_id: str | None = None,
+) -> None:
+    now = _utc_now()
+    last = conn.execute(
+        """
+        SELECT event_hash FROM custody_events
+        WHERE case_id = ? AND event_hash IS NOT NULL
+        ORDER BY id DESC LIMIT 1
+        """,
+        (case_id,),
+    ).fetchone()
+    prev_hash = last["event_hash"] if last and last["event_hash"] else chain_seed(case_id)
+    event_hash = compute_event_hash(prev_hash, action, actor, detail, now)
+    conn.execute(
+        """
+        INSERT INTO custody_events
+        (case_id, image_id, actor, action, detail, created_at, prev_hash, event_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (case_id, image_id, actor, action, detail, now, prev_hash, event_hash),
+    )
 
 
 def create_case(title: str, examiner: str, reference: str | None = None) -> dict:
@@ -18,13 +47,7 @@ def create_case(title: str, examiner: str, reference: str | None = None) -> dict
             """,
             (case_id, title.strip(), examiner.strip(), reference, now, now),
         )
-        conn.execute(
-            """
-            INSERT INTO custody_events (case_id, image_id, actor, action, detail, created_at)
-            VALUES (?, NULL, ?, 'case_created', ?, ?)
-            """,
-            (case_id, examiner.strip(), f"Case opened: {title.strip()}", now),
-        )
+        _insert_custody(conn, case_id, examiner.strip(), "case_created", f"Case opened: {title.strip()}")
         row = conn.execute("SELECT * FROM cases WHERE id = ?", (case_id,)).fetchone()
     return dict(row)
 
@@ -61,18 +84,13 @@ def register_evidence(
             """,
             (image_id, case_id, filename, str(storage_path), digest, size_bytes, media_type, now),
         )
-        conn.execute(
-            """
-            INSERT INTO custody_events (case_id, image_id, actor, action, detail, created_at)
-            VALUES (?, ?, ?, 'evidence_acquired', ?, ?)
-            """,
-            (
-                case_id,
-                image_id,
-                actor,
-                f"SHA-256 {digest} · {size_bytes} bytes",
-                now,
-            ),
+        _insert_custody(
+            conn,
+            case_id,
+            actor,
+            "evidence_acquired",
+            f"SHA-256 {digest} · {size_bytes} bytes",
+            image_id=image_id,
         )
         row = conn.execute("SELECT * FROM evidence_images WHERE id = ?", (image_id,)).fetchone()
     return dict(row)
@@ -109,13 +127,7 @@ def append_custody(
     image_id: str | None = None,
 ) -> None:
     with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO custody_events (case_id, image_id, actor, action, detail, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (case_id, image_id, actor, action, detail, _utc_now()),
-        )
+        _insert_custody(conn, case_id, actor, action, detail, image_id=image_id)
 
 
 def create_recovery_job(case_id: str, image_id: str) -> dict:

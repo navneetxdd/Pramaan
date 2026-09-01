@@ -11,6 +11,12 @@ export function CaseDetailPage() {
   const [jobs, setJobs] = useState<RecoveryJob[]>([]);
   const [custody, setCustody] = useState<CustodyEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
+
+  async function verifyEvidence(imageId: string) {
+    const res = await api.verify(imageId);
+    setVerifyMsg(res.ok ? "Integrity verified" : `Mismatch: ${res.actual?.slice(0, 12)}…`);
+  }
 
   useEffect(() => {
     if (!caseId) return;
@@ -38,7 +44,11 @@ export function CaseDetailPage() {
           <p className="mono mt-2">{caseRecord.examiner} · {caseRecord.reference || "No reference"}</p>
         </div>
         <StatusBadge status={caseRecord.status} />
+        <div className="flex gap-2">
+          <a className="btn-ghost" href={api.reportHtmlUrl(caseId)} target="_blank" rel="noreferrer">Report</a>
+        </div>
       </div>
+      {verifyMsg ? <p className="text-sm text-solved">{verifyMsg}</p> : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="panel p-5">
@@ -51,6 +61,9 @@ export function CaseDetailPage() {
                 <li key={item.id} className="rounded-lg border border-hairline bg-raised p-3">
                   <p className="text-sm font-medium text-ink">{item.filename}</p>
                   <p className="mono mt-1">{shortHash(item.sha256)} · {formatBytes(item.size_bytes)}</p>
+                  <button type="button" className="btn-ghost mt-2" onClick={() => void verifyEvidence(item.id)}>
+                    Verify hash
+                  </button>
                 </li>
               ))
             )}

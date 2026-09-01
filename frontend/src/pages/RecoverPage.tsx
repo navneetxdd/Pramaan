@@ -3,6 +3,20 @@ import { Link } from "react-router-dom";
 import { ScanSearch } from "lucide-react";
 import { api, type CaseRecord, type EvidenceRecord } from "@/lib/api";
 
+async function pollJob(jobId: string, maxAttempts = 60): Promise<{ segments: number }> {
+  for (let i = 0; i < maxAttempts; i += 1) {
+    const data = await api.getJob(jobId);
+    if (data.job.status === "completed") {
+      return { segments: data.segments.length };
+    }
+    if (data.job.status === "failed") {
+      throw new Error(data.job.error || "Recovery failed");
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error("Recovery timed out");
+}
+
 export function RecoverPage() {
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [caseId, setCaseId] = useState("");
@@ -34,10 +48,12 @@ export function RecoverPage() {
     if (!caseId || !imageId || !actor.trim()) return;
     setBusy(true);
     setError(null);
+    setJobId(null);
     try {
-      const data = await api.recover(caseId, imageId, actor.trim());
-      setJobId(data.job.id);
-      setSegmentCount(data.segments.length);
+      const started = await api.recover(caseId, imageId, actor.trim());
+      setJobId(started.job.id);
+      const result = await pollJob(started.job.id);
+      setSegmentCount(result.segments);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Recovery failed");
     } finally {
@@ -51,7 +67,7 @@ export function RecoverPage() {
         <p className="label">Recovery</p>
         <h1 className="font-serif text-3xl text-ink">Vendor-aware carve</h1>
         <p className="mt-2 text-sm text-ink-muted">
-          Detects Dahua DHAV, Hikvision HKVI, or falls back to H.264 NAL carving. Output is offset-indexed for timeline review.
+          Dual-signature DHAV validation, Hikvision HKVI blocks, H.264 NAL fallback. Runs asynchronously with job polling.
         </p>
       </div>
 
@@ -84,7 +100,7 @@ export function RecoverPage() {
         </button>
       </form>
 
-      {jobId ? (
+      {jobId && !busy ? (
         <section className="panel p-5">
           <h2 className="text-sm font-medium text-ink">Recovery complete</h2>
           <p className="mt-2 text-sm text-ink-muted">{segmentCount} segments indexed.</p>

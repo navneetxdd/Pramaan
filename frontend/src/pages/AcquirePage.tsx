@@ -10,6 +10,7 @@ export function AcquirePage() {
   const [actor, setActor] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<EvidenceRecord | null>(null);
+  const [hints, setHints] = useState<Array<{ vendor: string; confidence: number; markers: string[] }>>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +30,7 @@ export function AcquirePage() {
     try {
       const response = await api.acquire(caseId, actor.trim(), file);
       setResult(response.evidence);
+      setHints((response.vendor_hints as Array<{ vendor: string; confidence: number; markers: string[] }>) || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Acquisition failed");
     } finally {
@@ -85,6 +87,16 @@ export function AcquirePage() {
             <div className="flex justify-between gap-4"><dt className="text-ink-faint">Size</dt><dd>{formatBytes(result.size_bytes)}</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-ink-faint">SHA-256</dt><dd className="mono">{shortHash(result.sha256, 12, 12)}</dd></div>
           </dl>
+          {hints.length > 0 ? (
+            <div className="mt-4 rounded-lg border border-hairline bg-raised p-3">
+              <p className="label">Vendor fingerprint</p>
+              <ul className="mt-2 space-y-1 text-sm text-ink-muted">
+                {hints.map((h) => (
+                  <li key={h.vendor}>{h.vendor} · {(h.confidence * 100).toFixed(0)}% · {h.markers.join(", ")}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <Link className="btn-ghost mt-4 inline-flex" to={`/cases/${result.case_id}`}>View case</Link>
         </section>
       ) : null}

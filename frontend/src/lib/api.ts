@@ -97,7 +97,7 @@ export const api = {
   },
 
   recover: (caseId: string, imageId: string, actor: string) =>
-    request<{ job: RecoveryJob; segments: Segment[]; vendors: unknown[] }>(
+    request<{ job: RecoveryJob; status: string; poll_url: string }>(
       `/api/cases/${caseId}/evidence/${imageId}/recover`,
       {
         method: "POST",
@@ -110,9 +110,11 @@ export const api = {
     request<{ job: RecoveryJob; segments: Segment[] }>(`/api/jobs/${jobId}`),
 
   custody: (caseId: string) =>
-    request<{ events: CustodyEvent[] }>(`/api/cases/${caseId}/custody`),
+    request<{ events: CustodyEvent[]; chain: { ok: boolean } }>(`/api/cases/${caseId}/custody`),
 
   report: (caseId: string) => request<Record<string, unknown>>(`/api/cases/${caseId}/report`),
+
+  reportHtmlUrl: (caseId: string) => `/api/cases/${caseId}/report.html`,
 
   verify: (imageId: string) =>
     request<{ ok: boolean; expected?: string; actual?: string }>(`/api/evidence/${imageId}/verify`),

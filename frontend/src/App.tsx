@@ -5,7 +5,7 @@ import { AnalyzePage } from "@/pages/AnalyzePage";
 import { CaseDetailPage } from "@/pages/CaseDetailPage";
 import { CasesPage } from "@/pages/CasesPage";
 import { CustodyPage } from "@/pages/CustodyPage";
-import { RecoverPage } from "@/pages/RecoverPage";
+import { ReportPage } from "@/pages/ReportPage";
 
 export default function App() {
   return (
@@ -18,6 +18,7 @@ export default function App() {
           <Route path="recover" element={<RecoverPage />} />
           <Route path="analyze" element={<AnalyzePage />} />
           <Route path="custody" element={<CustodyPage />} />
+          <Route path="report" element={<ReportPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
