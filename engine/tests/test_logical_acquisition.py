@@ -10,7 +10,8 @@ os.environ["FORENSIC_WORKSTATION_DATA"] = tempfile.mkdtemp(prefix="forensic-logi
 
 from engine.app.core.db import init_db  # noqa: E402
 from engine.app.main import app  # noqa: E402
-from engine.app.services.logical_acquisition import LogicalClip  # noqa: E402
+from engine.app.services.logical_acquisition import LogicalClip, _session  # noqa: E402
+from requests.auth import HTTPDigestAuth  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 
@@ -62,6 +63,10 @@ class LogicalAcquisitionTests(unittest.TestCase):
 
         detail = self.client.get(f"/api/v1/devices/{device['id']}").json()
         self.assertEqual(detail["device"]["acquisition_method"], "logical_network")
+
+    def test_logical_session_uses_digest_auth(self) -> None:
+        session = _session("admin", "secret")
+        self.assertIsInstance(session.auth, HTTPDigestAuth)
 
 
 if __name__ == "__main__":

@@ -31,23 +31,35 @@ def block_outbound_sockets() -> None:
         logger.info("Outbound socket guard disabled (PRAMAAN_ALLOW_LOGICAL_ACQUIRE)")
         return
 
-    allowed = {"127.0.0.1", "localhost", "::1"}
+    allowed = {"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"}
     original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
     original_create_connection = socket.create_connection
 
-    def guarded_connect(self, address):  # type: ignore[no-untyped-def]
+    def _host_allowed(address) -> str:  # type: ignore[no-untyped-def]
         host = address[0] if isinstance(address, tuple) else str(address)
+        return host
+
+    def guarded_connect(self, address):  # type: ignore[no-untyped-def]
+        host = _host_allowed(address)
         if host not in allowed:
             raise OSError(f"Outbound network blocked by policy: {host}")
         return original_connect(self, address)
 
+    def guarded_connect_ex(self, address):  # type: ignore[no-untyped-def]
+        host = _host_allowed(address)
+        if host not in allowed:
+            return 10061
+        return original_connect_ex(self, address)
+
     def guarded_create_connection(address, *args, **kwargs):  # type: ignore[no-untyped-def]
-        host = address[0] if isinstance(address, tuple) else str(address)
+        host = _host_allowed(address)
         if host not in allowed:
             raise OSError(f"Outbound network blocked by policy: {host}")
         return original_create_connection(address, *args, **kwargs)
 
     socket.socket.connect = guarded_connect  # type: ignore[method-assign]
+    socket.socket.connect_ex = guarded_connect_ex  # type: ignore[method-assign]
     socket.create_connection = guarded_create_connection  # type: ignore[method-assign]
     logger.info("Outbound socket guard active (localhost only)")
 

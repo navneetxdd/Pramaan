@@ -48,6 +48,7 @@ class LogicalAcquireRequest(BaseModel):
     actor: str = Field(min_length=1)
     host: str = Field(min_length=1)
     port: int = Field(default=80, ge=1, le=65535)
+    scheme: Literal["http", "https"] = "http"
     user: str = Field(min_length=1)
     password: str = Field(min_length=1)
     vendor: Literal["hikvision", "dahua", "onvif"] = "hikvision"
@@ -139,6 +140,7 @@ async def acquire_logical(case_id: str, body: LogicalAcquireRequest) -> dict:
             body.actor,
             host=body.host.strip(),
             port=body.port,
+            scheme=body.scheme,
             user=body.user,
             password=body.password,
             vendor=body.vendor,

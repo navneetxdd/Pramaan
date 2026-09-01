@@ -197,6 +197,17 @@ export type ImagingDisk = {
   requires_admin?: boolean;
 };
 
+export type DatasetEntry = {
+  id: string;
+  purpose?: string;
+  present: boolean;
+  verified: boolean;
+  size_bytes: number;
+  license?: string;
+  url?: string;
+  path?: string;
+};
+
 export const api = {
   version: () => request<VersionResponse>("/api/v1/version"),
 
@@ -669,4 +680,12 @@ export const api = {
 
   toolVerificationPdfUrl: (runId: string) =>
     resolveApiUrl(`/api/v1/tool-verification/results/${runId}/report.pdf`),
+
+  listDatasets: () => request<DatasetEntry[]>("/api/v1/datasets"),
+
+  fetchDataset: (datasetId: string) =>
+    request<{ job_id: string; dataset_id: string; status: string }>(
+      `/api/v1/datasets/${encodeURIComponent(datasetId)}/fetch`,
+      { method: "POST" },
+    ),
 };

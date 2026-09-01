@@ -21,6 +21,7 @@ from engine.app.api.v1.reports import router as reports_router
 from engine.app.api.v1.settings import router as settings_router
 from engine.app.api.v1.signing import router as signing_router
 from engine.app.api.v1.tool_verification import router as verification_router
+from engine.app.api.v1.datasets import router as datasets_router
 from engine.app.api.v1.version import router as version_router
 from engine.app.core.logging_setup import bootstrap
 
@@ -74,6 +75,7 @@ async def enforce_local_browser_origins(request: Request, call_next):  # type: i
 
 
 app.include_router(version_router, prefix="/api/v1")
+app.include_router(datasets_router, prefix="/api/v1")
 app.include_router(cases_router, prefix="/api/v1")
 app.include_router(acquisition_router, prefix="/api/v1")
 app.include_router(case_transfer_router, prefix="/api/v1")

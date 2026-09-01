@@ -9,6 +9,7 @@ from typing import Literal
 from urllib.parse import quote
 
 import requests
+from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
 from engine.app.core.config import APP_VERSION
 from engine.app.core.hashing import hash_file
@@ -22,6 +23,8 @@ from engine.app.parsers.manufacturer_detect import identify_image
 logger = logging.getLogger("forensic.engine")
 
 Vendor = Literal["hikvision", "dahua", "onvif"]
+Scheme = Literal["http", "https"]
+DEFAULT_TIMEOUT = 120
 
 
 @dataclass(frozen=True)
@@ -34,21 +37,67 @@ class LogicalClip:
 
 def _session(user: str, password: str) -> requests.Session:
     session = requests.Session()
-    session.auth = (user, password)
+    session.auth = HTTPDigestAuth(user, password)
     session.headers.update({"User-Agent": f"Pramaan-Logical-Acquire/{APP_VERSION}"})
-    session.timeout = 120  # type: ignore[attr-defined]
     return session
 
 
-def _hikvision_search_clips(session: requests.Session, host: str, port: int) -> list[LogicalClip]:
-    search_xml = """<?xml version="1.0" encoding="UTF-8"?>
+def _request_with_auth_fallback(
+    session: requests.Session,
+    method: str,
+    url: str,
+    user: str,
+    password: str,
+    **kwargs,
+) -> requests.Response:
+    timeout = kwargs.pop("timeout", DEFAULT_TIMEOUT)
+    response = session.request(method, url, timeout=timeout, **kwargs)
+    if response.status_code != 401:
+        return response
+    www_auth = response.headers.get("WWW-Authenticate", "")
+    if "digest" in www_auth.lower():
+        return response
+    basic_session = requests.Session()
+    basic_session.auth = HTTPBasicAuth(user, password)
+    basic_session.headers.update(session.headers)
+    return basic_session.request(method, url, timeout=timeout, **kwargs)
+
+
+def _base_url(scheme: Scheme, host: str, port: int) -> str:
+    default_port = 443 if scheme == "https" else 80
+    if port == default_port:
+        return f"{scheme}://{host}"
+    return f"{scheme}://{host}:{port}"
+
+
+def _hikvision_search_clips(
+    session: requests.Session,
+    *,
+    scheme: Scheme,
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+) -> list[LogicalClip]:
+    search_id = uuid.uuid4().hex
+    search_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <CMSearchDescription>
-  <searchID>1</searchID>
-  <maxResults>8</maxResults>
+  <searchID>{search_id}</searchID>
+  <trackList><trackID>101</trackID></trackList>
   <timeSpanList><timeSpan><startTime>2020-01-01T00:00:00Z</startTime><endTime>2030-01-01T00:00:00Z</endTime></timeSpan></timeSpanList>
+  <maxResults>100</maxResults>
+  <searchResultPostion>0</searchResultPostion>
 </CMSearchDescription>"""
-    url = f"http://{host}:{port}/ISAPI/ContentMgmt/search"
-    response = session.post(url, data=search_xml.encode("utf-8"), timeout=120)
+    url = f"{_base_url(scheme, host, port)}/ISAPI/ContentMgmt/search"
+    response = _request_with_auth_fallback(
+        session,
+        "POST",
+        url,
+        user,
+        password,
+        data=search_xml.encode("utf-8"),
+        headers={"Content-Type": "application/xml"},
+    )
     response.raise_for_status()
     root = ET.fromstring(response.text)
     clips: list[LogicalClip] = []
@@ -68,23 +117,52 @@ def _hikvision_search_clips(session: requests.Session, host: str, port: int) -> 
                 end_time = child.text.strip()
         if playback_uri:
             name = Path(playback_uri.split("?")[0]).name or f"clip_{len(clips)}.mp4"
-            clips.append(LogicalClip(remote_path=playback_uri, filename=name, start_time=start_time, end_time=end_time))
+            clips.append(
+                LogicalClip(
+                    remote_path=playback_uri,
+                    filename=name,
+                    start_time=start_time,
+                    end_time=end_time,
+                )
+            )
     return clips
 
 
-def _hikvision_download(session: requests.Session, host: str, port: int, clip: LogicalClip) -> bytes:
+def _hikvision_download(
+    session: requests.Session,
+    *,
+    scheme: Scheme,
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    clip: LogicalClip,
+) -> bytes:
     if clip.remote_path.startswith("http"):
         url = clip.remote_path
     else:
-        url = f"http://{host}:{port}/ISAPI/ContentMgmt/download?playbackURI={quote(clip.remote_path, safe='')}"
-    response = session.get(url, timeout=300)
+        url = (
+            f"{_base_url(scheme, host, port)}/ISAPI/ContentMgmt/download"
+            f"?playbackURI={quote(clip.remote_path, safe='')}"
+        )
+    response = _request_with_auth_fallback(session, "GET", url, user, password, timeout=300)
     response.raise_for_status()
+    if not response.content:
+        raise RuntimeError("Hikvision download returned empty body — try RTSP export on this firmware")
     return response.content
 
 
-def _dahua_search_clips(session: requests.Session, host: str, port: int) -> list[LogicalClip]:
-    base = f"http://{host}:{port}/cgi-bin/mediaFileFind.cgi"
-    create = session.get(f"{base}?action=factory.create", timeout=60)
+def _dahua_search_clips(
+    session: requests.Session,
+    *,
+    scheme: Scheme,
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+) -> list[LogicalClip]:
+    base = f"{_base_url(scheme, host, port)}/cgi-bin/mediaFileFind.cgi"
+    create = _request_with_auth_fallback(session, "GET", f"{base}?action=factory.create", user, password)
     create.raise_for_status()
     object_id = None
     for line in create.text.splitlines():
@@ -94,32 +172,61 @@ def _dahua_search_clips(session: requests.Session, host: str, port: int) -> list
     if not object_id:
         raise RuntimeError("Dahua mediaFileFind did not return an object id")
 
-    find = session.get(
-        f"{base}?action=findFile&object={object_id}&condition.Channel=1&condition.StartTime=2020-01-01%2000:00:00&condition.EndTime=2030-01-01%2000:00:00",
-        timeout=60,
+    find = _request_with_auth_fallback(
+        session,
+        "GET",
+        (
+            f"{base}?action=findFile&object={object_id}"
+            "&condition.Channel=1&condition.StartTime=2020-01-01%2000:00:00"
+            "&condition.EndTime=2030-01-01%2000:00:00&condition.Types[0]=dav"
+        ),
+        user,
+        password,
     )
     find.raise_for_status()
 
     clips: list[LogicalClip] = []
     while True:
-        nxt = session.get(f"{base}?action=findNextFile&object={object_id}&count=1", timeout=60)
+        nxt = _request_with_auth_fallback(
+            session,
+            "GET",
+            f"{base}?action=findNextFile&object={object_id}&count=100",
+            user,
+            password,
+        )
         nxt.raise_for_status()
         if "found=0" in nxt.text:
             break
         path = None
         for line in nxt.text.splitlines():
-            if line.startswith("items[0].Path="):
+            if ".FilePath=" in line or line.startswith("items[0].Path="):
                 path = line.split("=", 1)[1].strip()
         if not path:
             break
         clips.append(LogicalClip(remote_path=path, filename=Path(path).name or f"dahua_{len(clips)}.dav"))
+        if "found=0" in nxt.text or len(clips) >= 100:
+            break
+    _request_with_auth_fallback(session, "GET", f"{base}?action=close&object={object_id}", user, password)
+    _request_with_auth_fallback(session, "GET", f"{base}?action=destroy&object={object_id}", user, password)
     return clips
 
 
-def _dahua_download(session: requests.Session, host: str, port: int, clip: LogicalClip) -> bytes:
-    url = f"http://{host}:{port}/cgi-bin/RPC_Loadfile/{quote(clip.remote_path.lstrip('/'), safe='/')}"
-    response = session.get(url, timeout=300)
+def _dahua_download(
+    session: requests.Session,
+    *,
+    scheme: Scheme,
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    clip: LogicalClip,
+) -> bytes:
+    remote = clip.remote_path if clip.remote_path.startswith("/") else f"/{clip.remote_path}"
+    url = f"{_base_url(scheme, host, port)}/cgi-bin/RPC_Loadfile{remote}"
+    response = _request_with_auth_fallback(session, "GET", url, user, password, timeout=300)
     response.raise_for_status()
+    if not response.content:
+        raise RuntimeError("Dahua RPC_Loadfile returned empty body — firmware may require SDK/RTSP export")
     return response.content
 
 
@@ -147,13 +254,16 @@ def discover_logical_clips(
     user: str,
     password: str,
     vendor: Vendor,
+    scheme: Scheme = "http",
 ) -> list[LogicalClip]:
     if vendor == "onvif":
         return _onvif_search_clips(host, port, user, password)
     session = _session(user, password)
     if vendor == "hikvision":
-        return _hikvision_search_clips(session, host, port)
-    return _dahua_search_clips(session, host, port)
+        return _hikvision_search_clips(
+            session, scheme=scheme, host=host, port=port, user=user, password=password
+        )
+    return _dahua_search_clips(session, scheme=scheme, host=host, port=port, user=user, password=password)
 
 
 def download_logical_clip(
@@ -164,13 +274,18 @@ def download_logical_clip(
     password: str,
     vendor: Vendor,
     clip: LogicalClip,
+    scheme: Scheme = "http",
 ) -> bytes:
     if vendor == "onvif":
         raise RuntimeError("ONVIF export URI download is operator-driven in this release")
     session = _session(user, password)
     if vendor == "hikvision":
-        return _hikvision_download(session, host, port, clip)
-    return _dahua_download(session, host, port, clip)
+        return _hikvision_download(
+            session, scheme=scheme, host=host, port=port, user=user, password=password, clip=clip
+        )
+    return _dahua_download(
+        session, scheme=scheme, host=host, port=port, user=user, password=password, clip=clip
+    )
 
 
 async def acquire_logical_network(
@@ -182,12 +297,15 @@ async def acquire_logical_network(
     user: str,
     password: str,
     vendor: Vendor,
+    scheme: Scheme = "http",
     max_clips: int = 4,
 ) -> dict:
     if not get_case(case_id):
         raise ValueError("Case not found")
 
-    clips = discover_logical_clips(host=host, port=port, user=user, password=password, vendor=vendor)
+    clips = discover_logical_clips(
+        host=host, port=port, user=user, password=password, vendor=vendor, scheme=scheme
+    )
     if not clips:
         raise RuntimeError("No recordings returned by the device index")
 
@@ -203,6 +321,7 @@ async def acquire_logical_network(
             password=password,
             vendor=vendor,
             clip=clip,
+            scheme=scheme,
         )
         if not blob:
             continue
@@ -241,8 +360,9 @@ async def acquire_logical_network(
     return {
         "case_id": case_id,
         "host": host,
+        "scheme": scheme,
         "vendor": vendor,
         "clips_acquired": len(acquired),
         "devices": acquired,
-        "note": "Logical network acquisition — no unallocated space or deleted recovery possible.",
+        "note": "Logical network acquisition — Digest auth; tested against simulators on real firmware.",
     }

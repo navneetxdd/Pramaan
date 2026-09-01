@@ -60,6 +60,8 @@ EXPECTED = {
     "PUT /api/v1/settings",
     "GET /api/v1/tool-verification/results",
     "POST /api/v1/tool-verification/run",
+    "GET /api/v1/datasets",
+    "POST /api/v1/datasets/{dataset_id}/fetch",
 }
 
 

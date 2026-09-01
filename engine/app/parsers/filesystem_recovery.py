@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from engine.app.parsers.base import RecoveredSegment
+from engine.app.parsers.image_io import read_image_bytes
 
 logger = logging.getLogger("forensic.engine")
 
@@ -39,6 +40,58 @@ def filesystem_status() -> FilesystemRecoveryStatus:
         )
 
 
+def _open_tsk_image(image_path: Path):
+    import pytsk3
+
+    if image_path.suffix.lower() in {".e01", ".ex01"}:
+        from engine.app.services.e01_reader import open_e01_readonly, pyewf_available
+
+        if pyewf_available():
+            handle = open_e01_readonly(image_path)
+
+            class PyewfImg(pytsk3.Img_Info):
+                def __init__(self, ewf_handle) -> None:
+                    self._h = ewf_handle
+                    super().__init__(url="", type=pytsk3.TSK_IMG_TYPE_EXTERNAL)
+
+                def close(self) -> None:
+                    self._h.close()
+
+                def read(self, offset: int, size: int) -> bytes:
+                    self._h.seek(offset)
+                    return self._h.read(size)
+
+                def get_size(self) -> int:
+                    return int(self._h.get_media_size())
+
+            return PyewfImg(handle)
+
+    return pytsk3.Img_Info(str(image_path))
+
+
+def _filesystem_partition_offset(img, volume) -> int:
+    import pytsk3
+
+    skip_terms = ("unallocated", "primary table", "meta", "gpt", "protective")
+    candidates: list[int] = []
+    block_size = volume.info.block_size
+    for part in volume:
+        if part.len <= 0:
+            continue
+        desc = part.desc.decode("utf-8", "ignore").lower()
+        if any(term in desc for term in skip_terms):
+            continue
+        candidates.append(int(part.start) * block_size)
+
+    for offset in candidates:
+        try:
+            pytsk3.FS_Info(img, offset=offset)
+            return offset
+        except Exception:
+            continue
+    return 0
+
+
 def recover_filesystem(image_path: Path, *, max_entries: int = 256) -> list[RecoveredSegment]:
     status = filesystem_status()
     if not status.available:
@@ -47,19 +100,11 @@ def recover_filesystem(image_path: Path, *, max_entries: int = 256) -> list[Reco
     import pytsk3
 
     segments: list[RecoveredSegment] = []
-    img = pytsk3.Img_Info(str(image_path))
+    img = _open_tsk_image(image_path)
     try:
         try:
             volume = pytsk3.Volume_Info(img)
-            partition_offset = 0
-            for part in volume:
-                if part.len <= 0:
-                    continue
-                desc = part.desc.decode("utf-8", "ignore").lower()
-                if desc == "unallocated":
-                    continue
-                partition_offset = part.start * volume.info.block_size
-                break
+            partition_offset = _filesystem_partition_offset(img, volume)
         except Exception:
             partition_offset = 0
 
@@ -89,20 +134,24 @@ def recover_filesystem(image_path: Path, *, max_entries: int = 256) -> list[Reco
                 continue
 
             try:
-                file_obj = entry.as_file()
+                file_obj = entry.as_file() if hasattr(entry, "as_file") else entry
                 if file_obj is None:
                     continue
                 size = min(int(meta.size or 0), 8 * 1024 * 1024)
-                if size <= 0:
-                    continue
                 offset = int(meta.addr) * fs.info.block_size if meta.addr else 0
-                data = file_obj.read_random(0, min(size, 4096))
+                if size <= 0:
+                    if not is_deleted:
+                        continue
+                    data = b""
+                else:
+                    data = file_obj.read_random(0, min(size, 4096))
             except Exception:
                 continue
 
             magic = _classify_magic(data)
-            if not magic and Path(name).suffix.lower() not in VIDEO_EXTENSIONS:
-                continue
+            if not is_deleted:
+                if not magic and Path(name).suffix.lower() not in VIDEO_EXTENSIONS:
+                    continue
 
             validation = "filesystem_deleted_inode" if is_deleted else "filesystem_unallocated"
             segments.append(
@@ -110,7 +159,7 @@ def recover_filesystem(image_path: Path, *, max_entries: int = 256) -> list[Reco
                     channel=None,
                     vendor="Generic",
                     offset_start=offset,
-                    offset_end=offset + size,
+                    offset_end=offset + max(size, 1),
                     frame_count=1,
                     confidence=0.84 if is_deleted else 0.72,
                     validation=validation,
@@ -128,7 +177,10 @@ def recover_filesystem(image_path: Path, *, max_entries: int = 256) -> list[Reco
 
 def manual_fat_deleted_recovery(image_path: Path) -> list[RecoveredSegment]:
     """Walk a FAT12/16 root directory for 0xE5-deleted entries when pytsk mount fails."""
-    data = image_path.read_bytes()
+    try:
+        data = read_image_bytes(image_path, 0, 512 * 256)
+    except OSError:
+        return []
     if len(data) < 512 or data[510:512] != b"\x55\xAA":
         return []
 

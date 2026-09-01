@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -28,41 +29,45 @@ def _ffmpeg_transcode_stream(source: Path):
     ffmpeg = shutil.which(FFMPEG_BIN)
     if not ffmpeg:
         raise HTTPException(status_code=503, detail="FFmpeg not available for inline playback")
-    playable = EXPORTS_DIR / f"{source.stem}.playable.h264"
-    playable.write_bytes(ensure_playable_h264(source.read_bytes()))
-    cmd = [
-        ffmpeg,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-f",
-        "h264",
-        "-i",
-        str(playable),
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-pix_fmt",
-        "yuv420p",
-        "-f",
-        "mp4",
-        "-movflags",
-        "frag_keyframe+empty_moov",
-        "pipe:1",
-    ]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if not proc.stdout:
-        raise HTTPException(status_code=500, detail="FFmpeg transcode pipe failed")
+    with tempfile.NamedTemporaryFile(suffix=".playable.h264", delete=False) as tmp:
+        playable_path = Path(tmp.name)
     try:
-        while True:
-            chunk = proc.stdout.read(65536)
-            if not chunk:
-                break
-            yield chunk
+        playable_path.write_bytes(ensure_playable_h264(source.read_bytes()))
+        cmd = [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "h264",
+            "-i",
+            str(playable_path),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-f",
+            "mp4",
+            "-movflags",
+            "frag_keyframe+empty_moov",
+            "pipe:1",
+        ]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if not proc.stdout:
+            raise HTTPException(status_code=500, detail="FFmpeg transcode pipe failed")
+        try:
+            while True:
+                chunk = proc.stdout.read(65536)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            proc.stdout.close()
+            proc.wait(timeout=5)
     finally:
-        proc.stdout.close()
-        proc.wait(timeout=5)
+        playable_path.unlink(missing_ok=True)
 
 
 @router.get("/{filename}", response_model=None)

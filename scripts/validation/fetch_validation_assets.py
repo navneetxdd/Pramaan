@@ -95,6 +95,51 @@ REAL_FS_DOWNLOADS: list[dict] = [
     },
 ]
 
+REAL_DVR_SAMPLES: list[dict] = [
+    {
+        "id": "dahua_dav_continuous",
+        "url": "https://raw.githubusercontent.com/glepore70/pronom-research/master/sample_files/d/dav/19.25.00-19.25.50-R-.dav",
+        "dest": "external/dvr/dahua/19.25.00-19.25.50-R-.dav",
+        "purpose": "Real Dahua DHAV container for parser validation",
+        "license": "PRONOM format sample — fetch-only",
+    },
+    {
+        "id": "hikvision_nvr_export",
+        "url": "https://samples.ffmpeg.org/camera-dvr/hikvision/DVR_NVR_IP%20Camera01_20130321162325_20130321162358_576877.mp4",
+        "dest": "external/dvr/hikvision/DVR_NVR_IP_Camera01_20130321162325.mp4",
+        "purpose": "Real Hikvision NVR export sample",
+        "license": "FFmpeg sample archive — fetch-only",
+    },
+]
+
+MEVA_SAMPLE = {
+    "id": "meva_school_g474",
+    "url": "https://mevadata-public-01.s3.amazonaws.com/drops-123-r13/2018-03-05/09/2018-03-05.09-49-37.09-50-00.school.G474.r13.avi",
+    "dest": "external/meva/2018-03-05.09-49-37.school.G474.r13.avi",
+    "purpose": "CC-BY real security-camera footage for analytics validation",
+    "license": "CC-BY-4.0 MEVA",
+}
+
+CFREDS_DOWNLOADS: list[dict] = [
+    {
+        "id": "cfreds_dfr01_fat",
+        "url": "https://cfreds-archive.nist.gov/dfr-images/dfr-01-fat.dd.bz2",
+        "dest": "external/cfreds/dfr-01-fat.dd.bz2",
+        "purpose": "NIST DFR-01 FAT deleted-file corpus",
+        "license": "NIST public domain",
+    },
+]
+
+REFERENCE_DOCS: list[dict] = [
+    {
+        "id": "ffmpeg_dhav_c",
+        "url": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/libavformat/dhav.c",
+        "dest": "reference/dhav.c",
+        "purpose": "Authoritative DHAV parser reference",
+        "license": "LGPL — reference only",
+    },
+]
+
 SOURCE_RECORDS = [
     {
         "id": "cdnet_2014_baseline",
@@ -208,6 +253,7 @@ def main() -> int:
     include_large = "--large" in sys.argv
     include_surveillance = "--surveillance" in sys.argv
     include_real_fs = "--real-fs" in sys.argv
+    include_real_dvr = "--real-dvr" in sys.argv
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     manifest: dict = {
@@ -258,7 +304,7 @@ def main() -> int:
 
     if include_surveillance:
         print("\nFetching licensed surveillance subset (--surveillance)…")
-        for item in SURVEILLANCE_OPTIONAL:
+        for item in SURVEILLANCE_OPTIONAL + [MEVA_SAMPLE]:
             dest = DATA_DIR / item["dest"]
             try:
                 _download(item["url"], dest)
@@ -278,6 +324,57 @@ def main() -> int:
             except (OSError, urllib.error.URLError) as exc:
                 print(f"  FAILED {item['id']}: {exc}")
                 manifest["assets"].append({"id": item["id"], "error": str(exc), "url": item["url"]})
+
+    if include_real_dvr:
+        print("\nFetching real DVR samples (--real-dvr)…")
+        for item in REAL_DVR_SAMPLES:
+            dest = DATA_DIR / item["dest"]
+            try:
+                _download(item["url"], dest)
+                manifest["assets"].append(
+                    {
+                        "id": item["id"],
+                        "path": item["dest"],
+                        "bytes": dest.stat().st_size,
+                        "sha256": _sha256(dest),
+                        "url": item["url"],
+                        "purpose": item["purpose"],
+                        "license": item.get("license"),
+                        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                        "kind": "download_real_dvr",
+                    }
+                )
+            except (OSError, urllib.error.URLError) as exc:
+                print(f"  FAILED {item['id']}: {exc}")
+                manifest["assets"].append({"id": item["id"], "error": str(exc), "url": item["url"]})
+
+    for item in REFERENCE_DOCS:
+        dest = ROOT / "docs" / "reference" / Path(item["dest"]).name
+        try:
+            _download(item["url"], dest)
+        except (OSError, urllib.error.URLError) as exc:
+            print(f"  WARN reference {item['id']}: {exc}")
+
+    if include_real_fs:
+        for item in CFREDS_DOWNLOADS:
+            dest = DATA_DIR / item["dest"]
+            try:
+                _download(item["url"], dest)
+                manifest["assets"].append(
+                    {
+                        "id": item["id"],
+                        "path": item["dest"],
+                        "bytes": dest.stat().st_size if dest.exists() else 0,
+                        "sha256": _sha256(dest) if dest.exists() else None,
+                        "url": item["url"],
+                        "purpose": item["purpose"],
+                        "license": item.get("license"),
+                        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                        "kind": "download_cfreds",
+                    }
+                )
+            except (OSError, urllib.error.URLError) as exc:
+                print(f"  FAILED {item['id']}: {exc}")
 
     if include_real_fs:
         print("\nFetching real filesystem corpora (--real-fs)…")
