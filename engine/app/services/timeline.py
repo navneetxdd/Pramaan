@@ -30,6 +30,8 @@ def build_timeline_for_device(device_id: str) -> dict:
                 "honeywell_expired_index",
                 "filesystem_deleted_inode",
                 "slack_recovered",
+                "unreferenced_carve",
+                "h264_nal_tail",
             },
             "offset_start": start_off,
             "offset_end": end_off,

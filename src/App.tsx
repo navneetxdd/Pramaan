@@ -1,7 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { DesktopShell } from "@/layout/DesktopShell";
 import { CasesPage } from "@/pages/CasesPage";
-import { ToolVerificationPage } from "@/pages/ToolVerificationPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { CaseLayout } from "@/pages/case/CaseLayout";
 import { CaseOverviewPage } from "@/pages/case/CaseOverviewPage";
@@ -34,7 +33,7 @@ export default function App() {
             <Route path="report" element={<CaseReportPage />} />
             <Route path="ai-analytics" element={<CaseAiAnalyticsPage />} />
           </Route>
-          <Route path="/tool-verification" element={<ToolVerificationPage />} />
+          <Route path="/tool-verification" element={<Navigate to="/settings" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/cases" replace />} />
         </Route>

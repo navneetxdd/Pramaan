@@ -1,4 +1,5 @@
 import { getApiBase, resolveApiUrl } from "./apiBase";
+import { ApiError } from "./apiError";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${getApiBase()}${path}`, init);
@@ -10,7 +11,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // keep raw text
     }
-    throw new Error(detail || `Request failed (${response.status})`);
+    throw new ApiError(response.status, detail || `Request failed (${response.status})`);
   }
   if (response.status === 204) {
     return undefined as T;
@@ -22,10 +23,11 @@ export type CaseRecord = {
   id: string;
   name: string;
   examiner_name: string;
-  notes: string | null;
-  status: string;
+  notes?: string;
+  ephemeral?: boolean;
+  status?: string;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 };
 
 export type VendorHit = {
@@ -68,6 +70,10 @@ export type EvidenceRecord = {
   media_type: string;
   acquired_at: string;
   acquisition_status?: string;
+  acquisition_method?: string | null;
+  write_blocker?: string | null;
+  source_type?: string | null;
+  source_identifier?: string | null;
   verification_status?: string;
   identification?: IdentificationReport | null;
   identification_json?: string | null;
@@ -87,6 +93,8 @@ export type RecoveryJob = {
   id: string;
   case_id: string;
   image_id: string;
+  device_id?: string | null;
+  kind?: string | null;
   status: string;
   vendor: string | null;
   adapter: string | null;
@@ -122,6 +130,7 @@ export type Segment = {
   timestamp_source?: string | null;
   timestamp_confidence?: number | null;
   offset_order?: number | null;
+  deleted_candidate?: boolean;
   codec?: string | null;
   parser_name?: string | null;
   parser_version?: string | null;
@@ -150,6 +159,8 @@ type VersionResponse = {
   service: string;
   version: string;
   signing_certificate_fingerprint?: string;
+  route_count?: number;
+  routes_digest?: string;
   capabilities: Capabilities;
 };
 
@@ -198,12 +209,47 @@ export const api = {
 
   listCases: () => request<CaseRecord[]>("/api/v1/cases"),
 
-  createCase: (body: { name: string; examiner_name: string; notes?: string }) =>
+  listCaseRegistry: () =>
+    request<
+      Array<
+        CaseRecord & {
+          evidence_count: number;
+          total_bytes: number;
+          recovery_jobs: number;
+        }
+      >
+    >("/api/v1/cases/registry"),
+
+  createCase: (
+    body: { name: string; examiner_name: string; notes?: string },
+    options?: { ephemeral?: boolean },
+  ) =>
     request<CaseRecord>("/api/v1/cases", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(options?.ephemeral ? { "X-Pramaan-Ephemeral": "1" } : {}),
+      },
       body: JSON.stringify(body),
     }),
+
+  deleteCase: (caseId: string) =>
+    request<void>(`/api/v1/cases/${caseId}`, { method: "DELETE" }),
+
+  deleteEphemeralCases: () =>
+    request<void>("/api/v1/cases/ephemeral", { method: "DELETE" }),
+
+  signingHistory: () =>
+    request<{
+      active_fingerprint: string;
+      entries: Array<{
+        label: string;
+        fingerprint: string;
+        generated_at: string;
+        storage_backend: string;
+        active: boolean;
+      }>;
+    }>("/api/v1/signing/history"),
 
   getCase: (caseId: string) =>
     request<{
@@ -279,6 +325,46 @@ export const api = {
       },
     ),
 
+  listOemImages: () =>
+    request<{ env_var: string; configured: boolean; label: string; images: Array<{ filename: string; size_bytes: number }>; count: number }>(
+      "/api/v1/acquisition/oem-images",
+    ),
+
+  acquireOemImage: (caseId: string, actor: string, filename: string) =>
+    request<{ evidence: EvidenceRecord; identification: IdentificationReport; source: string }>(
+      `/api/v1/cases/${caseId}/devices/acquire/oem`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actor, filename }),
+      },
+    ),
+
+  acquireLogical: (
+    caseId: string,
+    body: {
+      actor: string;
+      host: string;
+      port?: number;
+      user: string;
+      password: string;
+      vendor?: "hikvision" | "dahua";
+      max_clips?: number;
+    },
+  ) =>
+    request<{
+      case_id: string;
+      host: string;
+      vendor: string;
+      clips_acquired: number;
+      devices: Array<{ evidence: EvidenceRecord; remote_path: string; logical_only: boolean }>;
+      note: string;
+    }>(`/api/v1/cases/${caseId}/devices/acquire/logical`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
   calibrateDrift: (deviceId: string, referenceWallUnix: number, referenceDeviceUnix: number) =>
     request<{ device_id: string; drift_offset_seconds: number; note: string }>(
       `/api/v1/devices/${deviceId}/drift-calibration`,
@@ -353,6 +439,27 @@ export const api = {
       ascii: string;
     }>(`/api/v1/devices/${deviceId}/bytes?offset=${offset}&length=${length}`),
 
+  deviceStructure: (deviceId: string) =>
+    request<{
+      device_id: string;
+      size_bytes: number;
+      nodes: Array<{
+        label: string;
+        offset: number;
+        size: number;
+        type: string;
+        meta?: Record<string, unknown>;
+        children: Array<{
+          label: string;
+          offset: number;
+          size: number;
+          type: string;
+          meta?: Record<string, unknown>;
+          children: unknown[];
+        }>;
+      }>;
+    }>(`/api/v1/devices/${deviceId}/structure`),
+
   recover: (_caseId: string, imageId: string, actor: string) =>
     request<{ job: RecoveryJob; status: string; poll_url: string }>(
       `/api/v1/devices/${imageId}/recover`,
@@ -369,9 +476,17 @@ export const api = {
     ),
 
   getJobStatus: (jobId: string) =>
-    request<{ status: string; progress?: number; message?: string | null; error?: string | null }>(
-      `/api/v1/jobs/${jobId}/status`,
-    ),
+    request<{
+      status: string;
+      progress?: number;
+      message?: string | null;
+      error?: string | null;
+      result?: {
+        demo_mode_unavailable?: boolean;
+        message?: string;
+        findings_count?: number;
+      } | null;
+    }>(`/api/v1/jobs/${jobId}/status`),
 
   listDeviceSegments: (deviceId: string) =>
     request<{ device_id: string; segments: Segment[] }>(`/api/v1/devices/${deviceId}/sequences`),
@@ -397,6 +512,16 @@ export const api = {
     request<{ intact: boolean; first_broken_row_id: number | null; tip_hash?: string | null }>(
       `/api/v1/cases/${caseId}/custody-log/status`,
     ),
+
+  cancelJob: (jobId: string) =>
+    request<{ id: string; status: string }>(`/api/v1/jobs/${jobId}/cancel`, { method: "POST" }),
+
+  integrityReport: (caseId: string) =>
+    request<Record<string, unknown>>(`/api/v1/cases/${caseId}/report/integrity`),
+
+  integrityReportHtmlUrl: (caseId: string) => resolveApiUrl(`/api/v1/cases/${caseId}/report/integrity.html`),
+
+  integrityReportPdfUrl: (caseId: string) => resolveApiUrl(`/api/v1/cases/${caseId}/report/integrity.pdf`),
 
   report: (caseId: string) => request<Record<string, unknown>>(`/api/v1/cases/${caseId}/report`),
 
@@ -441,6 +566,10 @@ export const api = {
       bad_sector_zero_fill: boolean;
       e01_input: boolean;
       physical_disks: boolean;
+      logical_network: boolean;
+      oem_drop_zone_env: string;
+      oem_drop_zone_label: string;
+      oem_drop_zone_configured: boolean;
     }>("/api/v1/acquisition/capabilities"),
 
   listToolVerificationResults: () =>

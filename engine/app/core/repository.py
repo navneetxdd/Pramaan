@@ -12,13 +12,13 @@ from engine.app.core.db import append_custody, get_db, utc_now, verify_custody_c
 from engine.app.core.hashing import hash_file
 
 
-def create_case(name: str, examiner_name: str, notes: str | None = None) -> dict:
+def create_case(name: str, examiner_name: str, notes: str | None = None, *, ephemeral: bool = False) -> dict:
     case_id = uuid.uuid4().hex
     created_at = utc_now()
     with get_db() as conn:
         conn.execute(
-            "INSERT INTO cases (id, name, examiner_name, created_at, notes) VALUES (?, ?, ?, ?, ?)",
-            (case_id, name.strip(), examiner_name.strip(), created_at, notes),
+            "INSERT INTO cases (id, name, examiner_name, created_at, notes, ephemeral) VALUES (?, ?, ?, ?, ?, ?)",
+            (case_id, name.strip(), examiner_name.strip(), created_at, notes, 1 if ephemeral else 0),
         )
         append_custody(
             conn,
@@ -48,12 +48,37 @@ def delete_case(case_id: str) -> bool:
         row = conn.execute("SELECT id FROM cases WHERE id = ?", (case_id,)).fetchone()
         if not row:
             return False
+        conn.execute("DELETE FROM jobs WHERE case_id = ?", (case_id,))
+        conn.execute(
+            "DELETE FROM custody_log WHERE target_type = 'case' AND target_id = ?",
+            (case_id,),
+        )
         conn.execute("DELETE FROM cases WHERE id = ?", (case_id,))
     case_dir = (CASES_DIR / case_id).resolve()
     cases_root = CASES_DIR.resolve()
     if case_dir.parent == cases_root and case_dir.exists():
         shutil.rmtree(case_dir)
     return True
+
+
+def delete_ephemeral_cases() -> int:
+    with get_db() as conn:
+        rows = conn.execute("SELECT id FROM cases WHERE ephemeral = 1").fetchall()
+    removed = 0
+    for row in rows:
+        if delete_case(str(row["id"])):
+            removed += 1
+    return removed
+
+
+def delete_cases_matching(patterns: list[Any]) -> int:
+    removed = 0
+    for case in list_cases():
+        name = str(case.get("name") or "")
+        if any(pattern.search(name) for pattern in patterns):
+            if delete_case(case["id"]):
+                removed += 1
+    return removed
 
 
 def get_device(device_id: str) -> dict | None:
@@ -124,6 +149,10 @@ def register_device_from_path(
     media_label: str | None = None,
     identification: dict | None = None,
     acquisition_status: str = "complete",
+    acquisition_method: str = "logical_file_acquisition",
+    write_blocker: str = "source_opened_read_only",
+    source_type: str = "file",
+    source_identifier: str | None = None,
 ) -> dict:
     device_id = uuid.uuid4().hex
     md5, sha256 = hash_file(image_path)
@@ -160,14 +189,14 @@ def register_device_from_path(
                 sha256,
                 acquisition_status,
                 now,
-                "file",
-                str(image_path),
+                source_type,
+                source_identifier or str(image_path),
                 image_path.stat().st_size,
                 now,
                 now,
                 APP_VERSION,
-                "logical_file_acquisition",
-                "source_opened_read_only",
+                acquisition_method,
+                write_blocker,
                 actor,
                 None,
                 "verified",
@@ -780,8 +809,8 @@ def import_case_bundle_rows(
             conn.execute(
                 """
                 INSERT INTO custody_log (
-                  timestamp_utc, actor, action, target_type, target_id, prev_row_hash, this_row_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                  timestamp_utc, actor, action, target_type, target_id, prev_row_hash, this_row_hash, evidence_digest
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entry["timestamp_utc"],
@@ -791,6 +820,7 @@ def import_case_bundle_rows(
                     entry["target_id"],
                     entry["prev_row_hash"],
                     entry["this_row_hash"],
+                    entry.get("evidence_digest"),
                 ),
             )
 

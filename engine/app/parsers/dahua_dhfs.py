@@ -46,6 +46,8 @@ class DahuaDhavAdapter:
                         if gap >= UNREFERENCED_GAP_BYTES:
                             validation = "unreferenced_carve"
                         recorder_ts = parsed.recorder_iso
+                        ts_source = parsed.timestamp_source if recorder_ts else "unavailable"
+                        ts_confidence = 0.8 if ts_source == "dhav_ext_0x72" else (0.85 if recorder_ts else None)
                         segments.append(
                             RecoveredSegment(
                                 channel=parsed.channel,
@@ -59,8 +61,8 @@ class DahuaDhavAdapter:
                                 codec="h264",
                                 recorder_start_ts=recorder_ts,
                                 recorder_end_ts=recorder_ts,
-                                timestamp_source="recorder_header" if recorder_ts else "unavailable",
-                                timestamp_confidence=0.85 if recorder_ts else None,
+                                timestamp_source=ts_source,
+                                timestamp_confidence=ts_confidence,
                                 parser_name=self.name,
                                 parser_version=self.version,
                                 signature_evidence={

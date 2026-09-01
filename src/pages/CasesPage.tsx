@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { FolderOpen, Plus, Upload } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { api, type CaseRecord } from "@/lib/api";
-import { pushRecentCase, mostRecentCaseId } from "@/lib/recentCases";
-import { DashboardStat } from "@/components/visily/DashboardStat";
+import { api } from "@/lib/api";
+import { classifyImportFile, IMPORT_FILE_ACCEPT } from "@/lib/importFormats";
+import { pushRecentCase, mostRecentCaseId, pruneRecentCases } from "@/lib/recentCases";
+import { CaseRegistryCard, type CaseRegistryRow } from "@/components/case/CaseRegistryCard";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -25,18 +26,20 @@ async function loadEngineVersion(attempts = 3) {
 }
 
 export function CasesPage() {
-  const [cases, setCases] = useState<CaseRecord[]>([]);
+  const [cases, setCases] = useState<CaseRegistryRow[]>([]);
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [engineOnline, setEngineOnline] = useState<boolean | null>(null);
-  const [engineVersion, setEngineVersion] = useState("—");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [name, setName] = useState("");
-  const [examiner, setExaminer] = useState("");
+  const [handler, setHandler] = useState("");
   const [notes, setNotes] = useState("");
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importActor, setImportActor] = useState("");
+  const [importHandler, setImportHandler] = useState("");
+  const [importCaseTitle, setImportCaseTitle] = useState("");
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -50,21 +53,18 @@ export function CasesPage() {
   async function load() {
     setLoading(true);
     setEngineOnline(null);
-    const [caseResult, versionResult] = await Promise.allSettled([api.listCases(), loadEngineVersion()]);
+    const [caseResult, versionResult] = await Promise.allSettled([api.listCaseRegistry(), loadEngineVersion()]);
 
     if (caseResult.status === "fulfilled") {
       setCases(caseResult.value);
+      pruneRecentCases(caseResult.value.map((c) => c.id));
     } else {
       setCases([]);
-      toast.error(caseResult.reason instanceof Error ? caseResult.reason.message : "Failed to load cases", {
-        duration: Infinity,
-      });
+      toast.error(caseResult.reason instanceof Error ? caseResult.reason.message : "Failed to load cases");
     }
 
     if (versionResult.status === "fulfilled") {
-      const version = versionResult.value;
-      setEngineOnline(version.status === "ok");
-      setEngineVersion(version.version);
+      setEngineOnline(versionResult.value.status === "ok");
     } else {
       setEngineOnline(false);
     }
@@ -84,74 +84,103 @@ export function CasesPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !examiner.trim()) return;
+    if (!name.trim() || !handler.trim()) return;
     setCreating(true);
     try {
       const created = await api.createCase({
         name: name.trim(),
-        examiner_name: examiner.trim(),
+        examiner_name: handler.trim(),
         notes: notes.trim() || undefined,
       });
       pushRecentCase(created.id);
       toast.success("Case opened");
       setDialogOpen(false);
       setName("");
-      setExaminer("");
+      setHandler("");
       setNotes("");
-      navigate(`/cases/${created.id}`);
+      navigate(`/cases/${created.id}/acquire`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create case", { duration: Infinity });
+      toast.error(err instanceof Error ? err.message : "Failed to create case");
     } finally {
       setCreating(false);
     }
   }
 
-  async function handleImport(file: File | null) {
-    if (!file || !importActor.trim()) {
-      toast.error("Select a bundle and enter examiner name");
+  function resetImportDialog() {
+    setImportHandler("");
+    setImportCaseTitle("");
+    setImportFile(null);
+  }
+
+  async function handleImportSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!importFile) {
+      toast.error("Select a file to import");
       return;
     }
+    if (!importHandler.trim()) {
+      toast.error("Enter the handler name");
+      return;
+    }
+
+    const kind = classifyImportFile(importFile);
+    if (kind === "unknown") {
+      toast.error("Unsupported file — use E01, DD, IMG, RAW, BIN, or a signed case export (.zip)");
+      return;
+    }
+
+    if (kind === "evidence" && !importCaseTitle.trim()) {
+      toast.error("Enter a case title for this evidence");
+      return;
+    }
+
     setImporting(true);
     try {
-      const result = await api.importCase(importActor.trim(), file);
-      toast.success(`Imported — ${result.files_verified} files verified`);
-      await load();
-      navigate(`/cases/${result.case_id}`);
+      if (kind === "evidence") {
+        const created = await api.createCase({
+          name: importCaseTitle.trim(),
+          examiner_name: importHandler.trim(),
+        });
+        await api.acquire(created.id, importHandler.trim(), importFile);
+        pushRecentCase(created.id);
+        toast.success("Evidence ingested — parsers will identify the source format");
+        setImportDialogOpen(false);
+        resetImportDialog();
+        await load();
+        navigate(`/cases/${created.id}/acquire`);
+      } else {
+        const result = await api.importCase(importHandler.trim(), importFile);
+        toast.success(`Case restored — ${result.files_verified} files verified`);
+        setImportDialogOpen(false);
+        resetImportDialog();
+        await load();
+        navigate(`/cases/${result.case_id}`);
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Import failed", { duration: Infinity });
+      toast.error(err instanceof Error ? err.message : "Import failed");
     } finally {
       setImporting(false);
     }
   }
 
-  const resumeCase = filtered.find((c) => c.id === mostRecentCaseId()) ?? filtered[0];
+  const importKind = importFile ? classifyImportFile(importFile) : null;
+  const recentId = mostRecentCaseId();
+  const resumeCase = recentId ? filtered.find((c) => c.id === recentId) : undefined;
 
   return (
-    <div className="mx-auto flex max-w-[1200px] flex-col gap-4">
-      {resumeCase ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--accent-500)]/30 bg-[var(--accent-soft)] px-4 py-3">
-          <div>
-            <p className="text-[13px] font-semibold text-[var(--text-primary)]">Continue investigation</p>
-            <p className="text-[12px] text-[var(--text-secondary)]">
-              {resumeCase.name} · {resumeCase.examiner_name}
-            </p>
-          </div>
-          <Button asChild>
-            <Link to={`/cases/${resumeCase.id}`} onClick={() => pushRecentCase(resumeCase.id)}>
-              Open case workspace
-            </Link>
-          </Button>
-        </div>
-      ) : null}
-
-      <div className="visily-catalog-toolbar">
+    <div className="mx-auto flex max-w-[1100px] flex-col gap-5">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-semibold text-[var(--text-primary)]">Cases</h1>
-          <p className="mt-0.5 text-[13px] text-[var(--text-secondary)]">Open an investigation or import a signed `.pramaan.zip` bundle.</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--accent-600)]">Investigations</p>
+          <h1 className="mt-1 text-[26px] font-semibold text-[var(--text-primary)]">Case registry</h1>
+          <p className="mt-1 max-w-xl text-[13px] text-[var(--text-secondary)]">
+            Create or open a case before acquisition, recovery, or reporting. Workflow steps unlock in the sidebar once a
+            case is active.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Input className="h-9 w-48" placeholder="Filter cases…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          <Button variant="secondary" disabled={importing} onClick={() => document.getElementById("case-import-input")?.click()}>
+          <Input className="h-9 w-52" placeholder="Search cases…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <Button variant="secondary" disabled={importing} onClick={() => setImportDialogOpen(true)}>
             <Upload className="h-4 w-4" />
             Import
           </Button>
@@ -159,92 +188,184 @@ export function CasesPage() {
             <Plus className="h-4 w-4" />
             New case
           </Button>
-          <input
-            id="case-import-input"
-            type="file"
-            accept=".zip,.pramaan.zip"
-            className="hidden"
-            onChange={(e) => void handleImport(e.target.files?.[0] ?? null)}
-          />
         </div>
-      </div>
+      </header>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <DashboardStat label="Open cases" value={String(filtered.length)} icon={FolderOpen} tone="info" />
-        <DashboardStat
-          label="Engine"
-          value={engineOnline === null ? "Connecting…" : engineOnline ? "Connected" : "Offline"}
-          hint={
-            engineOnline === null
-              ? "Checking local forensic engine"
-              : engineOnline
-                ? `v${engineVersion} · 127.0.0.1:8787`
-                : "Launch Pramaan Desktop or start the local engine"
-          }
-          icon={FolderOpen}
-          tone={engineOnline === null ? "info" : engineOnline ? "success" : "danger"}
-        />
-      </div>
-
-      <section className="visily-card min-h-[360px]">
-        <div className="visily-card-header">
-          <span className="visily-card-title">Case registry</span>
-          <span className="mono text-[10px] text-[var(--text-tertiary)]">{filtered.length} records</span>
+      {engineOnline === false ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-950">
+          Engine not running. Start the desktop app or run <code className="mono">python run.py</code> in this folder.
         </div>
+      ) : null}
+
+      {resumeCase ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--accent-500)]/25 bg-[var(--accent-soft)] px-4 py-3">
+          <div>
+            <p className="text-[12px] font-semibold text-[var(--text-primary)]">Continue where you left off</p>
+            <p className="text-[12px] text-[var(--text-secondary)]">
+              {resumeCase.name} · handler {resumeCase.examiner_name}
+            </p>
+          </div>
+          <Button asChild>
+            <Link to={`/cases/${resumeCase.id}`} onClick={() => pushRecentCase(resumeCase.id)}>
+              Open workspace
+            </Link>
+          </Button>
+        </div>
+      ) : null}
+
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
+            <FolderOpen className="h-4 w-4" />
+            {filtered.length} active case{filtered.length === 1 ? "" : "s"}
+          </h2>
+        </div>
+
         {loading ? (
-          <p className="p-6 text-[13px] text-[var(--text-tertiary)]">Loading cases…</p>
+          <p className="text-[13px] text-[var(--text-tertiary)]">Loading registry…</p>
         ) : filtered.length === 0 ? (
-          <p className="p-10 text-center text-[13px] text-[var(--text-secondary)]">No cases. Create one to begin acquisition.</p>
+          <div className="rounded-lg border border-dashed border-[var(--border-subtle)] bg-white px-8 py-14 text-center">
+            <p className="text-[15px] font-medium text-[var(--text-primary)]">No cases yet</p>
+            <p className="mt-2 text-[13px] text-[var(--text-secondary)]">
+              Create a case or import a disk image (E01, DD, IMG, …). The engine normalizes vendor formats on ingest.
+            </p>
+            <Button className="mt-4" onClick={() => setDialogOpen(true)}>
+              Create first case
+            </Button>
+          </div>
         ) : (
-          <div className="divide-y" style={{ borderColor: "var(--border-subtle)" }}>
+          <div className="grid gap-3 md:grid-cols-2">
             {filtered.map((item) => (
-              <Link
-                key={item.id}
-                to={`/cases/${item.id}`}
-                onClick={() => pushRecentCase(item.id)}
-                className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-[var(--surface-3)]"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-[14px] font-semibold text-[var(--text-primary)]">{item.name}</p>
-                  <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">{item.examiner_name}</p>
-                  {item.notes ? <p className="mono mt-1 text-[10px] text-[var(--text-tertiary)]">{item.notes}</p> : null}
-                </div>
-                <p className="mono shrink-0 text-[10px] text-[var(--text-tertiary)]">
-                  {new Date(item.created_at).toLocaleDateString()}
-                </p>
-              </Link>
+              <CaseRegistryCard key={item.id} item={item} />
             ))}
           </div>
         )}
       </section>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <form onSubmit={handleCreate}>
             <DialogHeader>
               <DialogTitle>New case</DialogTitle>
             </DialogHeader>
-            <div className="space-y-3 py-2">
-              <div>
-                <label className="label" htmlFor="case-name">Case name</label>
-                <Input id="case-name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <p className="text-[13px] text-[var(--text-secondary)]">
+              Opens a new investigation workspace. You will add evidence on the next screen.
+            </p>
+            <div className="mt-4 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-[var(--text-primary)]" htmlFor="case-name">
+                  Case title
+                </label>
+                <Input
+                  id="case-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Site or incident name"
+                  required
+                  autoFocus
+                />
               </div>
-              <div>
-                <label className="label" htmlFor="examiner">Lead examiner</label>
-                <Input id="examiner" value={examiner} onChange={(e) => setExaminer(e.target.value)} required />
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-[var(--text-primary)]" htmlFor="handler">
+                  Handler
+                </label>
+                <Input
+                  id="handler"
+                  value={handler}
+                  onChange={(e) => setHandler(e.target.value)}
+                  placeholder="Examiner name"
+                  required
+                />
               </div>
-              <div>
-                <label className="label" htmlFor="notes">Reference / notes</label>
-                <Input id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="FIR / memo" />
-              </div>
-              <div>
-                <label className="label" htmlFor="import-examiner">Import examiner (for bundle import)</label>
-                <Input id="import-examiner" value={importActor} onChange={(e) => setImportActor(e.target.value)} placeholder="Required for .pramaan.zip import" />
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-[var(--text-primary)]" htmlFor="notes">
+                  Reference (optional)
+                </label>
+                <Input id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="FIR, memo, site ID" />
               </div>
             </div>
-            <DialogFooter>
-              <Button type="button" variant="secondary" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={creating}>{creating ? "Opening…" : "Open case"}</Button>
+            <DialogFooter className="mt-6">
+              <Button type="button" variant="secondary" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={creating}>
+                {creating ? "Creating…" : "Create case"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={importDialogOpen}
+        onOpenChange={(open) => {
+          setImportDialogOpen(open);
+          if (!open) resetImportDialog();
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <form onSubmit={(e) => void handleImportSubmit(e)}>
+            <DialogHeader>
+              <DialogTitle>Import</DialogTitle>
+            </DialogHeader>
+            <p className="text-[13px] text-[var(--text-secondary)]">
+              Disk images (E01, DD, IMG, RAW, BIN) are normalized by the engine on ingest. A <span className="mono text-[12px]">.zip</span>{" "}
+              is only for signed case exports from another Pramaan workstation — not arbitrary archives.
+            </p>
+            <div className="mt-4 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-[var(--text-primary)]" htmlFor="import-handler">
+                  Handler
+                </label>
+                <Input
+                  id="import-handler"
+                  value={importHandler}
+                  onChange={(e) => setImportHandler(e.target.value)}
+                  placeholder="Examiner name"
+                  required
+                />
+              </div>
+              {importKind !== "case_export" ? (
+                <div className="space-y-1.5">
+                  <label className="text-[12px] font-medium text-[var(--text-primary)]" htmlFor="import-case-title">
+                    Case title
+                  </label>
+                  <Input
+                    id="import-case-title"
+                    value={importCaseTitle}
+                    onChange={(e) => setImportCaseTitle(e.target.value)}
+                    placeholder="Required for disk images"
+                    required={importKind === "evidence" || importKind === null}
+                  />
+                </div>
+              ) : null}
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-[var(--text-primary)]" htmlFor="import-file">
+                  File
+                </label>
+                <Input
+                  id="import-file"
+                  type="file"
+                  accept={IMPORT_FILE_ACCEPT}
+                  disabled={importing}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setImportFile(file);
+                    if (file && classifyImportFile(file) === "evidence" && !importCaseTitle.trim()) {
+                      const stem = file.name.replace(/\.[^.]+$/, "");
+                      setImportCaseTitle(stem);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <DialogFooter className="mt-6">
+              <Button type="button" variant="secondary" onClick={() => setImportDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={importing || !importFile}>
+                {importing ? "Importing…" : "Import"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

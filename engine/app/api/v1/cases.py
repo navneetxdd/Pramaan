@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 import uuid
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from engine.app.api.v1.models import (
     Case,
@@ -16,7 +15,10 @@ from engine.app.api.v1.models import (
 from engine.app.core.db import append_custody, get_db, utc_now, verify_custody_chain
 from engine.app.core.repository import (
     custody_status,
+    delete_case as repo_delete_case,
+    delete_ephemeral_cases as repo_delete_ephemeral_cases,
     get_case as repo_get_case,
+    get_device as repo_get_device,
     list_custody_for_case,
     list_devices,
     list_jobs_for_case,
@@ -34,6 +36,7 @@ def _case_from_row(row: dict) -> Case:
         examiner_name=row["examiner_name"],
         created_at=row["created_at"],
         notes=row["notes"],
+        ephemeral=bool(row.get("ephemeral")),
     )
 
 
@@ -58,16 +61,17 @@ def _device_from_row(row: dict) -> Device:
 
 
 @router.post("", response_model=Case, status_code=201)
-def create_case(body: CaseCreate) -> Case:
+def create_case(body: CaseCreate, request: Request) -> Case:
     case_id = uuid.uuid4().hex
     created_at = utc_now()
+    ephemeral = request.headers.get("X-Pramaan-Ephemeral", "").strip() == "1"
     with get_db() as conn:
         conn.execute(
             """
-            INSERT INTO cases (id, name, examiner_name, created_at, notes)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO cases (id, name, examiner_name, created_at, notes, ephemeral)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (case_id, body.name.strip(), body.examiner_name.strip(), created_at, body.notes),
+            (case_id, body.name.strip(), body.examiner_name.strip(), created_at, body.notes, 1 if ephemeral else 0),
         )
         append_custody(
             conn,
@@ -81,10 +85,76 @@ def create_case(body: CaseCreate) -> Case:
 
 
 @router.get("", response_model=list[Case])
-def list_cases() -> list[Case]:
+def list_cases(include_automated: bool = False) -> list[Case]:
     with get_db() as conn:
         rows = conn.execute("SELECT * FROM cases ORDER BY created_at DESC").fetchall()
-    return [_case_from_row(dict(row)) for row in rows]
+    cases = [_case_from_row(dict(row)) for row in rows]
+    if include_automated:
+        return cases
+    return [case for case in cases if not case.ephemeral and not _is_automated_case_name(case.name)]
+
+
+def _is_automated_case_name(name: str) -> bool:
+    import re
+
+    patterns = (
+        r"^M\d[\s_]",
+        r"^Smoke[\s_]",
+        r"^Custody gate$",
+        r"^Tool Verification$",
+        r"^verify_",
+        r"^Public media validation$",
+        r"^CAVIAR analytics$",
+        r"^E01 OEM$",
+        r"^M5 Export$",
+        r"^dbg$",
+    )
+    stripped = name.strip()
+    return any(re.match(pattern, stripped, re.I) for pattern in patterns)
+
+
+class CaseRegistryEntry(Case):
+    evidence_count: int = 0
+    total_bytes: int = 0
+    recovery_jobs: int = 0
+
+
+@router.get("/registry", response_model=list[CaseRegistryEntry])
+def list_case_registry() -> list[CaseRegistryEntry]:
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM cases ORDER BY created_at DESC").fetchall()
+        out: list[CaseRegistryEntry] = []
+        for row in rows:
+            base = _case_from_row(dict(row))
+            if base.ephemeral or _is_automated_case_name(base.name):
+                continue
+            stats = conn.execute(
+                """
+                SELECT COUNT(*) AS evidence_count,
+                       COALESCE(SUM(source_size_bytes), 0) AS total_bytes
+                FROM devices WHERE case_id = ?
+                """,
+                (base.id,),
+            ).fetchone()
+            jobs = conn.execute(
+                "SELECT COUNT(*) AS n FROM jobs WHERE case_id = ? AND kind = 'recovery'",
+                (base.id,),
+            ).fetchone()
+            out.append(
+                CaseRegistryEntry(
+                    **base.model_dump(),
+                    evidence_count=int(stats["evidence_count"] or 0),
+                    total_bytes=int(stats["total_bytes"] or 0),
+                    recovery_jobs=int(jobs["n"] or 0),
+                )
+            )
+    return out
+
+
+@router.delete("/ephemeral", status_code=204, response_class=Response)
+def delete_ephemeral_cases() -> Response:
+    repo_delete_ephemeral_cases()
+    return Response(status_code=204)
 
 
 @router.get("/{case_id}", response_model=CaseDetail)
@@ -103,11 +173,8 @@ def get_case(case_id: str) -> CaseDetail:
 
 @router.delete("/{case_id}", status_code=204, response_class=Response)
 def delete_case(case_id: str) -> Response:
-    with get_db() as conn:
-        row = conn.execute("SELECT id FROM cases WHERE id = ?", (case_id,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Case not found")
-        conn.execute("DELETE FROM cases WHERE id = ?", (case_id,))
+    if not repo_delete_case(case_id):
+        raise HTTPException(status_code=404, detail="Case not found")
     return Response(status_code=204)
 
 
@@ -153,7 +220,9 @@ def get_case_workspace(case_id: str) -> dict:
             {
                 "id": job["id"],
                 "case_id": case_id,
-                "image_id": (job.get("result") or {}).get("device_id", ""),
+                "image_id": job.get("device_id") or (job.get("result") or {}).get("device_id", ""),
+                "device_id": job.get("device_id"),
+                "kind": job.get("kind"),
                 "status": job["status"],
                 "vendor": (job.get("result") or {}).get("vendor"),
                 "adapter": (job.get("result") or {}).get("adapter"),
@@ -186,6 +255,7 @@ def get_case_workspace(case_id: str) -> dict:
             "status": case.get("status", "open"),
             "created_at": case["created_at"],
             "updated_at": case.get("updated_at", case["created_at"]),
+            "ephemeral": bool(case.get("ephemeral")),
         },
         "evidence": evidence,
         "jobs": jobs,
@@ -198,6 +268,9 @@ def get_case_workspace(case_id: str) -> dict:
 def case_device_timeline(case_id: str, device_id: str) -> dict:
     if not repo_get_case(case_id):
         raise HTTPException(status_code=404, detail="Case not found")
+    device = repo_get_device(device_id)
+    if not device or device.get("case_id") != case_id:
+        raise HTTPException(status_code=404, detail="Device not found in this case")
     try:
         return build_timeline_for_device(device_id)
     except ValueError as exc:

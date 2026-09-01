@@ -39,6 +39,7 @@ class HikvisionAdapter:
                     if parsed and parsed.checks["size_consistency"]:
                         abs_start = offset_base - len(carry) + hit
                         abs_end = abs_start + parsed.block_len
+                        recorder_ts = parsed.recorder_iso
                         segments.append(
                             RecoveredSegment(
                                 channel=parsed.channel,
@@ -50,6 +51,10 @@ class HikvisionAdapter:
                                 validation=parsed.validation_level,
                                 raw_bytes=window[hit : hit + parsed.block_len],
                                 codec="h264",
+                                recorder_start_ts=recorder_ts,
+                                recorder_end_ts=recorder_ts,
+                                timestamp_source="hkvi_block_epoch" if recorder_ts else "unavailable",
+                                timestamp_confidence=0.8 if recorder_ts else None,
                                 parser_name=self.name,
                                 parser_version=self.version,
                                 signature_evidence={
@@ -87,6 +92,10 @@ def _merge(segments: list[RecoveredSegment]) -> list[RecoveredSegment]:
                 validation=prev.validation if prev.validation == seg.validation else "mixed",
                 raw_bytes=b"",
                 codec=prev.codec,
+                recorder_start_ts=prev.recorder_start_ts,
+                recorder_end_ts=seg.recorder_end_ts or prev.recorder_end_ts,
+                timestamp_source=prev.timestamp_source,
+                timestamp_confidence=prev.timestamp_confidence,
                 parser_name=prev.parser_name,
                 parser_version=prev.parser_version,
                 signature_evidence={

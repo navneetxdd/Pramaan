@@ -12,6 +12,7 @@ HIKVISION_OEM_MARKERS = [
     b"HIKV\x00",
 ]
 
+_LAB_EPOCH_UNIX = 1_700_000_000
 _nal_source = NalPayloadSource()
 
 
@@ -32,18 +33,28 @@ def build_hikvision_lab_specimen() -> bytes:
         b"WFS0.4\x00" + b"\x00" * 506,
     ]
 
+    frame_index = 0
     for channel in (1, 1, 2, 1):
         payload = _hkvi_payload(176)
-        chunks.append(seal_hkvi_block(payload, channel=channel))
+        chunks.append(
+            seal_hkvi_block(payload, channel=channel, recorder_epoch=_LAB_EPOCH_UNIX + frame_index * 60)
+        )
+        frame_index += 1
         chunks.append(b"\xff" * 48)
 
     chunks.append(b"\x00" * 16384)
-    chunks.append(seal_hkvi_block(_hkvi_payload(192), channel=2))
+    chunks.append(
+        seal_hkvi_block(_hkvi_payload(192), channel=2, recorder_epoch=_LAB_EPOCH_UNIX + frame_index * 60)
+    )
+    frame_index += 1
     chunks.append(b"\x00" * 8192)
 
     for channel in (3, 3, 1):
         payload = _hkvi_payload(160)
-        chunks.append(seal_hkvi_block(payload, channel=channel))
+        chunks.append(
+            seal_hkvi_block(payload, channel=channel, recorder_epoch=_LAB_EPOCH_UNIX + frame_index * 60)
+        )
+        frame_index += 1
         chunks.append(b"\xee" * 32)
 
     return b"".join(chunks)

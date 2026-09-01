@@ -4,7 +4,6 @@ import { AppHeader } from "./AppHeader";
 import { ModuleSidebar } from "./ModuleSidebar";
 import { StatusBar } from "./StatusBar";
 import { TitleBar } from "./TitleBar";
-import { CommandPalette } from "@/components/CommandPalette";
 import { FfmpegWarningBanner } from "@/components/FfmpegWarningBanner";
 
 export function DesktopShell() {
@@ -14,7 +13,6 @@ export function DesktopShell() {
     <div className="flex h-[100dvh] flex-col overflow-hidden" style={{ background: "var(--surface-0)" }}>
       <TitleBar />
       <FfmpegWarningBanner />
-      <CommandPalette />
 
       <div className="flex min-h-0 flex-1">
         <ModuleSidebar />

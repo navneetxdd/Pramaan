@@ -31,7 +31,7 @@ export function CommandPalette() {
 
   useEffect(() => {
     if (!open) return;
-    void api.listCases().then(setCases).catch(() => setCases([]));
+    void api.listCaseRegistry().then(setCases).catch(() => setCases([]));
   }, [open]);
 
   const recentIds = loadRecentCaseIds();
@@ -65,12 +65,6 @@ export function CommandPalette() {
                 onSelect={() => go("/cases?new=1")}
               >
                 New case
-              </Command.Item>
-              <Command.Item
-                className="cursor-pointer rounded px-2 py-2 text-[13px] aria-selected:bg-[var(--surface-3)]"
-                onSelect={() => go("/tool-verification")}
-              >
-                Run tool verification
               </Command.Item>
               <Command.Item
                 className="cursor-pointer rounded px-2 py-2 text-[13px] aria-selected:bg-[var(--surface-3)]"

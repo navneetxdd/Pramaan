@@ -1,30 +1,51 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useCaseContext } from "@/context/CaseContext";
-import { api, type Segment } from "@/lib/api";
+import { api, type Segment, type TimelineChannel } from "@/lib/api";
 import { TimelineView } from "@/components/TimelineView";
-import { VideoPreview } from "@/components/VideoPreview";
+import { PlaybackDeck } from "@/components/PlaybackDeck";
+import { VirtualTable } from "@/components/ui/virtual-table";
 import { Button } from "@/components/ui/button";
 import { resolveApiUrl } from "@/lib/apiBase";
 import { formatBytes, formatOffset } from "@/lib/utils";
 import { formatTimestampSource } from "@/lib/integrity";
+
+function parseSegmentStart(seg: Segment, useTime: boolean): number {
+  if (useTime) {
+    const raw = seg.corrected_start_ts ?? seg.recorder_start_ts ?? seg.offset_time_label;
+    if (raw) {
+      if (/^\d+(\.\d+)?$/.test(raw)) return Number(raw) * 1000;
+      const parsed = Date.parse(raw);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+  }
+  return seg.offset_start ?? seg.offset_order ?? 0;
+}
 
 export function CaseTimelinePage() {
   const { caseId, workspace } = useCaseContext();
   const navigate = useNavigate();
   const [deviceId, setDeviceId] = useState("");
   const [segments, setSegments] = useState<Segment[]>([]);
-  const [channels, setChannels] = useState<Awaited<ReturnType<typeof api.getTimeline>>["channels"]>([]);
+  const [channels, setChannels] = useState<TimelineChannel[]>([]);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewMedia, setPreviewMedia] = useState("video/mp4");
+  const [playhead, setPlayhead] = useState<number | null>(null);
   const [wallUnix, setWallUnix] = useState("");
   const [deviceUnix, setDeviceUnix] = useState("");
   const [driftOffset, setDriftOffset] = useState<number | null>(null);
 
   const evidenceList = workspace?.evidence ?? [];
+  const deviceDrift = driftOffset ?? 0;
+
+  const useTime = useMemo(
+    () =>
+      channels.some((channel) =>
+        channel.segments.some((seg) => !!(seg.corrected_start_ts ?? seg.recorder_start_ts ?? seg.offset_time_label)),
+      ),
+    [channels],
+  );
 
   useEffect(() => {
     if (evidenceList[0] && !deviceId) {
@@ -35,15 +56,38 @@ export function CaseTimelinePage() {
   useEffect(() => {
     if (!deviceId) return;
     void api.listDeviceSegments(deviceId).then((d) => setSegments(d.segments));
-    void api.getTimeline(caseId, deviceId).then((d) => setChannels(d.channels)).catch(() => setChannels([]));
+    void api
+      .getTimeline(caseId, deviceId)
+      .then((d) => {
+        setChannels(d.channels);
+        const first = d.channels.flatMap((channel) => channel.segments)[0];
+        if (first) {
+          const timeMode = d.channels.some((channel) =>
+            channel.segments.some((seg) => !!(seg.corrected_start_ts ?? seg.recorder_start_ts ?? seg.offset_time_label)),
+          );
+          setPlayhead(parseSegmentStart(first, timeMode));
+          setSelectedSegmentId(first.id);
+        }
+      })
+      .catch(() => setChannels([]));
   }, [deviceId, caseId]);
+
+  const seekToSegment = useCallback(
+    (segmentId: string) => {
+      setSelectedSegmentId(segmentId);
+      const seg = channels.flatMap((channel) => channel.segments).find((item) => item.id === segmentId);
+      if (seg) {
+        setPlayhead(parseSegmentStart(seg, useTime));
+      }
+    },
+    [channels, useTime],
+  );
 
   async function handleExport(segmentId: string) {
     if (!deviceId) return;
     try {
       const result = await api.exportSegment(deviceId, segmentId);
-      setPreviewUrl(resolveApiUrl(result.download_url));
-      setPreviewMedia(result.media_type);
+      window.open(resolveApiUrl(result.download_url), "_blank", "noopener,noreferrer");
       toast.success("Segment exported");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Export failed", { duration: Infinity });
@@ -72,7 +116,7 @@ export function CaseTimelinePage() {
           <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">Temporal review</p>
           <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">Recovery timeline</h1>
           <p className="mt-1 text-[12px] text-[var(--text-muted-on-dark)]">
-            Channel-aligned segment bars from completed recovery jobs. Export segments for preview playback.
+            Multi-camera playback deck with shared transport. Deleted recoveries are highlighted on each lane.
           </p>
         </div>
       </div>
@@ -128,50 +172,88 @@ export function CaseTimelinePage() {
         </section>
       ) : null}
 
-      {deviceId ? (
+      {deviceId && channels.length === 0 ? (
+        <section className="visily-card p-6 text-center">
+          <p className="text-[14px] font-medium text-[var(--text-primary)]">Timeline empty</p>
+          <p className="mx-auto mt-2 max-w-lg text-[13px] text-[var(--text-secondary)]">
+            Recovery has not produced indexed sequences for this device, or the image has no vendor DVR structure (e.g. a
+            camera-card E01). Complete{" "}
+            <Link to={`/cases/${caseId}/recover`} className="text-[var(--accent-500)] underline">
+              recovery
+            </Link>{" "}
+            on DVR/NVR media to unlock multi-channel playback.
+          </p>
+        </section>
+      ) : null}
+
+      {deviceId && channels.length > 0 ? (
         <>
           <TimelineView
             channels={channels}
             selectedSegmentId={selectedSegmentId}
-            onSelect={setSelectedSegmentId}
+            onSelect={seekToSegment}
             onSelectFinding={() => navigate(`/cases/${caseId}/ai-analytics`)}
           />
-          {previewUrl ? <VideoPreview src={previewUrl} mediaType={previewMedia} /> : null}
+          <PlaybackDeck
+            channels={channels}
+            deviceId={deviceId}
+            driftOffsetSeconds={deviceDrift}
+            playhead={playhead}
+            onPlayheadChange={setPlayhead}
+            onSelectSegment={setSelectedSegmentId}
+          />
           <section className="visily-card overflow-hidden">
             <div className="visily-card-header">
               <span className="visily-card-title">Sequences</span>
               <span className="mono text-[10px] text-[var(--text-tertiary)]">{segments.length} total</span>
             </div>
-            <table className="data-table w-full">
-              <thead>
-                <tr>
-                  <th>Ch</th>
-                  <th>Byte start</th>
-                  <th>Recorder</th>
-                  <th>Corrected</th>
-                  <th>Source</th>
-                  <th>Size</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {segments.map((seg) => (
-                  <tr key={seg.id} className={selectedSegmentId === seg.id ? "row-selected" : ""}>
-                    <td>{seg.channel ?? "—"}</td>
-                    <td className="mono">{seg.offset_start != null ? formatOffset(seg.offset_start) : "—"}</td>
-                    <td className="mono text-[11px]">{seg.recorder_start_ts ?? "—"}</td>
-                    <td className="mono text-[11px]">{seg.corrected_start_ts ?? "—"}</td>
-                    <td className="text-[10px]">{formatTimestampSource(seg.timestamp_source)}</td>
-                    <td className="mono">{formatBytes(seg.byte_length ?? (seg.offset_end ?? 0) - (seg.offset_start ?? 0))}</td>
-                    <td>
-                      <Button variant="ghost" size="icon" onClick={() => void handleExport(seg.id)}>
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <VirtualTable
+              rows={segments}
+              maxHeight={360}
+              emptyMessage="No sequences recovered."
+              columns={[
+                { key: "ch", header: "Ch", cell: (seg) => seg.channel ?? "—" },
+                {
+                  key: "start",
+                  header: "Byte start",
+                  className: "mono",
+                  cell: (seg) => (seg.offset_start != null ? formatOffset(seg.offset_start) : "—"),
+                },
+                {
+                  key: "rec",
+                  header: "Recorder",
+                  className: "mono text-[11px]",
+                  cell: (seg) => seg.recorder_start_ts ?? "—",
+                },
+                {
+                  key: "corr",
+                  header: "Corrected",
+                  className: "mono text-[11px]",
+                  cell: (seg) => seg.corrected_start_ts ?? "—",
+                },
+                {
+                  key: "source",
+                  header: "Source",
+                  className: "text-[10px]",
+                  cell: (seg) => formatTimestampSource(seg.timestamp_source),
+                },
+                {
+                  key: "size",
+                  header: "Size",
+                  className: "mono",
+                  cell: (seg) => formatBytes(seg.byte_length ?? (seg.offset_end ?? 0) - (seg.offset_start ?? 0)),
+                },
+                {
+                  key: "export",
+                  header: "",
+                  cell: (seg) => (
+                    <Button variant="ghost" size="icon" onClick={() => void handleExport(seg.id)}>
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  ),
+                },
+              ]}
+            />
           </section>
         </>
       ) : null}

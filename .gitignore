@@ -7,7 +7,8 @@ venv/
 .env
 .env.*
 
-# Runtime storage (never commit evidence)
+# Runtime storage (never commit evidence or signing keys)
+.localdata/
 uploads/
 scratch/
 tmp/
@@ -23,7 +24,7 @@ dist/
 .vite/
 tsconfig.tsbuildinfo
 
-# Legacy frontend tree (project root is the SPA now)
+# Legacy frontend tree (SPA lives at /src)
 frontend/
 
 # Tauri build output and frozen sidecars (built locally or in CI)
@@ -33,7 +34,7 @@ src-tauri/binaries/pramaan-engine-*.exe.sha256
 artifacts/
 release-artifacts/
 
-# IDE / OS
+# IDE / agent session artifacts
 .idea/
 .vscode/
 .cursor/
@@ -41,16 +42,27 @@ release-artifacts/
 *.swp
 .DS_Store
 Thumbs.db
+.p2_spec.txt
+.walkthrough.json
+*_spec.txt
+scripts/_*_spec.txt
 
 # Logs
 *.log
 
-# Uploads / scratch
+# Reference / scratch trees
 _ref-cybershield/
+backend/
 
-# Validation corpora — commit fixtures/manifest; ignore operator OEM dumps
+# Crypto material (defense in depth — .localdata/ already ignored)
+*.pem
+*.key
+
+# Validation corpora — commit fixtures/manifest; ignore operator OEM dumps and downloads
 validation_data/oem/*
 !validation_data/oem/.gitkeep
 validation_data/external/**/*.raw
 validation_data/external/**/*.E01
 validation_data/external/**/*.dd
+validation_data/external/**/*.part
+validation_data/external/**/*.zip

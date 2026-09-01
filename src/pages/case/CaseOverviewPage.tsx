@@ -80,7 +80,7 @@ export function CaseOverviewPage() {
         title={record.name}
         description={record.notes?.trim() || "No case notes."}
         meta={[
-          { label: "Lead examiner", value: record.examiner_name },
+          { label: "Case handler", value: record.examiner_name },
           { label: "Case ID", value: record.id.slice(0, 18) },
         ]}
         primaryAction={{ label: "Run identification", to: "device-id" }}
@@ -169,7 +169,7 @@ export function CaseOverviewPage() {
         </div>
         {evidence.length === 0 ? (
           <p className="p-8 text-[13px] text-[var(--text-secondary)]">
-            No evidence yet. Use <Link to="acquire" className="text-[var(--accent-500)] underline">Acquisition</Link> to upload an image, run block imaging, or generate the lab specimen.
+            No evidence yet. Use <Link to="acquire" className="text-[var(--accent-500)] underline">Acquisition</Link> to image or register a disk.
           </p>
         ) : (
           <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">

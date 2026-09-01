@@ -20,11 +20,12 @@ def req(
     body: dict | None = None,
     *,
     form: dict | None = None,
+    extra_headers: dict[str, str] | None = None,
     timeout: float = 60.0,
 ) -> tuple[int, dict | list | str]:
     url = f"{BASE}{path}"
     data = None
-    headers: dict[str, str] = {}
+    headers: dict[str, str] = dict(extra_headers or {})
     if form is not None:
         import uuid
 
@@ -117,6 +118,7 @@ def main() -> int:
             "POST",
             "/api/v1/cases",
             {"name": "Smoke M1-M4", "examiner_name": "Smoke Bot", "notes": "automated"},
+            extra_headers={"X-Pramaan-Ephemeral": "1"},
         )
         case_id = body.get("id") if status == 201 else None
         record("M1 create case", status == 201 and bool(case_id), case_id or str(body))
@@ -309,6 +311,7 @@ def main() -> int:
             "POST",
             "/api/v1/cases",
             {"name": "Smoke M4 Imaging", "examiner_name": "Smoke Bot"},
+            extra_headers={"X-Pramaan-Ephemeral": "1"},
         )
         imaging_case_id = body.get("id") if status == 201 else None
         record("M4 imaging case", status == 201 and bool(imaging_case_id), imaging_case_id or "")
@@ -368,15 +371,23 @@ def main() -> int:
         export_ok = status == 200 and isinstance(export_body, dict) and export_body.get("download_url")
         record("M5 export bundle", export_ok, export_body.get("filename", "") if isinstance(export_body, dict) else "")
 
-        status, body = req("POST", f"/api/v1/devices/{device_id}/ai-analytics", {"actor": "Smoke Bot"})
+        analytics_device = honey_device_id or device_id
+        ai: dict = {}
+        status, body = req("POST", f"/api/v1/devices/{analytics_device}/ai-analytics", {"actor": "Smoke Bot"})
         ai_job = body.get("job", {}).get("id") if isinstance(body, dict) else None
         record("M5 AI analytics start", status == 200 and bool(ai_job), ai_job or "")
         if ai_job:
             ai = wait_job(ai_job, timeout_s=120)
             record("M5 AI analytics job", ai.get("status") == "completed", ai.get("status", ""))
 
-        status, body = req("GET", f"/api/v1/devices/{device_id}/ai-findings")
-        record("M5 AI findings list", status == 200, f"count={body.get('count', 0) if isinstance(body, dict) else 0}")
+        status, body = req("GET", f"/api/v1/devices/{analytics_device}/ai-findings")
+        finding_count = body.get("count", 0) if isinstance(body, dict) else 0
+        demo_unavailable = bool((ai.get("result") or {}).get("demo_mode_unavailable"))
+        record(
+            "M5 AI findings list",
+            status == 200 and (finding_count >= 1 or demo_unavailable),
+            f"count={finding_count}",
+        )
 
         if export_ok and isinstance(export_body, dict):
             bundle_name = export_body.get("filename")
@@ -424,6 +435,7 @@ def main() -> int:
     except Exception as exc:
         record("unexpected error", False, str(exc))
     finally:
+        req("DELETE", "/api/v1/cases/ephemeral")
         for cid in (case_id, imaging_case_id, import_cleanup_id):
             if cid:
                 del_status, _ = req("DELETE", f"/api/v1/cases/{cid}")

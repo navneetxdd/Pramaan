@@ -16,3 +16,14 @@ export function pushRecentCase(caseId: string) {
 export function mostRecentCaseId(): string | null {
   return loadRecentCaseIds()[0] ?? null;
 }
+
+export function removeRecentCase(caseId: string) {
+  const next = loadRecentCaseIds().filter((id) => id !== caseId);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+}
+
+export function pruneRecentCases(validIds: Iterable<string>) {
+  const valid = new Set(validIds);
+  const pruned = loadRecentCaseIds().filter((id) => valid.has(id));
+  localStorage.setItem(RECENT_KEY, JSON.stringify(pruned));
+}

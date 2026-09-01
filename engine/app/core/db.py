@@ -12,7 +12,7 @@ from typing import Any, Iterator
 from engine.app.core.config import APP_VERSION, WORK_DIR
 
 DATABASE_PATH = WORK_DIR / "forensic.db"
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _LOCK = threading.Lock()
 
@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS cases (
   name TEXT NOT NULL,
   examiner_name TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  notes TEXT
+  notes TEXT,
+  ephemeral INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS devices (
@@ -252,6 +253,8 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         _add_columns(conn, "recovered_sequences", {"recovery_job_id": "TEXT"})
     if current < 6:
         _add_columns(conn, "custody_log", {"evidence_digest": "TEXT"})
+    if current < 7:
+        _add_columns(conn, "cases", {"ephemeral": "INTEGER NOT NULL DEFAULT 0"})
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 

@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { engineHostLabel } from "@/lib/apiBase";
-import { ChainLinkIndicator, type ChainLinkState } from "@/components/forensic/ChainLinkIndicator";
+import type { ChainLinkState } from "@/components/forensic/ChainLinkIndicator";
 
 export function StatusBar() {
   const [online, setOnline] = useState<boolean | null>(null);
-  const [version, setVersion] = useState("—");
-  const [cert, setCert] = useState("—");
   const [time, setTime] = useState("");
   const [custody, setCustody] = useState<ChainLinkState>("unknown");
   const [caseName, setCaseName] = useState<string | null>(null);
@@ -21,12 +18,8 @@ export function StatusBar() {
     async function checkEngine() {
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          const response = await api.version();
-          if (!cancelled) {
-            setOnline(true);
-            setVersion(response.version);
-            setCert(response.signing_certificate_fingerprint?.slice(0, 8) ?? "—");
-          }
+          await api.version();
+          if (!cancelled) setOnline(true);
           return;
         } catch {
           if (attempt === 0) {
@@ -38,7 +31,7 @@ export function StatusBar() {
     }
 
     void checkEngine();
-    const timer = window.setInterval(() => void checkEngine(), 10_000);
+    const timer = window.setInterval(() => void checkEngine(), 15_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -60,42 +53,50 @@ export function StatusBar() {
   }, [caseId, location.pathname]);
 
   useEffect(() => {
-    const tick = () => setTime(new Date().toISOString().replace("T", " ").slice(0, 19));
+    const tick = () =>
+      setTime(
+        new Date().toLocaleString(undefined, {
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      );
     tick();
-    const id = window.setInterval(tick, 1000);
+    const id = window.setInterval(tick, 30_000);
     return () => window.clearInterval(id);
   }, []);
 
+  const custodyLabel =
+    custody === "intact"
+      ? "Custody verified"
+      : custody === "broken"
+        ? "Custody broken"
+        : custody === "checking"
+          ? null
+          : null;
+
   return (
     <footer id="tour-status" className="status-footer">
-      <div className="flex items-center gap-3 text-[12px] text-[var(--text-secondary)]">
-        <span className="flex items-center gap-1.5">
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{
-              background:
-                online === null
-                  ? "var(--text-tertiary)"
-                  : online
-                    ? "var(--status-success)"
-                    : "var(--status-danger)",
-            }}
-          />
-          {online === null ? "Connecting to engine" : online ? "Engine connected" : "Engine offline"}
-        </span>
-        <span>·</span>
-        <span className="mono">{engineHostLabel()}</span>
-        <span>·</span>
-        <span className="mono">v{version}</span>
-        <span>·</span>
-        <span className="mono">cert {cert}</span>
-        <span>·</span>
-        <span className="flex items-center gap-1.5">
-          <ChainLinkIndicator state={custody} />
-          {caseName ? `${caseName}` : "No active case"}
-        </span>
+      <div className="flex min-w-0 items-center gap-3 text-[11px]">
+        {online === false ? (
+          <span className="font-medium text-[var(--status-danger)]">Engine not running — start Pramaan or run python run.py</span>
+        ) : caseName ? (
+          <>
+            <span className="truncate font-medium text-[var(--text-secondary)]">{caseName}</span>
+            {custodyLabel ? (
+              <span
+                className={
+                  custody === "broken" ? "text-[var(--status-danger)]" : "text-[var(--text-tertiary)]"
+                }
+              >
+                {custodyLabel}
+              </span>
+            ) : null}
+          </>
+        ) : null}
       </div>
-      <span className="mono text-[12px] text-[var(--text-tertiary)]">{time} UTC</span>
+      {time ? <span className="shrink-0 tabular-nums text-[var(--text-tertiary)]">{time}</span> : null}
     </footer>
   );
 }

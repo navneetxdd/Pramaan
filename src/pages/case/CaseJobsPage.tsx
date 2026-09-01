@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { Play, RefreshCw } from "lucide-react";
 import { useCaseContext } from "@/context/CaseContext";
@@ -7,6 +6,7 @@ import { parseJobStats } from "@/lib/caseStats";
 import { useLiveJobs } from "@/hooks/useLiveJobs";
 import { DashboardStat } from "@/components/visily/DashboardStat";
 import { Button } from "@/components/ui/button";
+import { VirtualTable } from "@/components/ui/virtual-table";
 import { formatBytes } from "@/lib/utils";
 import { toast } from "sonner";
 import { waitForJobCompletion } from "@/lib/sse";
@@ -45,6 +45,9 @@ export function CaseJobsPage() {
 
   const activeCount = jobs.filter((j) => j.status === "running" || j.status === "pending").length;
   const failedCount = jobs.filter((j) => j.status === "failed" || j.status === "error").length;
+  const recoveryRunning = jobs.some(
+    (job) => job.kind === "recovery" && (job.status === "running" || job.status === "pending"),
+  );
   const parsedVolume = evidence.reduce((s, e) => s + e.size_bytes, 0);
   const artifactTotal = jobs.reduce((s, j) => s + (parseJobStats(j.stats_json).segmentsFound ?? 0), 0);
 
@@ -93,9 +96,9 @@ export function CaseJobsPage() {
               <RefreshCw className="h-4 w-4" />
               Refresh
             </Button>
-            <Button disabled={busy || evidence.length === 0} onClick={() => void runRecoveryOnFirst()}>
+            <Button disabled={busy || evidence.length === 0 || recoveryRunning} onClick={() => void runRecoveryOnFirst()}>
               <Play className="h-4 w-4" />
-              Start recovery job
+              {recoveryRunning ? "Recovery running…" : "Start recovery job"}
             </Button>
           </div>
         </div>
@@ -133,76 +136,86 @@ export function CaseJobsPage() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
-          {filtered.length === 0 ? (
-            <p className="p-8 text-[13px] text-[var(--text-secondary)]">
-              No jobs in this view.{" "}
-              <Link to={`/cases/${caseId}/acquire`} className="text-[var(--accent-500)] underline">
-                Acquire evidence
-              </Link>{" "}
-              then run recovery from the Recovery screen.
-            </p>
-          ) : (
-            <table className="data-table w-full">
-              <thead>
-                <tr>
-                  <th>Job ID</th>
-                  <th>Source</th>
-                  <th>Vendor</th>
-                  <th>Status</th>
-                  <th>Progress</th>
-                  <th>Hash</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((job) => {
+          <VirtualTable
+            rows={filtered}
+            maxHeight={520}
+            emptyMessage={`No jobs in this view. Acquire evidence then run recovery from the Recovery screen.`}
+            columns={[
+              {
+                key: "id",
+                header: "Job ID",
+                className: "mono text-[11px]",
+                cell: (job) => job.id.slice(0, 12),
+              },
+              {
+                key: "source",
+                header: "Source",
+                cell: (job) => <span className="max-w-[160px] truncate">{evidenceName(job.image_id)}</span>,
+              },
+              { key: "vendor", header: "Vendor", cell: (job) => job.vendor ?? "—" },
+              {
+                key: "status",
+                header: "Status",
+                cell: (job) => {
+                  const liveJob = live[job.id];
+                  const status = liveJob?.status ?? job.status;
+                  return (
+                    <span
+                      className={`visily-badge text-[9px] ${
+                        status === "completed"
+                          ? "visily-badge-success"
+                          : status === "failed" || status === "error"
+                            ? "visily-badge-danger"
+                            : "visily-badge-active"
+                      }`}
+                    >
+                      {status}
+                    </span>
+                  );
+                },
+              },
+              {
+                key: "progress",
+                header: "Progress",
+                className: "min-w-[120px]",
+                cell: (job) => {
                   const liveJob = live[job.id];
                   const progress =
                     liveJob?.progress ??
                     (job.status === "completed" ? 100 : parseJobStats(job.stats_json).progress ?? 0);
+                  return (
+                    <div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-4)]">
+                        <div className="h-full bg-[var(--accent-500)]" style={{ width: `${Math.min(100, progress)}%` }} />
+                      </div>
+                      <span className="mono mt-0.5 block text-[10px] text-[var(--text-tertiary)]">{progress.toFixed(0)}%</span>
+                    </div>
+                  );
+                },
+              },
+              {
+                key: "hash",
+                header: "Hash",
+                cell: (job) => {
+                  const liveJob = live[job.id];
                   const metric = hashMetric(job.image_id, liveJob?.status ?? job.status);
                   return (
-                    <tr key={job.id}>
-                      <td className="mono text-[11px]">{job.id.slice(0, 12)}</td>
-                      <td className="max-w-[160px] truncate">{evidenceName(job.image_id)}</td>
-                      <td>{job.vendor ?? "—"}</td>
-                      <td>
-                        <span
-                          className={`visily-badge text-[9px] ${
-                            job.status === "completed"
-                              ? "visily-badge-success"
-                              : job.status === "failed" || job.status === "error"
-                                ? "visily-badge-danger"
-                                : "visily-badge-active"
-                          }`}
-                        >
-                          {liveJob?.status ?? job.status}
-                        </span>
-                      </td>
-                      <td className="min-w-[120px]">
-                        <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-4)]">
-                          <div className="h-full bg-[var(--accent-500)]" style={{ width: `${Math.min(100, progress)}%` }} />
-                        </div>
-                        <span className="mono mt-0.5 block text-[10px] text-[var(--text-tertiary)]">{progress.toFixed(0)}%</span>
-                      </td>
-                      <td>
-                        <span
-                          className={`text-[10px] font-semibold uppercase ${
-                            metric.tone === "success"
-                              ? "text-[var(--status-success)]"
-                              : metric.tone === "danger"
-                                ? "text-[var(--status-danger)]"
-                                : "text-[var(--text-tertiary)]"
-                          }`}
-                        >
-                          {metric.label}
-                        </span>
-                      </td>
-                    </tr>
+                    <span
+                      className={`text-[10px] font-semibold uppercase ${
+                        metric.tone === "success"
+                          ? "text-[var(--status-success)]"
+                          : metric.tone === "danger"
+                            ? "text-[var(--status-danger)]"
+                            : "text-[var(--text-tertiary)]"
+                      }`}
+                    >
+                      {metric.label}
+                    </span>
                   );
-                })}
-              </tbody>
-            </table>
-          )}
+                },
+              },
+            ]}
+          />
         </div>
       </section>
     </div>

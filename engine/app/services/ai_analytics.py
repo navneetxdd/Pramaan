@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Iterator
 
-from engine.app.core.config import YUNET_MODEL_PATH, YOLOX_MODEL_PATH
+from engine.app.core.config import FFMPEG_BIN, YUNET_MODEL_PATH, YOLOX_MODEL_PATH
+from engine.app.verification.media_fixture import ensure_playable_h264
+from engine.app.parsers.unwrap import unwrap_to_h264
 from engine.app.core.db import append_custody, get_db
 from engine.app.core.hashing import hash_file
 from engine.app.core.job_manager import job_manager
@@ -65,15 +69,72 @@ def _load_cv() -> bool:
     return _cv2 is not None and _np is not None
 
 
+def _ffmpeg_transcode_path(source: Path) -> Path | None:
+    ffmpeg = shutil.which(FFMPEG_BIN)
+    if not ffmpeg or not source.exists():
+        return None
+    destination = source.with_suffix(".analytics.mp4")
+    command = [
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "h264",
+        "-i",
+        str(source),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuv420p",
+        str(destination),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode == 0 and destination.exists() and destination.stat().st_size > 0:
+        return destination
+    destination.unlink(missing_ok=True)
+    return None
+
+
 def _sampled_frames(video_path: Path) -> Iterator[tuple[int, object]]:
     if not _load_cv():
         return
     cv2 = _cv2
     assert cv2 is not None
-    capture = cv2.VideoCapture(str(video_path))
-    if not capture.isOpened():
+
+    temp_paths: list[Path] = []
+
+    def open_capture(path: Path) -> object | None:
+        capture = cv2.VideoCapture(str(path))
+        if capture.isOpened():
+            return capture
         capture.release()
+        return None
+
+    capture = open_capture(video_path)
+    if capture is None:
+        try:
+            playable = ensure_playable_h264(unwrap_to_h264(video_path.read_bytes()))
+            temp_h264 = video_path.with_suffix(".playable.h264")
+            temp_h264.write_bytes(playable)
+            temp_paths.append(temp_h264)
+            transcode = _ffmpeg_transcode_path(temp_h264)
+            if transcode:
+                temp_paths.append(transcode)
+                capture = open_capture(transcode)
+            if capture is None:
+                capture = open_capture(temp_h264)
+        except OSError:
+            capture = None
+
+    if capture is None:
+        for path in temp_paths:
+            path.unlink(missing_ok=True)
         return
+
     source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
     if source_fps <= 0 or source_fps > 240:
         source_fps = 25.0
@@ -91,6 +152,8 @@ def _sampled_frames(video_path: Path) -> Iterator[tuple[int, object]]:
             frame_index += 1
     finally:
         capture.release()
+        for path in temp_paths:
+            path.unlink(missing_ok=True)
 
 
 def _load_face_detector() -> tuple[str, object] | None:
@@ -201,9 +264,9 @@ def _detect_objects(frame: object) -> list[tuple[str, float, dict]]:
     return hits
 
 
-def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str]]:
+def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str], int]:
     if not _load_cv():
-        return [], ["opencv_unavailable"]
+        return [], ["opencv_unavailable"], 0
     cv2 = _cv2
     assert cv2 is not None
     subtractor = cv2.createBackgroundSubtractorMOG2(history=120, varThreshold=32, detectShadows=True)
@@ -324,7 +387,7 @@ def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str]]:
         warnings.append("yunet_model_unavailable_haar_fallback")
     if not YOLOX_MODEL_PATH.exists():
         warnings.append("yolox_model_unavailable")
-    return findings, warnings
+    return findings, warnings, frame_count
 
 
 async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor: str) -> None:
@@ -357,6 +420,39 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
     delete_ai_findings_for_device(device_id)
     created = 0
     warnings: list[str] = []
+    decoded_frames = 0
+
+    if not _load_cv():
+        result = {
+            "case_id": case_id,
+            "device_id": device_id,
+            "findings_count": 0,
+            "demo_mode_unavailable": True,
+            "message": "OpenCV/decodable video unavailable on this host — analytics skipped",
+            "warnings": ["opencv_unavailable"],
+            "investigative_leads_only": True,
+        }
+        with get_db() as conn:
+            append_custody(
+                conn,
+                actor=actor,
+                action="ai_analytics_skipped_unavailable",
+                target_type="case",
+                target_id=case_id,
+            )
+        message = result["message"]
+        await job_manager.update(job_id, status="completed", progress=100, message=message, result=result)
+        persist_job(
+            job_id,
+            "ai_analytics",
+            "completed",
+            case_id=case_id,
+            device_id=device_id,
+            progress=100,
+            message=message,
+            result=result,
+        )
+        return
 
     for index, sequence in enumerate(sequences):
         progress = min(95.0, ((index + 1) / len(sequences)) * 95)
@@ -374,8 +470,9 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
             persist_job(job_id, "ai_analytics", "failed", case_id=case_id, device_id=device_id, error=error)
             return
 
-        sequence_findings, sequence_warnings = await asyncio.to_thread(_analyze_sequence, artifact)
+        sequence_findings, sequence_warnings, frame_count = await asyncio.to_thread(_analyze_sequence, artifact)
         warnings.extend(f"{sequence['id']}:{warning}" for warning in sequence_warnings)
+        decoded_frames += frame_count
         for finding in sequence_findings:
             insert_ai_finding(sequence["id"], **finding)
             created += 1
@@ -385,6 +482,7 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
             message=f"Analyzed sequence {index + 1}/{len(sequences)} · {created} leads",
         )
 
+    demo_unavailable = decoded_frames == 0 and created == 0
     result = {
         "case_id": case_id,
         "device_id": device_id,
@@ -394,6 +492,9 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
         "warnings": sorted(set(warnings)),
         "investigative_leads_only": True,
     }
+    if demo_unavailable:
+        result["demo_mode_unavailable"] = True
+        result["message"] = "No decodable video frames on recovered artifacts — analytics produced no leads"
     with get_db() as conn:
         append_custody(
             conn,
@@ -402,7 +503,7 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
             target_type="case",
             target_id=case_id,
         )
-    message = f"Offline analytics complete — {created} investigative lead(s)"
+    message = result.get("message") or f"Offline analytics complete — {created} investigative lead(s)"
     await job_manager.update(job_id, status="completed", progress=100, message=message, result=result)
     persist_job(
         job_id,

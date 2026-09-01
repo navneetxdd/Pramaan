@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from engine.app.core.config import EXPORTS_DIR, FFMPEG_BIN
+from engine.app.verification.media_fixture import ensure_playable_h264
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -27,17 +28,23 @@ def _ffmpeg_transcode_stream(source: Path):
     ffmpeg = shutil.which(FFMPEG_BIN)
     if not ffmpeg:
         raise HTTPException(status_code=503, detail="FFmpeg not available for inline playback")
+    playable = EXPORTS_DIR / f"{source.stem}.playable.h264"
+    playable.write_bytes(ensure_playable_h264(source.read_bytes()))
     cmd = [
         ffmpeg,
         "-hide_banner",
         "-loglevel",
         "error",
         "-f",
-        "h264" if source.suffix.lower() in {".h264", ".264"} else "mp4",
+        "h264",
         "-i",
-        str(source),
-        "-c",
-        "copy",
+        str(playable),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuv420p",
         "-f",
         "mp4",
         "-movflags",

@@ -59,6 +59,9 @@ if (-not $SkipDependencyInstall) {
     $BuildPython = $Python
 }
 
+Get-ChildItem -Path (Join-Path $ProjectRoot "engine") -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
 & $BuildPython -m PyInstaller `
     --noconfirm `
     --clean `

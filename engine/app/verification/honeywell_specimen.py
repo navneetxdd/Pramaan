@@ -38,11 +38,7 @@ def _machine_data_sector() -> bytes:
 
 
 def _build_nal_frame(*, frame_type: int, timestamp_us: int, payload_extra: int = 64) -> bytes:
-    nal_body = _nal_source.next_single_nal()
-    if not nal_body.startswith(NAL_START_4):
-        nal_body = NAL_START_4 + nal_body.lstrip(b"\x00")
-    if len(nal_body) < payload_extra + 8:
-        nal_body = _nal_source.next_payload(payload_extra + 8)
+    nal_body = _nal_source.next_decodable_access_unit(payload_extra + 8)
     payload = nal_body
     header = HoneywellNalHeader.build(
         {

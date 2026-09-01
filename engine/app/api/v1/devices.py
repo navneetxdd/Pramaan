@@ -12,6 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Uploa
 from pydantic import BaseModel, Field
 
 from engine.app.core.config import EXPORTS_DIR, FFMPEG_BIN
+from engine.app.verification.media_fixture import ensure_playable_h264
 from engine.app.core.job_manager import job_manager
 from engine.app.core.repository import (
     get_case,
@@ -130,6 +131,18 @@ def run_device_identification(device_id: str) -> dict:
     report = identify_image(path)
     update_device_identification(device_id, report)
     return report
+
+
+@router.get("/devices/{device_id}/structure")
+def get_device_structure(device_id: str) -> dict:
+    from engine.app.services.device_structure import probe_device_structure
+
+    if not get_device(device_id):
+        raise HTTPException(status_code=404, detail="Device not found")
+    try:
+        return probe_device_structure(device_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/devices/{device_id}/bytes")
@@ -269,18 +282,39 @@ def export_sequence(device_id: str, segment_id: str) -> dict:
 
     chunk = artifact_path.read_bytes()
 
-    h264 = unwrap_to_h264(chunk)
+    h264 = ensure_playable_h264(unwrap_to_h264(chunk))
     if NAL_START_3 not in h264 and NAL_START_4 not in h264:
-        h264 = chunk
+        h264 = ensure_playable_h264(chunk)
     raw_path.write_bytes(h264)
 
-    out_path = raw_path
-    if shutil.which(FFMPEG_BIN):
-        cmd = [FFMPEG_BIN, "-y", "-f", "h264", "-i", str(raw_path), "-c", "copy", str(mp4_path)]
+    def transcode_to_mp4(source: Path, destination: Path) -> bool:
+        if not shutil.which(FFMPEG_BIN):
+            return False
+        cmd = [
+            FFMPEG_BIN,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "h264",
+            "-i",
+            str(source),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            str(destination),
+        ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if result.returncode == 0 and mp4_path.exists():
-            raw_path.unlink(missing_ok=True)
-            out_path = mp4_path
+        return result.returncode == 0 and destination.exists() and destination.stat().st_size > 0
+
+    out_path = raw_path
+    if transcode_to_mp4(raw_path, mp4_path):
+        raw_path.unlink(missing_ok=True)
+        out_path = mp4_path
 
     return {
         "filename": out_path.name,

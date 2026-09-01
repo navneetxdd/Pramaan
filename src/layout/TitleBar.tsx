@@ -26,7 +26,7 @@ export function TitleBar() {
       }}
     >
       <div className="flex items-center gap-2.5" data-tauri-drag-region>
-        <PramaanMark className="h-4 w-4" style={{ color: "var(--text-primary)" }} />
+        <PramaanMark variant="brand" className="h-4 w-4" />
         <span className="text-[12px] font-medium text-[var(--text-primary)]">Pramaan</span>
         <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
           {section} / {page}

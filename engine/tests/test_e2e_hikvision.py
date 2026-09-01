@@ -76,8 +76,8 @@ class HikvisionE2ETests(unittest.TestCase):
                 artifact.read_bytes(),
                 source_bytes[sequence["byte_start"] : sequence["byte_end"]],
             )
-            self.assertIsNone(sequence["recorder_start_ts"])
-            self.assertIsNone(sequence["corrected_start_ts"])
+            self.assertIsNotNone(sequence["recorder_start_ts"])
+            self.assertEqual(sequence["timestamp_source"], "hkvi_block_epoch")
             self.assertEqual(sequence["parser_name"], "hikvision")
             self.assertTrue(sequence["signature_evidence"].get("block_header"))
 

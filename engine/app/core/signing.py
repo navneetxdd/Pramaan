@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import os
 from io import BytesIO
 from pathlib import Path
 
@@ -23,13 +24,16 @@ from engine.app.core.config import WORK_DIR
 logger = logging.getLogger("forensic.engine")
 
 SIGNING_DIR = WORK_DIR / "signing"
-KEY_PATH = SIGNING_DIR / "signing_key.pem"
+KEY_PATH = SIGNING_DIR / "pramaan_signing_key.pem"
+LEGACY_KEY_PATH = SIGNING_DIR / "signing_key.pem"
 CERT_PATH = SIGNING_DIR / "signing_cert.pem"
+GENERATED_AT_PATH = SIGNING_DIR / "GENERATED_AT.txt"
 KEYRING_SERVICE = "Pramaan Forensic Workstation"
 KEYRING_ACCOUNT = f"signing-key-{hashlib.sha256(str(WORK_DIR.resolve()).encode('utf-8')).hexdigest()[:24]}"
 
 _signer_cache: signers.SimpleSigner | None = None
 _fingerprint_cache: str | None = None
+_key_backend: str | None = None
 
 
 def certificate_fingerprint() -> str:
@@ -45,9 +49,8 @@ def signing_certificate_pem() -> str:
 
 
 def signing_storage_backend() -> str:
-    if _load_key_from_keyring() is not None:
-        return "os_credential_store"
-    return "restricted_file_fallback"
+    _load_or_create_signer()
+    return _key_backend or "restricted_file_fallback"
 
 
 def _load_key_from_keyring() -> rsa.RSAPrivateKey | None:
@@ -74,36 +77,111 @@ def _store_key_in_keyring(key_bytes: bytes) -> bool:
         return False
 
 
+def _load_key_from_env() -> rsa.RSAPrivateKey | None:
+    raw = os.getenv("PRAMAAN_SIGNING_KEY_PEM", "").strip()
+    if not raw:
+        return None
+    try:
+        if "BEGIN" in raw:
+            pem_bytes = raw.encode("utf-8")
+        else:
+            pem_bytes = Path(raw).expanduser().read_bytes()
+        loaded = serialization.load_pem_private_key(pem_bytes, password=None)
+        return loaded if isinstance(loaded, rsa.RSAPrivateKey) else None
+    except Exception:
+        logger.exception("Failed to load signing key from PRAMAAN_SIGNING_KEY_PEM")
+        return None
+
+
+def _load_key_from_file(path: Path) -> rsa.RSAPrivateKey | None:
+    if not path.is_file():
+        return None
+    try:
+        loaded = serialization.load_pem_private_key(path.read_bytes(), password=None)
+        return loaded if isinstance(loaded, rsa.RSAPrivateKey) else None
+    except Exception:
+        logger.exception("Failed to load signing key from %s", path)
+        return None
+
+
+def _backup_existing_material() -> None:
+    SIGNING_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    for path in (KEY_PATH, LEGACY_KEY_PATH, CERT_PATH):
+        if path.exists():
+            backup = SIGNING_DIR / f"{path.stem}.prev-{stamp}{path.suffix}"
+            path.rename(backup)
+            logger.info("Backed up signing artifact to %s", backup.name)
+
+
+def _write_generated_at() -> None:
+    GENERATED_AT_PATH.write_text(
+        datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        encoding="ascii",
+    )
+
+
 def _persist_material(key: rsa.RSAPrivateKey, cert: x509.Certificate) -> None:
+    global _key_backend
     SIGNING_DIR.mkdir(parents=True, exist_ok=True)
     key_bytes = key.private_bytes(
         serialization.Encoding.PEM,
         serialization.PrivateFormat.PKCS8,
         serialization.NoEncryption(),
     )
-    if _store_key_in_keyring(key_bytes):
-        KEY_PATH.unlink(missing_ok=True)
-    else:
-        KEY_PATH.write_bytes(key_bytes)
+    KEY_PATH.write_bytes(key_bytes)
+    try:
+        KEY_PATH.chmod(0o600)
+    except OSError:
+        logger.warning("Could not restrict signing key permissions at %s", KEY_PATH)
+    CERT_PATH.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    _write_generated_at()
+    _key_backend = "restricted_file_fallback"
+    logger.info("Persisted signing certificate to %s", SIGNING_DIR)
+
+
+def _resolve_private_key() -> tuple[rsa.RSAPrivateKey, str] | None:
+    global _key_backend
+
+    env_key = _load_key_from_env()
+    if env_key is not None:
+        _key_backend = "environment_override"
+        return env_key, _key_backend
+
+    file_key = _load_key_from_file(KEY_PATH)
+    if file_key is not None:
+        _key_backend = "restricted_file_fallback"
+        return file_key, _key_backend
+
+    legacy_key = _load_key_from_file(LEGACY_KEY_PATH)
+    if legacy_key is not None:
+        KEY_PATH.write_bytes(LEGACY_KEY_PATH.read_bytes())
         try:
             KEY_PATH.chmod(0o600)
         except OSError:
-            logger.warning("Could not restrict signing key permissions at %s", KEY_PATH)
-    CERT_PATH.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-    logger.info("Persisted signing certificate; private key backend=%s", signing_storage_backend())
+            pass
+        LEGACY_KEY_PATH.unlink(missing_ok=True)
+        _key_backend = "restricted_file_fallback"
+        logger.info("Migrated legacy signing key to %s", KEY_PATH.name)
+        return legacy_key, _key_backend
+
+    keyring_key = _load_key_from_keyring()
+    if keyring_key is not None:
+        _key_backend = "os_credential_store"
+        return keyring_key, _key_backend
+
+    return None
 
 
 def _load_persisted_material() -> tuple[rsa.RSAPrivateKey, x509.Certificate] | None:
     if not CERT_PATH.exists():
         return None
     try:
-        key = _load_key_from_keyring()
-        if key is None and KEY_PATH.exists():
-            loaded = serialization.load_pem_private_key(KEY_PATH.read_bytes(), password=None)
-            key = loaded if isinstance(loaded, rsa.RSAPrivateKey) else None
-        cert = x509.load_pem_x509_certificate(CERT_PATH.read_bytes())
-        if key is None:
+        resolved = _resolve_private_key()
+        if resolved is None:
             return None
+        key, _ = resolved
+        cert = x509.load_pem_x509_certificate(CERT_PATH.read_bytes())
         public_key = cert.public_key()
         if not isinstance(public_key, rsa.RSAPublicKey) or key.public_key().public_numbers() != public_key.public_numbers():
             logger.error("Persisted signing key does not match the certificate")
@@ -115,6 +193,8 @@ def _load_persisted_material() -> tuple[rsa.RSAPrivateKey, x509.Certificate] | N
 
 
 def _create_signing_material() -> tuple[rsa.RSAPrivateKey, x509.Certificate]:
+    if any(path.exists() for path in (KEY_PATH, LEGACY_KEY_PATH, CERT_PATH)):
+        _backup_existing_material()
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Pramaan Local CA")])
     cert = (
@@ -164,6 +244,42 @@ def _load_or_create_signer() -> tuple[signers.SimpleSigner, str]:
 
     _signer_cache, _fingerprint_cache = _build_signer(material[0], material[1])
     return _signer_cache, _fingerprint_cache
+
+
+def list_signing_history() -> list[dict]:
+    entries: list[dict] = []
+    if CERT_PATH.exists():
+        cert = x509.load_pem_x509_certificate(CERT_PATH.read_bytes())
+        generated_at = None
+        if GENERATED_AT_PATH.is_file():
+            generated_at = GENERATED_AT_PATH.read_text(encoding="ascii").strip()
+        entries.append(
+            {
+                "label": "active",
+                "fingerprint": cert.fingerprint(hashes.SHA256()).hex(),
+                "generated_at": generated_at or cert.not_valid_before_utc.replace(tzinfo=datetime.timezone.utc).isoformat(),
+                "storage_backend": signing_storage_backend(),
+                "active": True,
+            }
+        )
+    for prev in sorted(SIGNING_DIR.glob("*.prev-*"), reverse=True):
+        if prev.suffix != ".pem":
+            continue
+        try:
+            if "signing_cert" in prev.name:
+                cert = x509.load_pem_x509_certificate(prev.read_bytes())
+                entries.append(
+                    {
+                        "label": prev.name,
+                        "fingerprint": cert.fingerprint(hashes.SHA256()).hex(),
+                        "generated_at": datetime.datetime.fromtimestamp(prev.stat().st_mtime, tz=datetime.timezone.utc).isoformat(),
+                        "storage_backend": "archived",
+                        "active": False,
+                    }
+                )
+        except Exception:
+            continue
+    return entries
 
 
 def sign_pdf_bytes(pdf_bytes: bytes) -> tuple[bytes, str]:

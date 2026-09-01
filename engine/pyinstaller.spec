@@ -42,7 +42,7 @@ a = Analysis(
     runtime_hooks=[],
     excludes=["engine.tests", "pytest", "unittest"],
     noarchive=False,
-    optimize=1,
+    optimize=0,
 )
 
 pyz = PYZ(a.pure)

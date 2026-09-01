@@ -15,6 +15,7 @@ import {
   type EvidenceRecord,
   type RecoveryJob,
 } from "@/lib/api";
+import { isNotFound } from "@/lib/apiError";
 
 type CaseWorkspace = {
   case: CaseRecord;
@@ -28,6 +29,7 @@ type CaseContextValue = {
   workspace: CaseWorkspace | null;
   loading: boolean;
   error: string | null;
+  notFound: boolean;
   refresh: (options?: { silent?: boolean }) => Promise<void>;
 };
 
@@ -38,20 +40,33 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   const [workspace, setWorkspace] = useState<CaseWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
   const refresh = useCallback(async (options?: { silent?: boolean }) => {
     if (!caseId) return;
     if (!options?.silent) {
       setLoading(true);
       setError(null);
+      setNotFound(false);
     }
     try {
       const data = await api.getCase(caseId);
       setWorkspace(data);
-      if (!options?.silent) setError(null);
-    } catch (err) {
       if (!options?.silent) {
-        setError(err instanceof Error ? err.message : "Failed to load case");
+        setError(null);
+        setNotFound(false);
+      }
+    } catch (err) {
+      const missing = isNotFound(err);
+      if (missing) setNotFound(true);
+      if (!options?.silent) {
+        setError(
+          missing
+            ? "This case no longer exists. It may have been deleted or was a temporary verification run."
+            : err instanceof Error
+              ? err.message
+              : "Failed to load case",
+        );
         setWorkspace(null);
       }
     } finally {
@@ -60,8 +75,12 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   }, [caseId]);
 
   useEffect(() => {
+    if (!caseId) return;
+    setWorkspace(null);
+    setError(null);
+    setNotFound(false);
     void refresh();
-  }, [refresh]);
+  }, [caseId, refresh]);
 
   useEffect(() => {
     if (!caseId) return;
@@ -72,8 +91,8 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   }, [caseId, refresh]);
 
   const value = useMemo(
-    () => ({ caseId, workspace, loading, error, refresh }),
-    [caseId, workspace, loading, error, refresh],
+    () => ({ caseId, workspace, loading, error, notFound, refresh }),
+    [caseId, workspace, loading, error, notFound, refresh],
   );
 
   return <CaseContext.Provider value={value}>{children}</CaseContext.Provider>;

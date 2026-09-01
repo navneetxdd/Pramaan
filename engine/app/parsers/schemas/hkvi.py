@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from construct import Const, Int32ul, Int8ul, Struct
 
@@ -13,7 +14,8 @@ HkviHeaderStruct = Struct(
     "version" / Int8ul[4],
     "payload_len" / Int32ul,
     "channel" / Int8ul,
-    "header_pad" / Int8ul[18],
+    "recorder_epoch" / Int32ul,
+    "header_pad" / Int8ul[14],
     "checksum" / Int8ul,
 )
 
@@ -23,6 +25,7 @@ class HkviValidationResult:
     ok: bool
     block_len: int
     channel: int
+    recorder_epoch: int | None
     checks: dict[str, bool]
     validation_level: str
 
@@ -35,19 +38,35 @@ class HkviValidationResult:
             return 0.68
         return 0.42
 
+    @property
+    def recorder_iso(self) -> str | None:
+        if self.recorder_epoch is None or self.recorder_epoch <= 0:
+            return None
+        try:
+            return datetime.fromtimestamp(int(self.recorder_epoch), tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            return None
+
 
 def compute_hkvi_checksum(header_without_checksum: bytes) -> int:
     return sum(header_without_checksum[: HKVI_HEADER_SIZE - 1]) & 0xFF
 
 
-def seal_hkvi_block(payload: bytes, *, channel: int = 0, version: bytes = b"\x01\x00\x00\x00") -> bytes:
+def seal_hkvi_block(
+    payload: bytes,
+    *,
+    channel: int = 0,
+    version: bytes = b"\x01\x00\x00\x00",
+    recorder_epoch: int = 0,
+) -> bytes:
     block_len = HKVI_HEADER_SIZE + len(payload) + 4
     header_body = HkviHeaderStruct.build(
         {
             "version": list(version[:4].ljust(4, b"\x00")),
             "payload_len": block_len,
             "channel": channel & 0x3F,
-            "header_pad": [0] * 18,
+            "recorder_epoch": int(recorder_epoch),
+            "header_pad": [0] * 14,
             "checksum": 0,
         }
     )
@@ -68,6 +87,7 @@ def validate_hkvi_block(data: bytes, offset: int = 0) -> HkviValidationResult | 
         return None
 
     block_len = int(parsed.payload_len)
+    recorder_epoch = int(parsed.recorder_epoch) if int(parsed.recorder_epoch) > 0 else None
     checks = {
         "header_signature": data[offset : offset + 4] == HKVI_MAGIC,
         "trailer_signature": False,
@@ -77,10 +97,10 @@ def validate_hkvi_block(data: bytes, offset: int = 0) -> HkviValidationResult | 
 
     end = offset + block_len
     if block_len < HKVI_HEADER_SIZE + 4:
-        return HkviValidationResult(False, block_len, int(parsed.channel), checks, "invalid_length")
+        return HkviValidationResult(False, block_len, int(parsed.channel), recorder_epoch, checks, "invalid_length")
 
     if end > len(data):
-        return HkviValidationResult(False, block_len, int(parsed.channel), checks, "truncated")
+        return HkviValidationResult(False, block_len, int(parsed.channel), recorder_epoch, checks, "truncated")
 
     checks["size_consistency"] = True
     checks["trailer_signature"] = data[end - 4 : end] == HKVI_TRAILER
@@ -92,4 +112,4 @@ def validate_hkvi_block(data: bytes, offset: int = 0) -> HkviValidationResult | 
 
     all_ok = all(checks.values())
     level = "hkvi_block_4" if all_ok else "hkvi_header_only"
-    return HkviValidationResult(all_ok, block_len, int(parsed.channel), checks, level)
+    return HkviValidationResult(all_ok, block_len, int(parsed.channel), recorder_epoch, checks, level)

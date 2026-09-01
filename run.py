@@ -12,6 +12,9 @@ sys.path.insert(0, str(ROOT))
 sys.dont_write_bytecode = True
 os.chdir(ROOT)
 
+if not os.environ.get("FORENSIC_WORKSTATION_DATA"):
+    os.environ["FORENSIC_WORKSTATION_DATA"] = str(ROOT / ".localdata")
+
 import uvicorn  # noqa: E402
 
 if __name__ == "__main__":

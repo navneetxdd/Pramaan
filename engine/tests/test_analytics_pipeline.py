@@ -32,7 +32,7 @@ class AnalyticsPipelineTests(unittest.TestCase):
         finally:
             writer.release()
 
-        findings, warnings = ai_analytics._analyze_sequence(video_path)
+        findings, warnings, _frame_count = ai_analytics._analyze_sequence(video_path)
         finding_types = {finding["finding_type"] for finding in findings}
         self.assertIn("motion", finding_types)
         self.assertIn("scene_change", finding_types)

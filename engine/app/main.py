@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,6 +19,7 @@ from engine.app.api.v1.files import router as files_router
 from engine.app.api.v1.jobs import router as jobs_router
 from engine.app.api.v1.reports import router as reports_router
 from engine.app.api.v1.settings import router as settings_router
+from engine.app.api.v1.signing import router as signing_router
 from engine.app.api.v1.tool_verification import router as verification_router
 from engine.app.api.v1.version import router as version_router
 from engine.app.core.logging_setup import bootstrap
@@ -33,6 +35,8 @@ ALLOWED_ORIGINS = {
     "https://tauri.localhost",
     "tauri://localhost",
 }
+
+_API_TOKEN = os.getenv("PRAMAAN_API_TOKEN", "").strip()
 
 
 @asynccontextmanager
@@ -53,7 +57,7 @@ app.add_middleware(
     allow_origins=sorted(ALLOWED_ORIGINS),
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type"],
+    allow_headers=["Accept", "Content-Type", "X-Pramaan-Ephemeral", "X-Pramaan-Token"],
 )
 
 
@@ -62,6 +66,10 @@ async def enforce_local_browser_origins(request: Request, call_next):  # type: i
     origin = request.headers.get("origin")
     if origin and origin not in ALLOWED_ORIGINS:
         return JSONResponse(status_code=403, content={"detail": "Origin is not allowed"})
+    if _API_TOKEN and request.url.path.startswith("/api/v1"):
+        provided = request.headers.get("x-pramaan-token", "")
+        if provided != _API_TOKEN:
+            return JSONResponse(status_code=401, content={"detail": "Invalid or missing API token"})
     return await call_next(request)
 
 
@@ -75,5 +83,6 @@ app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(reports_router, prefix="/api/v1")
 app.include_router(files_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
+app.include_router(signing_router, prefix="/api/v1")
 app.include_router(verification_router, prefix="/api/v1")
 

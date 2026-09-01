@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import socket
-from pathlib import Path
 
+from engine.app.core.config import WORK_DIR
 from engine.app.core.db import APP_VERSION, DATABASE_PATH, init_db
 from engine.app.core.repository import reconcile_interrupted_acquisitions, reconcile_interrupted_jobs
 
@@ -11,7 +12,7 @@ logger = logging.getLogger("forensic.engine")
 
 
 def configure_logging() -> None:
-    log_dir = Path.home() / "ForensicWorkstation" / "logs"
+    log_dir = WORK_DIR / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
@@ -24,7 +25,11 @@ def configure_logging() -> None:
 
 
 def block_outbound_sockets() -> None:
-    """Part B: block outbound network except localhost."""
+    """Block outbound network except localhost unless logical acquisition is enabled."""
+
+    if os.getenv("PRAMAAN_ALLOW_LOGICAL_ACQUIRE", "").strip().lower() in {"1", "true", "yes"}:
+        logger.info("Outbound socket guard disabled (PRAMAAN_ALLOW_LOGICAL_ACQUIRE)")
+        return
 
     allowed = {"127.0.0.1", "localhost", "::1"}
     original_connect = socket.socket.connect

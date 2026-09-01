@@ -45,6 +45,7 @@ class Case(BaseModel):
     examiner_name: str
     created_at: str
     notes: str | None = None
+    ephemeral: bool = False
 
 
 class CaseDetail(Case):

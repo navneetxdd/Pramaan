@@ -76,6 +76,25 @@ LARGE_OPTIONAL = [
     },
 ]
 
+REAL_FS_DOWNLOADS: list[dict] = [
+    {
+        "id": "digitalcorpora_nps_2009_canon2_gen6_e01",
+        "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2009-canon2/nps-2009-canon2-gen6.E01",
+        "dest": "external/digitalcorpora/nps-2009-canon2/nps-2009-canon2-gen6.E01",
+        "sha256": "10483722d84e0cefcb693b11dea2d32dbd3ad2f06f8c9656688c8c730fe41579",
+        "purpose": "NIST-affiliated public camera-card E01 for OEM/acquisition validation (~31 MB)",
+        "license": "NPS-created content is public domain; inspect embedded-file rights",
+    },
+    {
+        "id": "digitalcorpora_nps_2009_canon2_narrative",
+        "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2009-canon2/narrative.txt",
+        "dest": "external/digitalcorpora/nps-2009-canon2/narrative.txt",
+        "sha256": "10613f6139d28f06d897fd9d19b2c3c679a1b28848c88f4877542f4c141fed84",
+        "purpose": "Canon2 corpus narrative and scenario metadata",
+        "license": "NPS-created content is public domain; inspect embedded-file rights",
+    },
+]
+
 SOURCE_RECORDS = [
     {
         "id": "cdnet_2014_baseline",
@@ -129,6 +148,31 @@ def _download(url: str, dest: Path) -> None:
     print(f"  saved {dest} ({dest.stat().st_size} bytes)")
 
 
+def _sync_oem_drop_zone() -> list[str]:
+    """Copy public corpora into validation_data/oem for OEM acquire UI testing."""
+    oem_dir = DATA_DIR / "oem"
+    oem_dir.mkdir(parents=True, exist_ok=True)
+    synced: list[str] = []
+    candidates = [
+        DATA_DIR / "external" / "digitalcorpora" / "nps-2009-canon2" / "nps-2009-canon2-gen6.E01",
+        DATA_DIR / "fixtures" / "tier2" / "fat16_deleted_entry.img",
+        DATA_DIR / "oem" / "lab_dahua_dhfs.img",
+        DATA_DIR / "oem" / "lab_hikvision_fs.img",
+        DATA_DIR / "oem" / "lab_honeywell_fs.img",
+    ]
+    for source in candidates:
+        if not source.is_file():
+            continue
+        dest = oem_dir / source.name
+        if dest.exists() and dest.stat().st_size == source.stat().st_size:
+            synced.append(dest.name)
+            continue
+        dest.write_bytes(source.read_bytes())
+        synced.append(dest.name)
+        print(f"  synced OEM drop zone <- {source.name}")
+    return synced
+
+
 def _generate_fixtures() -> list[dict]:
     sys.path.insert(0, str(ROOT))
     from engine.app.parsers.filesystem_recovery import build_fat16_deleted_fixture
@@ -163,6 +207,7 @@ def _generate_fixtures() -> list[dict]:
 def main() -> int:
     include_large = "--large" in sys.argv
     include_surveillance = "--surveillance" in sys.argv
+    include_real_fs = "--real-fs" in sys.argv
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     manifest: dict = {
@@ -180,6 +225,14 @@ def main() -> int:
 
     print("Generating in-repo known-answer fixtures…")
     manifest["assets"].extend(_generate_fixtures())
+
+    print("\nBuilding disk-shaped OEM lab images (vendor signatures at realistic offsets)…")
+    try:
+        import subprocess
+
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "build_oem_disk_fixtures.py")], check=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"  WARN: could not build OEM disk fixtures: {exc}")
 
     print("\nDownloading public assets…")
     for item in DOWNLOADS:
@@ -226,6 +279,32 @@ def main() -> int:
                 print(f"  FAILED {item['id']}: {exc}")
                 manifest["assets"].append({"id": item["id"], "error": str(exc), "url": item["url"]})
 
+    if include_real_fs:
+        print("\nFetching real filesystem corpora (--real-fs)…")
+        for item in REAL_FS_DOWNLOADS:
+            dest = DATA_DIR / item["dest"]
+            try:
+                _download(item["url"], dest)
+                digest = _sha256(dest) if dest.exists() else None
+                if item.get("sha256") and digest != item["sha256"]:
+                    raise ValueError(f"SHA-256 mismatch for {item['id']}")
+                manifest["assets"].append(
+                    {
+                        "id": item["id"],
+                        "path": item["dest"],
+                        "bytes": dest.stat().st_size if dest.exists() else 0,
+                        "sha256": digest,
+                        "url": item["url"],
+                        "purpose": item["purpose"],
+                        "license": item.get("license"),
+                        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                        "kind": "download_real_fs",
+                    }
+                )
+            except (OSError, urllib.error.URLError, ValueError) as exc:
+                print(f"  FAILED {item['id']}: {exc}")
+                manifest["assets"].append({"id": item["id"], "error": str(exc), "url": item["url"]})
+
     if include_large:
         print("\nFetching large optional corpora (--large)…")
         for item in LARGE_OPTIONAL:
@@ -250,8 +329,9 @@ def main() -> int:
 
     oem_dir = DATA_DIR / "oem"
     oem_dir.mkdir(exist_ok=True)
+    _sync_oem_drop_zone()
     manifest["oem_drop_zone"] = str(oem_dir.relative_to(ROOT))
-    manifest["oem_files"] = [p.name for p in oem_dir.iterdir() if p.is_file()]
+    manifest["oem_files"] = sorted(p.name for p in oem_dir.iterdir() if p.is_file())
 
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"\nManifest: {MANIFEST_PATH}")

@@ -10,3 +10,6 @@ reportlab==4.2.5
 pyhanko==0.25.1
 python-multipart==0.0.20
 pytsk3>=20240501; platform_system != "Darwin" or platform_machine != "arm64"
+libewf-python>=20240506; platform_system == "Windows"
+requests>=2.33.0,<3
+onvif-zeep==0.2.12

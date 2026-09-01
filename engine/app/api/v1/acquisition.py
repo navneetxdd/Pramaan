@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
+from engine.app.core.config import oem_drop_zone_info
 from engine.app.core.job_manager import job_manager
 from engine.app.core.repository import (
     get_case,
@@ -14,8 +16,10 @@ from engine.app.core.repository import (
     list_resumable_devices,
     persist_job,
 )
+from engine.app.services.acquisition import acquire_oem_image, list_oem_images
 from engine.app.services.disk_enumeration import list_imaging_sources
 from engine.app.services.e01_reader import pyewf_available
+from engine.app.services.logical_acquisition import acquire_logical_network
 from engine.app.services.physical_imaging import prepare_imaging_device, run_imaging_job
 
 logger = logging.getLogger("forensic.engine")
@@ -33,6 +37,21 @@ class PhysicalAcquireRequest(BaseModel):
 
 class ResumeAcquireRequest(BaseModel):
     actor: str = Field(min_length=1)
+
+
+class OemAcquireRequest(BaseModel):
+    actor: str = Field(min_length=1)
+    filename: str = Field(min_length=1)
+
+
+class LogicalAcquireRequest(BaseModel):
+    actor: str = Field(min_length=1)
+    host: str = Field(min_length=1)
+    port: int = Field(default=80, ge=1, le=65535)
+    user: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+    vendor: Literal["hikvision", "dahua", "onvif"] = "hikvision"
+    max_clips: int = Field(default=4, ge=1, le=16)
 
 
 def _source_path_from_device(device: dict) -> str:
@@ -66,13 +85,72 @@ def list_disks() -> dict:
 
 @router.get("/acquisition/capabilities")
 def acquisition_capabilities() -> dict:
+    drop = oem_drop_zone_info()
+    logical_enabled = os.getenv("PRAMAAN_ALLOW_LOGICAL_ACQUIRE", "").strip().lower() in {"1", "true", "yes"}
     return {
         "chunked_imaging": True,
         "checkpoint_resume": True,
         "bad_sector_zero_fill": True,
         "e01_input": pyewf_available(),
         "physical_disks": True,
+        "logical_network": logical_enabled,
+        "oem_drop_zone_env": drop["env_var"],
+        "oem_drop_zone_label": drop["label"],
+        "oem_drop_zone_configured": drop["configured"],
     }
+
+
+@router.get("/acquisition/oem-images")
+def oem_images() -> dict:
+    images = list_oem_images()
+    drop = oem_drop_zone_info()
+    return {
+        "env_var": drop["env_var"],
+        "configured": drop["configured"],
+        "label": drop["label"],
+        "images": images,
+        "count": len(images),
+    }
+
+
+@router.post("/cases/{case_id}/devices/acquire/oem")
+async def acquire_oem(case_id: str, body: OemAcquireRequest) -> dict:
+    try:
+        return await acquire_oem_image(case_id, body.actor, body.filename)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("OEM acquire failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/cases/{case_id}/devices/acquire/logical")
+async def acquire_logical(case_id: str, body: LogicalAcquireRequest) -> dict:
+    if body.vendor == "onvif":
+        raise HTTPException(
+            status_code=501,
+            detail="ONVIF logical acquisition is disabled — use Hikvision ISAPI or Dahua CGI",
+        )
+    if not get_case(case_id):
+        raise HTTPException(status_code=404, detail="Case not found")
+    try:
+        return await acquire_logical_network(
+            case_id,
+            body.actor,
+            host=body.host.strip(),
+            port=body.port,
+            user=body.user,
+            password=body.password,
+            vendor=body.vendor,
+            max_clips=body.max_clips,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Logical acquisition failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/cases/{case_id}/acquisition/resumable")

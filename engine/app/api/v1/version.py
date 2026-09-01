@@ -15,12 +15,18 @@ router = APIRouter(tags=["version"])
 
 @router.get("/version")
 def get_version() -> dict:
+    from engine.app.core.routes_meta import routes_digest
+    from engine.app.main import app
+
     adapters = list(all_adapters().keys())
+    route_count, routes_digest_value = routes_digest(app)
     return {
         "status": "ok",
         "service": "pramaan-engine",
         "version": __version__,
         "signing_certificate_fingerprint": certificate_fingerprint(),
+        "route_count": route_count,
+        "routes_digest": routes_digest_value,
         "capabilities": {
             "ffmpeg_available": bool(shutil.which(FFMPEG_BIN)),
             "modules": [

@@ -144,3 +144,57 @@ class NalPayloadSource:
         nal = self._nals[self._cursor % len(self._nals)]
         self._cursor += 1
         return nal
+
+    def next_decodable_access_unit(self, min_len: int = 256) -> bytes:
+        """Return SPS+PPS+slice NALs from one CAVIAR access unit (field-decodable chunk)."""
+        nals = self._nals
+        for index, nal in enumerate(nals):
+            if _nal_type(nal) != 5:
+                continue
+            start = index
+            for back in range(index - 1, -1, -1):
+                nal_type = _nal_type(nals[back])
+                if nal_type in {7, 8}:
+                    start = back
+                elif nal_type == 5 and back < index - 1:
+                    break
+            chunk = b"".join(nals[start : index + 1])
+            if len(chunk) >= min_len:
+                return chunk
+            if chunk:
+                padded = chunk + b"\x00" * (min_len - len(chunk))
+                return padded[: max(len(chunk), min_len)]
+        return self.next_payload(min_len)
+
+
+def _nal_type(nal: bytes) -> int | None:
+    if len(nal) < 5:
+        return None
+    if nal.startswith(NAL_START_4):
+        header = nal[4]
+    elif nal.startswith(b"\x00\x00\x01"):
+        header = nal[3]
+    else:
+        return None
+    return header & 0x1F
+
+
+def h264_parameter_set_prefix() -> bytes:
+    """Return SPS + PPS NAL units suitable for prepending to slice-only streams."""
+    prefix = bytearray()
+    for nal in caviar_nal_units():
+        nal_type = _nal_type(nal)
+        if nal_type in {7, 8}:
+            prefix.extend(nal)
+        if len(prefix) >= 64 and nal_type not in {7, 8}:
+            break
+    return bytes(prefix)
+
+
+def ensure_playable_h264(blob: bytes) -> bytes:
+    """Prepend parameter sets when an Annex-B export lacks SPS/PPS."""
+    nals = split_annexb_nals(blob)
+    if any(_nal_type(nal) == 7 for nal in nals) and any(_nal_type(nal) == 8 for nal in nals):
+        return blob
+    prefix = h264_parameter_set_prefix()
+    return prefix + blob if prefix else blob

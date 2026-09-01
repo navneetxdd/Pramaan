@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useCaseContext } from "@/context/CaseContext";
 import { api, type Segment } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfidenceBadge } from "@/components/forensic/ConfidenceBadge";
+import { ConfidenceDonut, RecoveryLogPanel } from "@/components/forensic/ConfidenceDonut";
+import { VirtualTable } from "@/components/ui/virtual-table";
 import { subscribeJobEvents } from "@/lib/sse";
 import { useActivity } from "@/context/ActivityContext";
 import { formatBytes } from "@/lib/utils";
@@ -23,6 +25,7 @@ export function CaseRecoverPage() {
   const [actor, setActor] = useState(workspace?.case.examiner_name ?? "");
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
+  const logRef = useRef<HTMLDivElement>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const { setWorking, setIdle } = useActivity();
 
@@ -47,6 +50,21 @@ export function CaseRecoverPage() {
     const low = segments.length - high - medium;
     return { high, medium, low };
   }, [segments]);
+
+  const recoveryRunning = useMemo(
+    () =>
+      workspace?.jobs.some(
+        (job) =>
+          job.kind === "recovery" &&
+          (job.device_id === deviceId || job.image_id === deviceId) &&
+          (job.status === "running" || job.status === "pending"),
+      ) ?? false,
+    [workspace?.jobs, deviceId],
+  );
+
+  useEffect(() => {
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
+  }, [log]);
 
   async function handleRecover() {
     if (!deviceId || !actor.trim()) {
@@ -102,8 +120,8 @@ export function CaseRecoverPage() {
           <label className="label">Examiner</label>
           <Input value={actor} onChange={(e) => setActor(e.target.value)} />
         </div>
-        <Button disabled={busy || !deviceId} onClick={() => void handleRecover()}>
-          Run recovery
+        <Button disabled={busy || !deviceId || recoveryRunning} onClick={() => void handleRecover()}>
+          {recoveryRunning ? "Recovery in progress…" : "Run recovery"}
         </Button>
         {adapterHint ? (
           <p className="w-full text-[12px] text-[var(--text-secondary)]">
@@ -117,26 +135,13 @@ export function CaseRecoverPage() {
           <div className="visily-card-header">
             <span className="visily-card-title">Engine log</span>
           </div>
-          <pre className="flex-1 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)]">
-            {log.length === 0 ? "Log output appears when a recovery job runs." : log.join("\n")}
-          </pre>
+          <div ref={logRef} className="flex min-h-[240px] flex-1 flex-col overflow-hidden">
+            <RecoveryLogPanel lines={log} />
+          </div>
         </section>
         <section className="visily-card p-4">
           <p className="visily-card-title mb-3">Confidence tiers</p>
-          <dl className="space-y-2 text-[13px]">
-            <div className="flex justify-between">
-              <dt className="text-[var(--text-secondary)]">High</dt>
-              <dd className="mono font-semibold">{tierCounts.high}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-[var(--text-secondary)]">Medium</dt>
-              <dd className="mono font-semibold">{tierCounts.medium}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-[var(--text-secondary)]">Low</dt>
-              <dd className="mono font-semibold">{tierCounts.low}</dd>
-            </div>
-          </dl>
+          <ConfidenceDonut high={tierCounts.high} medium={tierCounts.medium} low={tierCounts.low} />
         </section>
       </div>
 
@@ -145,45 +150,45 @@ export function CaseRecoverPage() {
           <span className="visily-card-title">Recovered segments</span>
           <span className="mono text-[11px]">{segments.length}</span>
         </div>
-        <div className="max-h-72 overflow-y-auto">
-          {segments.length === 0 ? (
-            <p className="p-4 text-[13px] text-[var(--text-tertiary)]">No segments for this device yet.</p>
-          ) : (
-            <table className="data-table w-full">
-              <thead>
-                <tr>
-                  <th>Ch</th>
-                  <th>Byte range</th>
-                  <th>Size</th>
-                  <th>Timestamp</th>
-                  <th>Parser</th>
-                  <th>Validation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {segments.map((seg) => (
-                  <tr key={seg.id}>
-                    <td>{seg.channel ?? "—"}</td>
-                    <td className="mono">
-                      {seg.offset_start != null && seg.offset_end != null
-                        ? `${seg.offset_start}–${seg.offset_end}`
-                        : seg.offset_time_label ?? "—"}
-                    </td>
-                    <td className="mono">{formatBytes(seg.byte_length ?? (seg.offset_end ?? 0) - (seg.offset_start ?? 0))}</td>
-                    <td className="text-[11px]">
-                      <div>{seg.corrected_start_ts ?? seg.recorder_start_ts ?? "—"}</div>
-                      <div className="text-[var(--text-tertiary)]">{formatTimestampSource(seg.timestamp_source)}</div>
-                    </td>
-                    <td className="mono text-[10px]">{seg.parser_name ?? "—"}</td>
-                    <td>
-                      <ConfidenceBadge tier={tierOf(seg)} label={seg.validation?.replace(/_/g, " ")} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <VirtualTable
+          rows={segments}
+          maxHeight={288}
+          emptyMessage="No segments for this device yet."
+          columns={[
+            { key: "ch", header: "Ch", cell: (seg) => seg.channel ?? "—" },
+            {
+              key: "range",
+              header: "Byte range",
+              className: "mono",
+              cell: (seg) =>
+                seg.offset_start != null && seg.offset_end != null
+                  ? `${seg.offset_start}–${seg.offset_end}`
+                  : seg.offset_time_label ?? "—",
+            },
+            {
+              key: "size",
+              header: "Size",
+              className: "mono",
+              cell: (seg) => formatBytes(seg.byte_length ?? (seg.offset_end ?? 0) - (seg.offset_start ?? 0)),
+            },
+            {
+              key: "ts",
+              header: "Timestamp",
+              cell: (seg) => (
+                <div className="text-[11px]">
+                  <div>{seg.corrected_start_ts ?? seg.recorder_start_ts ?? "—"}</div>
+                  <div className="text-[var(--text-tertiary)]">{formatTimestampSource(seg.timestamp_source)}</div>
+                </div>
+              ),
+            },
+            { key: "parser", header: "Parser", className: "mono text-[10px]", cell: (seg) => seg.parser_name ?? "—" },
+            {
+              key: "validation",
+              header: "Validation",
+              cell: (seg) => <ConfidenceBadge tier={tierOf(seg)} label={seg.validation?.replace(/_/g, " ")} />,
+            },
+          ]}
+        />
       </section>
     </div>
   );

@@ -1,26 +1,26 @@
 {
-  "generated_at": "2026-09-01T12:44:38.305376+00:00",
+  "generated_at": "2026-09-01T16:50:11.837255+00:00",
   "note": "Public DVR/NVR OEM disk images are NOT available from CFReDS or Digital Corpora. Place operator captures under validation_data/oem/ or set PRAMAAN_OEM_IMAGE_DIR.",
   "assets": [
     {
       "id": "fixtures_tier1_dahua_known_answer_bin",
       "path": "fixtures/tier1/dahua_known_answer.bin",
-      "bytes": 17917,
-      "sha256": "72d8773e4c8acb7466ad377ab234f91a6b1f07390bca224bca00f2d75931275b",
+      "bytes": 17971,
+      "sha256": "11a6a1798138907bedeb6bff8e97ffa8883e3f67af3144c24431d53909f6f3a9",
       "kind": "generated_known_answer"
     },
     {
       "id": "fixtures_tier1_honeywell_known_answer_bin",
       "path": "fixtures/tier1/honeywell_known_answer.bin",
       "bytes": 4259904,
-      "sha256": "776231bab0b8460d1f23157c901eb0d5ce32c7a3bc6cad7a1369cf924789e1f2",
+      "sha256": "f9f8a7e50a08bb3e6b7d740ba86a7c824439d43e04cdd01b0ab124ffdefde49b",
       "kind": "generated_known_answer"
     },
     {
       "id": "fixtures_tier1_hikvision_known_answer_bin",
       "path": "fixtures/tier1/hikvision_known_answer.bin",
-      "bytes": 29117,
-      "sha256": "101f34f000df70b06c39f51753c6bbc00b715077cfea55e91b73ca0ac27746aa",
+      "bytes": 29077,
+      "sha256": "99c8ec3150c8b0e142f169b2a8546d65d68b81c801de31c16fc5b31caeff0ced",
       "kind": "generated_known_answer"
     },
     {
@@ -38,7 +38,7 @@
       "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2009-ubnist1/narrative.txt",
       "purpose": "Tier-2 FAT corpus reference (full ubnist1.gen3.raw is ~2.1 GB \u2014 fetch separately if needed)",
       "license": "NPS-created content is public domain; inspect embedded-file rights",
-      "retrieved_at": "2026-09-01T12:44:38.470089+00:00",
+      "retrieved_at": "2026-09-01T16:50:12.214686+00:00",
       "kind": "download"
     },
     {
@@ -49,7 +49,7 @@
       "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2014-xbox1/narrative.txt",
       "purpose": "Filesystem scenario metadata for extended tier-2 regression",
       "license": "NPS-created content is public domain; inspect embedded-file rights",
-      "retrieved_at": "2026-09-01T12:44:38.471985+00:00",
+      "retrieved_at": "2026-09-01T16:50:12.215917+00:00",
       "kind": "download"
     },
     {
@@ -60,7 +60,7 @@
       "url": "https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx",
       "purpose": "Optional YuNet face detection for AI analytics (replaces Haar fallback when present)",
       "license": "Apache-2.0",
-      "retrieved_at": "2026-09-01T12:44:38.474284+00:00",
+      "retrieved_at": "2026-09-01T16:50:12.218082+00:00",
       "kind": "download"
     },
     {
@@ -71,7 +71,7 @@
       "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx",
       "purpose": "YOLOX Nano COCO object-candidate detector for offline analytics",
       "license": "Apache-2.0",
-      "retrieved_at": "2026-09-01T12:45:04.608095+00:00",
+      "retrieved_at": "2026-09-01T16:50:12.224496+00:00",
       "kind": "download"
     },
     {
@@ -82,7 +82,7 @@
       "url": "https://homepages.inf.ed.ac.uk/rbf/CAVIARDATA1/Walk1/Walk1.mpg",
       "purpose": "Real surveillance-style motion, face, and object candidate validation",
       "license": "CC BY-SA; acknowledge EC Funded CAVIAR project/IST 2001 37540",
-      "retrieved_at": "2026-09-01T12:45:45.837551+00:00",
+      "retrieved_at": "2026-09-01T16:50:12.235015+00:00",
       "kind": "download_surveillance"
     },
     {
@@ -93,8 +93,30 @@
       "url": "https://homepages.inf.ed.ac.uk/rbf/CAVIARDATA1/Walk1/wk1gt.xml",
       "purpose": "Hand-labelled CAVIAR person tracks for event-level validation",
       "license": "CC BY-SA; acknowledge EC Funded CAVIAR project/IST 2001 37540",
-      "retrieved_at": "2026-09-01T12:45:59.532909+00:00",
+      "retrieved_at": "2026-09-01T16:50:12.238074+00:00",
       "kind": "download_surveillance"
+    },
+    {
+      "id": "digitalcorpora_nps_2009_canon2_gen6_e01",
+      "path": "external/digitalcorpora/nps-2009-canon2/nps-2009-canon2-gen6.E01",
+      "bytes": 31144390,
+      "sha256": "10483722d84e0cefcb693b11dea2d32dbd3ad2f06f8c9656688c8c730fe41579",
+      "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2009-canon2/nps-2009-canon2-gen6.E01",
+      "purpose": "NIST-affiliated public camera-card E01 for OEM/acquisition validation (~31 MB)",
+      "license": "NPS-created content is public domain; inspect embedded-file rights",
+      "retrieved_at": "2026-09-01T16:50:12.279188+00:00",
+      "kind": "download_real_fs"
+    },
+    {
+      "id": "digitalcorpora_nps_2009_canon2_narrative",
+      "path": "external/digitalcorpora/nps-2009-canon2/narrative.txt",
+      "bytes": 2614,
+      "sha256": "10613f6139d28f06d897fd9d19b2c3c679a1b28848c88f4877542f4c141fed84",
+      "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2009-canon2/narrative.txt",
+      "purpose": "Canon2 corpus narrative and scenario metadata",
+      "license": "NPS-created content is public domain; inspect embedded-file rights",
+      "retrieved_at": "2026-09-01T16:50:12.280636+00:00",
+      "kind": "download_real_fs"
     }
   ],
   "large_optional": [
@@ -147,6 +169,8 @@
   "oem_env_var": "PRAMAAN_OEM_IMAGE_DIR",
   "oem_drop_zone": "validation_data\\oem",
   "oem_files": [
-    ".gitkeep"
+    ".gitkeep",
+    "fat16_deleted_entry.img",
+    "nps-2009-canon2-gen6.E01"
   ]
 }

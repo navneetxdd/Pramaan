@@ -107,14 +107,25 @@ def build_integrity_report(case_id: str) -> dict:
 def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str:
     report = build_json_report(case_id, require_intact_chain=require_intact_chain)
     case = report["case"]
+    devices = list_devices(case_id)
+    logical_only = any((device.get("acquisition_method") == "logical_network") for device in devices)
     rows = "".join(
         f"<tr><td>{escape(str(ev['filename']))}</td><td><code>{escape(str(ev['sha256'][:16]))}…</code></td>"
-        f"<td><code>{escape(str((ev.get('md5') or '—')[:16]))}…</code></td><td>{int(ev['size_bytes'])}</td></tr>"
+        f"<td><code>{escape(str((ev.get('md5') or '—')[:16]))}…</code></td><td>{int(ev['size_bytes'])}</td>"
+        f"<td>{escape(str(ev.get('acquisition_method') or '—'))}</td>"
+        f"<td>{escape(str(ev.get('write_blocker') or '—'))}</td></tr>"
         for ev in report["evidence"]
     )
+    logical_banner = (
+        "<p><strong>Logical acquisition notice:</strong> One or more devices were acquired over a "
+        "read-only network API. Unallocated space and deleted-data recovery are not available for those clips.</p>"
+        if logical_only
+        else ""
+    )
     recovery_rows = "".join(
-        f"<tr><td><code>{escape(str(item['job_id'][:12]))}…</code></td><td>{escape(str(item['status']))}</td>"
-        f"<td>{escape(str(item['vendor'] or '—'))}</td><td>{escape(str(item['adapter'] or '—'))}</td>"
+        f"<tr><td><code>{escape(str(item.get('job_id', item.get('device_id', ''))[:12]))}…</code></td>"
+        f"<td>{escape(str(item.get('status', 'current')))}</td>"
+        f"<td>{escape(str(item.get('vendor') or '—'))}</td><td>{escape(str(item.get('adapter') or '—'))}</td>"
         f"<td>{int(item['segment_count'])}</td></tr>"
         for item in report["recovery_summary"]
     )
@@ -123,27 +134,64 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
         f"<td>{escape(str(event['actor']))}</td><td>{escape(str(event.get('detail') or ''))}</td></tr>"
         for event in report["custody_events"][:50]
     )
+    capability_rows = ""
+    timeline_notes: list[str] = []
+    provenance_rows = ""
+    coverage = "No evidence attached."
+    for device in devices:
+        trace_raw = device.get("detection_trace_json")
+        trace: dict = {}
+        if trace_raw:
+            try:
+                trace = json.loads(trace_raw) if isinstance(trace_raw, str) else trace_raw
+            except json.JSONDecodeError:
+                trace = {}
+        coverage = trace.get("coverage_note") or "Identification is marker-based routing, not field validation."
+        hits = trace.get("hits") or []
+        for hit in hits[:8]:
+            capability_rows += (
+                f"<tr><td>{escape(str(hit.get('vendor', '—')))}</td>"
+                f"<td>{escape(str(hit.get('adapter', '—')))}</td>"
+                f"<td>{escape(str(hit.get('capability_tier', 'generic')))}</td>"
+                f"<td>{escape(str(hit.get('validation_scope', 'routing_hint')))}</td></tr>"
+            )
+        drift = float(device.get("drift_offset_seconds") or 0)
+        timeline_notes.append(
+            f"Device {escape(device['id'][:12])}… drift {drift:+.1f}s · adapter {escape(str(device.get('detected_engine') or 'unknown'))}"
+        )
+        for sequence in list_sequences(device["id"]):
+            provenance_rows += (
+                f"<tr><td>{escape(str(sequence.get('channel')))}</td>"
+                f"<td><code>{escape(str(sequence.get('byte_start')))}</code></td>"
+                f"<td><code>{escape(str(sequence.get('byte_end')))}</code></td>"
+                f"<td>{escape(str(sequence.get('parser_name') or '—'))}</td>"
+                f"<td>{escape(str(sequence.get('validation_level') or '—'))}</td>"
+                f"<td><code>{escape(str(sequence.get('output_sha256', '')[:16]))}…</code></td></tr>"
+            )
     chain_ok = report["custody_chain_valid"]["ok"]
     broken_row = report["custody_chain_valid"].get("first_broken_row_id")
-    chain_detail = (
-        "VALID"
-        if chain_ok
-        else f"BROKEN at custody row {broken_row}"
-    )
+    chain_detail = "VALID" if chain_ok else f"BROKEN at custody row {broken_row}"
+    timeline_section = "<br/>".join(timeline_notes) if timeline_notes else "Byte-offset ordering only; no recorder clock recovered."
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/><title>Forensic Report — {escape(str(case['title']))}</title>
 <style>
 body{{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#0a0e1a;color:#eef1f8}}
 table{{border-collapse:collapse;width:100%;margin:1rem 0}} th,td{{border:1px solid #2e3a5c;padding:8px;font-size:13px}}
 th{{background:#161d30}} code{{font-family:monospace;font-size:12px}}
-.ok{{color:#3ba676}} .bad{{color:#d6584f}}
+.ok{{color:#3ba676}} .bad{{color:#d6584f}} h2{{margin-top:2rem}}
 </style></head><body>
 <h1>Forensic case report</h1>
 <p><strong>{escape(str(case['title']))}</strong> · Examiner: {escape(str(case['examiner']))}</p>
 <p>Custody chain: <span class="{'ok' if chain_ok else 'bad'}">{escape(chain_detail)}</span></p>
 <p>Version: {escape(str(report['app_version']))}</p>
-<h2>Evidence</h2><table><tr><th>File</th><th>SHA-256</th><th>MD5</th><th>Bytes</th></tr>{rows}</table>
-<h2>Recovery</h2><table><tr><th>Job</th><th>Status</th><th>Vendor</th><th>Adapter</th><th>Segments</th></tr>{recovery_rows}</table>
+{logical_banner}
+<h2>Evidence</h2><table><tr><th>File</th><th>SHA-256</th><th>MD5</th><th>Bytes</th><th>Acquisition</th><th>Write blocker</th></tr>{rows}</table>
+<h2>Capability &amp; validation scope</h2>
+<p>{escape(coverage)}</p>
+<table><tr><th>Vendor</th><th>Adapter</th><th>Tier</th><th>Scope</th></tr>{capability_rows or '<tr><td colspan="4">No identification hits recorded.</td></tr>'}</table>
+<h2>Timeline normalization</h2><p>{timeline_section}</p>
+<h2>Recovery summary</h2><table><tr><th>Job/Device</th><th>Status</th><th>Vendor</th><th>Adapter</th><th>Segments</th></tr>{recovery_rows}</table>
+<h2>Segment provenance</h2><table><tr><th>Ch</th><th>Byte start</th><th>Byte end</th><th>Parser</th><th>Validation</th><th>Artifact SHA-256</th></tr>{provenance_rows or '<tr><td colspan="6">No recovered sequences.</td></tr>'}</table>
 <h2>Custody ledger</h2><table><tr><th>Time</th><th>Action</th><th>Actor</th><th>Detail</th></tr>{custody_rows}</table>
 <p>{escape(str(report['methodology']))}</p>
 </body></html>"""
@@ -230,11 +278,17 @@ def _case_legacy_shape(case: dict) -> dict:
 
 def _device_report_row(device: dict) -> dict:
     path = Path(device["image_path"])
+    method = device.get("acquisition_method") or "logical_file_acquisition"
     return {
         "filename": path.name,
         "sha256": device["image_sha256"],
         "md5": device["image_md5"],
         "size_bytes": path.stat().st_size if path.exists() else 0,
+        "acquisition_method": method,
+        "write_blocker": device.get("write_blocker"),
+        "source_type": device.get("source_type"),
+        "source_identifier": device.get("source_identifier"),
+        "logical_only": method == "logical_network",
     }
 
 

@@ -31,6 +31,7 @@ Evidence: `engine/app/parsers/registry.py`, `engine/app/parsers/manufacturer_det
 | Vendor detection | byte-token scoring in first 64 MiB | rebadges and coincidental strings can misroute | compare partition structures, recorder model, and a second tool |
 | Deleted recovery | signature/index candidates | candidate presence does not prove complete recovery | review footage continuity and surrounding metadata |
 | Time | offset labels and optional drift correction | wall-clock timestamps may be absent or wrong | document recorder clock, timezone, drift, and DST |
+| Dahua/Hikvision timestamps | DHAV extension TLV `0x72` and HKVI block epoch parsed from **generated fixtures only** | not verified against real recorder media | treat fixture timestamps as lab exercises; validate independently on real disks |
 | Channels | parser-derived or inferred values | channel attribution may be incomplete | visually correlate cameras and recorder configuration |
 | Generic carving | filesystem undelete or H.264 start-code carving | fragmented, overwritten, encrypted, or proprietary streams may be missed | report the search method and negative-result limits |
 | Acquisition | raw DD output; E01 input optional | no E01 output and no compression | preserve raw image, sidecar, and storage capacity |

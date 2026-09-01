@@ -6,6 +6,7 @@ import { useCaseContext } from "@/context/CaseContext";
 import { api, type AiFinding } from "@/lib/api";
 import { subscribeJobEvents } from "@/lib/sse";
 import { Button } from "@/components/ui/button";
+import { VirtualTable } from "@/components/ui/virtual-table";
 import { Input } from "@/components/ui/input";
 import { useActivity } from "@/context/ActivityContext";
 import { DashboardStat } from "@/components/visily/DashboardStat";
@@ -16,6 +17,7 @@ export function CaseAiAnalyticsPage() {
   const [deviceId, setDeviceId] = useState("");
   const [findings, setFindings] = useState<AiFinding[]>([]);
   const [busy, setBusy] = useState(false);
+  const [demoUnavailable, setDemoUnavailable] = useState<string | null>(null);
   const { setWorking, setIdle } = useActivity();
 
   const devices = workspace?.evidence ?? [];
@@ -35,6 +37,7 @@ export function CaseAiAnalyticsPage() {
       return;
     }
     setBusy(true);
+    setDemoUnavailable(null);
     setWorking("Running frame sampling…");
     try {
       const started = await api.runAiAnalytics(deviceId, actor.trim());
@@ -53,9 +56,20 @@ export function CaseAiAnalyticsPage() {
           onError: reject,
         });
       });
-      const result = await api.listAiFindings(deviceId);
-      setFindings(result.findings);
-      toast.success(`Analysis complete — ${result.count} lead(s)`);
+      const status = await api.getJobStatus(started.job.id);
+      const parsed = (status.result ?? {}) as { demo_mode_unavailable?: boolean; message?: string };
+      if (parsed.demo_mode_unavailable) {
+        setDemoUnavailable(
+          parsed.message ?? "OpenCV/decodable video unavailable on this host — analytics skipped",
+        );
+      }
+      const resultFindings = await api.listAiFindings(deviceId);
+      setFindings(resultFindings.findings);
+      toast.success(
+        parsed?.demo_mode_unavailable
+          ? "Analytics unavailable on this host"
+          : `Analysis complete — ${resultFindings.count} lead(s)`,
+      );
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Analytics failed", { duration: Infinity });
@@ -84,6 +98,15 @@ export function CaseAiAnalyticsPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {demoUnavailable ? (
+          <div className="visily-card col-span-full flex items-start gap-3 border border-amber-500/40 bg-amber-50 p-4 text-amber-950">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="text-[13px] font-semibold">Analytics unavailable on this host</p>
+              <p className="mt-1 text-[12px]">{demoUnavailable}</p>
+            </div>
+          </div>
+        ) : null}
         <DashboardStat label="Total findings" value={String(findings.length)} icon={ScanEye} />
         <DashboardStat label="Motion" value={String(motionCount)} icon={ScanEye} tone="info" />
         <DashboardStat label="Scene change" value={String(sceneCount)} icon={ScanEye} />
@@ -132,34 +155,28 @@ export function CaseAiAnalyticsPage() {
               Findings ({findings.length})
             </span>
           </div>
-          {findings.length === 0 ? (
-            <p className="p-4 text-[13px] text-[var(--text-tertiary)]">
-              No findings yet. Complete recovery, then run analysis to populate timeline markers.
-            </p>
-          ) : (
-            <table className="data-table w-full">
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Offset</th>
-                  <th>Label</th>
-                  <th>Conf.</th>
-                  <th>Detector</th>
-                </tr>
-              </thead>
-              <tbody>
-                {findings.map((f) => (
-                  <tr key={f.id}>
-                    <td className="uppercase">{f.finding_type.replace(/_/g, " ")}</td>
-                    <td className="mono">{f.frame_offset_ms}ms</td>
-                    <td>{f.label ?? "—"}</td>
-                    <td className="mono">{f.confidence != null ? f.confidence.toFixed(2) : "—"}</td>
-                    <td className="mono text-[10px]">{f.bbox?.detector ?? f.bbox?.model ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <VirtualTable
+            rows={findings}
+            maxHeight={420}
+            emptyMessage="No findings yet. Complete recovery, then run analysis to populate timeline markers."
+            columns={[
+              { key: "type", header: "Type", cell: (f) => f.finding_type.replace(/_/g, " ") },
+              { key: "offset", header: "Offset", className: "mono", cell: (f) => `${f.frame_offset_ms}ms` },
+              { key: "label", header: "Label", cell: (f) => f.label ?? "—" },
+              {
+                key: "conf",
+                header: "Conf.",
+                className: "mono",
+                cell: (f) => (f.confidence != null ? f.confidence.toFixed(2) : "—"),
+              },
+              {
+                key: "detector",
+                header: "Detector",
+                className: "mono text-[10px]",
+                cell: (f) => f.bbox?.detector ?? f.bbox?.model ?? "—",
+              },
+            ]}
+          />
         </section>
       </div>
     </div>

@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Uploa
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from engine.app.core.config import BUNDLES_DIR
+from engine.app.core.config import BUNDLES_DIR, MAX_UPLOAD_BYTES
 from engine.app.core.db import append_custody, get_db
 from engine.app.core.repository import get_case
 from engine.app.services.case_bundle import export_case_bundle, import_case_bundle
@@ -70,12 +70,16 @@ async def import_case(actor: str = Form(...), bundle: UploadFile = File(...)) ->
         raise HTTPException(status_code=400, detail="Bundle filename required")
 
     temp_path = BUNDLES_DIR / f"upload_{uuid.uuid4().hex}.pramaan.zip"
+    total = 0
     try:
         with temp_path.open("wb") as handle:
             while True:
                 chunk = await bundle.read(1024 * 1024)
                 if not chunk:
                     break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Bundle exceeds configured upload limit")
                 handle.write(chunk)
 
         result = import_case_bundle(temp_path, actor.strip())

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
 
-from engine.app.core.config import MAX_UPLOAD_BYTES
+from engine.app.core.config import MAX_UPLOAD_BYTES, OEM_IMAGE_DIR
 from engine.app.core.repository import (
     case_storage_dir,
     get_case,
@@ -22,7 +23,13 @@ logger = logging.getLogger("forensic.engine")
 
 
 async def store_upload(case_id: str, filename: str, file: UploadFile) -> Path:
-    dest = case_storage_dir(case_id) / filename
+    safe_name = Path(filename).name
+    if not safe_name or safe_name != filename or safe_name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    case_dir = case_storage_dir(case_id).resolve()
+    dest = (case_dir / safe_name).resolve()
+    if not dest.is_relative_to(case_dir):
+        raise HTTPException(status_code=400, detail="Invalid filename")
     size = 0
     with dest.open("wb") as handle:
         while True:
@@ -102,6 +109,58 @@ async def create_lab_specimen(case_id: str, actor: str, vendor: str = "dahua") -
     }
 
 
+OEM_EXTENSIONS = frozenset({".bin", ".dd", ".img", ".raw", ".e01", ".ex01"})
+
+
+def list_oem_images() -> list[dict]:
+    root = OEM_IMAGE_DIR
+    root.mkdir(parents=True, exist_ok=True)
+    items: list[dict] = []
+    for path in sorted(root.iterdir()):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in OEM_EXTENSIONS:
+            continue
+        items.append(
+            {
+                "filename": path.name,
+                "size_bytes": path.stat().st_size,
+            }
+        )
+    return items
+
+
+async def acquire_oem_image(case_id: str, actor: str, filename: str) -> dict:
+    if not get_case(case_id):
+        raise HTTPException(status_code=404, detail="Case not found")
+    safe_name = Path(filename).name
+    if safe_name != filename or not safe_name:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    source = (OEM_IMAGE_DIR / safe_name).resolve()
+    root = OEM_IMAGE_DIR.resolve()
+    if not str(source).startswith(str(root)) or not source.is_file():
+        raise HTTPException(status_code=404, detail="OEM image not found in operator drop zone")
+
+    dest = case_storage_dir(case_id) / safe_name
+    shutil.copy2(source, dest)
+    identification = identify_image(dest)
+    device = register_device_from_path(
+        case_id,
+        actor.strip(),
+        dest,
+        identification=identification,
+        acquisition_method="operator_oem_image",
+        source_type="operator_oem",
+        source_identifier=f"oem:{safe_name}",
+    )
+    _write_hash_sidecar(dest, device["image_sha256"])
+    return {
+        "evidence": _device_as_evidence(device),
+        "identification": identification,
+        "source": "operator_oem",
+    }
+
+
 def _device_as_evidence(device: dict) -> dict:
     path = Path(device["image_path"])
     import json
@@ -123,6 +182,10 @@ def _device_as_evidence(device: dict) -> dict:
         "media_type": "disk_image",
         "acquired_at": device["acquired_at"],
         "acquisition_status": device.get("acquisition_status", "complete"),
+        "acquisition_method": device.get("acquisition_method"),
+        "write_blocker": device.get("write_blocker"),
+        "source_type": device.get("source_type"),
+        "source_identifier": device.get("source_identifier"),
         "verification_status": device.get("verification_status", "pending"),
         "identification": identification,
         "identification_json": device.get("detection_trace_json"),
