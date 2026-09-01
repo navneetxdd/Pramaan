@@ -13,9 +13,12 @@ Set-StrictMode -Version Latest
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $IconPath = Join-Path $ProjectRoot "src-tauri\icons\icon.ico"
 $DesktopPy = Join-Path $ProjectRoot "desktop.py"
-$Pythonw = (Get-Command pythonw -ErrorAction SilentlyContinue)?.Source
+$LaunchArgs = ('"{0}" --production' -f $DesktopPy)
 
-if (-not $Pythonw) {
+$PythonwCmd = Get-Command pythonw -ErrorAction SilentlyContinue
+if ($PythonwCmd) {
+    $Pythonw = $PythonwCmd.Source
+} else {
     $PythonExe = (Get-Command python -ErrorAction Stop).Source
     $Pythonw = Join-Path (Split-Path $PythonExe -Parent) "pythonw.exe"
     if (-not (Test-Path -LiteralPath $Pythonw)) {
@@ -60,11 +63,11 @@ function New-PramaanShortcut {
     $WshShell = New-Object -ComObject WScript.Shell
     $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
     $Shortcut.TargetPath = $Pythonw
-    $Shortcut.Arguments = "`"$DesktopPy`" --production"
+    $Shortcut.Arguments = $LaunchArgs
     $Shortcut.WorkingDirectory = $ProjectRoot
     $Shortcut.IconLocation = "$IconPath,0"
     $Shortcut.Description = "Pramaan forensic workstation (UI + engine)"
-    $Shortcut.WindowStyle = 7  # Minimized — no console flash
+    $Shortcut.WindowStyle = 7
     $Shortcut.Save()
 }
 
@@ -82,8 +85,8 @@ Write-Host "  Desktop:    $DesktopLink"
 Write-Host "  Start menu: $StartMenuLink"
 Write-Host ""
 Write-Host "Double-click Pramaan to launch the desktop app (WebView2 + forensic engine)."
-Write-Host "For a signed Tauri installer, download the CI artifact — see docs/DESKTOP.md"
+Write-Host "For a signed Tauri installer, download the CI artifact (see docs/DESKTOP.md)."
 
 if ($Launch) {
-    Start-Process -FilePath $Pythonw -ArgumentList "`"$DesktopPy`"", "--production" -WorkingDirectory $ProjectRoot
+    Start-Process -FilePath $Pythonw -ArgumentList $LaunchArgs -WorkingDirectory $ProjectRoot
 }
