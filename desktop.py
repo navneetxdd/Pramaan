@@ -59,18 +59,49 @@ def wait_for_url(url: str, timeout_s: float = 25.0) -> bool:
     return False
 
 
-def run_desktop(ui_url: str) -> int:
-    try:
-        import webview
-    except ImportError:
-        print("Missing dependency. Install with: pip install -r requirements-desktop.txt")
-        return 1
+def open_system_browser(url: str) -> None:
+    import webbrowser
 
+    webbrowser.open(url, new=1)
+
+
+def run_browser_shell(ui_url: str, engine: subprocess.Popen[bytes]) -> int:
+    print(f"Pramaan running in your default browser: {ui_url}")
+    print(f"Forensic engine: {ENGINE_URL}")
+    print("Close this window or press Ctrl+C to stop the engine.")
+    open_system_browser(ui_url)
+    try:
+        engine.wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if engine.poll() is None:
+            engine.terminate()
+            try:
+                engine.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                engine.kill()
+    return 0
+
+
+def run_desktop(ui_url: str, *, force_browser: bool = False) -> int:
     engine = start_engine()
     if not wait_for_url(VERSION_URL):
         print(f"Forensic engine did not start on {ENGINE_URL}")
         engine.terminate()
         return 1
+
+    if force_browser:
+        return run_browser_shell(ui_url, engine)
+
+    try:
+        import webview
+    except ImportError:
+        print("pywebview not installed — opening the system browser instead.")
+        print("Install desktop deps with: pip install -r requirements-desktop.txt")
+        return run_browser_shell(ui_url, engine)
+
+    loaded = threading.Event()
 
     def on_closed() -> None:
         engine.terminate()
@@ -78,6 +109,9 @@ def run_desktop(ui_url: str) -> int:
             engine.wait(timeout=5)
         except subprocess.TimeoutExpired:
             engine.kill()
+
+    def on_loaded() -> None:
+        loaded.set()
 
     window = webview.create_window(
         "Pramaan",
@@ -87,6 +121,7 @@ def run_desktop(ui_url: str) -> int:
         min_size=(1100, 680),
         background_color="#070b12",
     )
+    window.events.loaded += on_loaded
 
     def watch_engine() -> None:
         while True:
@@ -101,10 +136,19 @@ def run_desktop(ui_url: str) -> int:
     threading.Thread(target=watch_engine, daemon=True).start()
 
     try:
-        webview.start(on_closed)
-    finally:
-        if engine.poll() is None:
-            engine.terminate()
+        webview.start(on_closed, gui="edgechromium")
+    except Exception as exc:
+        print(f"WebView2 failed to start ({exc}). Opening the system browser instead.")
+        return run_browser_shell(ui_url, engine)
+
+    if not loaded.is_set():
+        print(
+            "WebView2 did not initialize (common on some Windows builds). "
+            "Opening the system browser instead.\n"
+            "For a native window with icon, install: release-artifacts\\nsis\\Pramaan_0.6.0_x64-setup.exe"
+        )
+        return run_browser_shell(ui_url, engine)
+
     return 0
 
 
@@ -116,6 +160,11 @@ def main() -> int:
         help="Serve built dist/ on port 5174 (run npm run build first)",
     )
     parser.add_argument("--ui-url", default=DEFAULT_UI_URL, help="UI URL when not using --production")
+    parser.add_argument(
+        "--browser",
+        action="store_true",
+        help="Skip pywebview and open the UI in the system browser",
+    )
     args = parser.parse_args()
 
     ui_url = args.ui_url
@@ -134,7 +183,7 @@ def main() -> int:
             return 1
 
     try:
-        return run_desktop(ui_url)
+        return run_desktop(ui_url, force_browser=args.browser)
     finally:
         if static_server:
             static_server.shutdown()
