@@ -53,6 +53,9 @@ class LogicalAcquireRequest(BaseModel):
     password: str = Field(min_length=1)
     vendor: Literal["hikvision", "dahua", "onvif"] = "hikvision"
     max_clips: int = Field(default=4, ge=1, le=16)
+    channel: int | None = Field(default=None, ge=1, le=256)
+    start_time: str | None = None
+    end_time: str | None = None
 
 
 def _source_path_from_device(device: dict) -> str:
@@ -127,11 +130,6 @@ async def acquire_oem(case_id: str, body: OemAcquireRequest) -> dict:
 
 @router.post("/cases/{case_id}/devices/acquire/logical")
 async def acquire_logical(case_id: str, body: LogicalAcquireRequest) -> dict:
-    if body.vendor == "onvif":
-        raise HTTPException(
-            status_code=501,
-            detail="ONVIF logical acquisition is disabled — use Hikvision ISAPI or Dahua CGI",
-        )
     if not get_case(case_id):
         raise HTTPException(status_code=404, detail="Case not found")
     try:
@@ -145,6 +143,9 @@ async def acquire_logical(case_id: str, body: LogicalAcquireRequest) -> dict:
             password=body.password,
             vendor=body.vendor,
             max_clips=body.max_clips,
+            channel=body.channel,
+            start_time=body.start_time,
+            end_time=body.end_time,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

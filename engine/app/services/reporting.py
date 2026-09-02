@@ -258,6 +258,15 @@ def build_pdf_report(case_id: str, *, require_intact_chain: bool = True) -> tupl
     line(f"Segments recovered: {report['total_segments_recovered']}")
     for ev in report["evidence"]:
         line(f"  {ev['filename']} · SHA-256 {ev['sha256'][:32]}…")
+    leads = report.get("investigative_leads") or []
+    if leads:
+        line("Investigative leads (examiner-selected — not verified evidence):", "Helvetica-Bold", 11)
+        for lead in leads[:20]:
+            label = lead.get("label") or lead.get("finding_type") or "lead"
+            line(
+                f"  {label} @ {lead.get('frame_offset_ms', 0)} ms"
+                f" conf={lead.get('confidence', '—')}"
+            )
     pdf.save()
     raw = buffer.getvalue()
     signed, fingerprint = sign_pdf_bytes(raw)

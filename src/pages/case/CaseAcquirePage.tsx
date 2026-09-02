@@ -100,19 +100,6 @@ export function CaseAcquirePage() {
 
   const [oemDropLabel, setOemDropLabel] = useState("validation_data/oem");
 
-  const [logicalHost, setLogicalHost] = useState("");
-
-  const [logicalPort, setLogicalPort] = useState("80");
-
-  const [logicalUser, setLogicalUser] = useState("");
-
-  const [logicalPassword, setLogicalPassword] = useState("");
-
-  const [logicalVendor, setLogicalVendor] = useState<"hikvision" | "dahua">(
-    "hikvision",
-  );
-  const [logicalScheme, setLogicalScheme] = useState<"http" | "https">("http");
-
   const { setWorking, setIdle } = useActivity();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -393,64 +380,6 @@ export function CaseAcquirePage() {
     }
   }
 
-  async function handleLogicalAcquire() {
-    if (
-      !actor.trim() ||
-      !logicalHost.trim() ||
-      !logicalUser.trim() ||
-      !logicalPassword
-    ) {
-      toast.error("Handler name, host, user, and password required");
-
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Connect to ${logicalHost}:${logicalPort || "80"}? Only proceed if you are authorised to examine this device.`,
-    );
-
-    if (!confirmed) return;
-
-    setBusy(true);
-
-    setWorking("Pulling logical clips…");
-
-    try {
-      const result = await api.acquireLogical(caseId, {
-        actor: actor.trim(),
-
-        host: logicalHost.trim(),
-
-        port: Number(logicalPort) || 80,
-
-        scheme: logicalScheme,
-
-        user: logicalUser.trim(),
-
-        password: logicalPassword,
-
-        vendor: logicalVendor,
-
-        max_clips: 4,
-      });
-
-      setLogicalPassword("");
-
-      toast.success(`${result.clips_acquired} clip(s) acquired`);
-
-      await verifyLatestHash();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Logical acquisition failed",
-        { duration: Infinity },
-      );
-    } finally {
-      setBusy(false);
-
-      setIdle();
-    }
-  }
-
   async function handlePickNative() {
     if (isDesktopApp()) {
       const picked = await pickDiskImage();
@@ -704,7 +633,7 @@ export function CaseAcquirePage() {
           </div>
 
           <p className="mt-3 text-[12px] text-[var(--text-secondary)]">
-            Network recording pull moved to{" "}
+            Pulling recordings from a powered device?{" "}
             <Link
               className="font-medium text-[var(--accent-600)] underline"
               to={`/cases/${caseId}/live`}

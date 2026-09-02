@@ -86,7 +86,8 @@ export function PlaybackDeck({
   onSelectSegment,
 }: PlaybackDeckProps) {
   const [playing, setPlaying] = useState(false);
-  const [exportCache] = useState(() => new Map<string, ExportCacheEntry>());
+  const exportCacheRef = useRef(new Map<string, ExportCacheEntry>());
+  const syncTokenRef = useRef(0);
   const [laneUrls, setLaneUrls] = useState<Record<number, string>>({});
   const [laneMedia, setLaneMedia] = useState<Record<number, string>>({});
   const [laneGaps, setLaneGaps] = useState<Record<number, boolean>>({});
@@ -127,6 +128,7 @@ export function PlaybackDeck({
 
   const resolveExport = useCallback(
     async (seg: Segment, fromMs?: number, toMs?: number) => {
+      const exportCache = exportCacheRef.current;
       const key = exportCacheKey(seg.id, fromMs, toMs);
       const cached = exportCache.get(key);
       if (cached) return cached;
@@ -141,7 +143,7 @@ export function PlaybackDeck({
       exportCache.set(key, entry);
       return entry;
     },
-    [deviceId, exportCache],
+    [deviceId],
   );
 
   const segmentAtPlayhead = useCallback(
@@ -180,6 +182,7 @@ export function PlaybackDeck({
   ]);
 
   useEffect(() => {
+    const token = ++syncTokenRef.current;
     let cancelled = false;
     async function syncLanes() {
       const nextUrls: Record<number, string> = {};
@@ -204,7 +207,7 @@ export function PlaybackDeck({
             toMs = Math.min(end - start, relPlayhead + SCRUB_WINDOW_MS);
           }
           const exported = await resolveExport(seg, fromMs, toMs);
-          if (cancelled) return;
+          if (cancelled || token !== syncTokenRef.current) return;
           nextUrls[channel.channel] = exported.url;
           nextMedia[channel.channel] = exported.mediaType;
           const video = videoRefs.current[channel.channel];

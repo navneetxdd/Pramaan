@@ -212,7 +212,8 @@ def _sequence_payload(seq: dict, device: dict) -> dict:
         "byte_start": seq.get("byte_start"),
         "byte_end": seq.get("byte_end"),
         "byte_length": seq.get("byte_length"),
-        "frame_count": seq.get("frame_count"),
+        "container_units": seq.get("frame_count"),
+        "playable_frame_count": seq.get("playable_frame_count"),
         "confidence": seq.get("confidence"),
         "validation_level": seq.get("validation_level"),
         "output_path": seq.get("output_path"),
@@ -434,6 +435,59 @@ def export_sequence(
     def transcode_to_mp4(source: Path, destination: Path) -> bool:
         if not shutil.which(FFMPEG_BIN):
             return False
+        if ranged:
+            from_s = from_ms / 1000
+            dur_s = (to_ms - from_ms) / 1000
+            copy_cmd = [
+                FFMPEG_BIN,
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                f"{from_s:.3f}",
+                "-f",
+                "h264",
+                "-i",
+                str(source),
+                "-t",
+                f"{dur_s:.3f}",
+                "-c",
+                "copy",
+                "-movflags",
+                "+faststart",
+                str(destination),
+            ]
+            result = subprocess.run(copy_cmd, capture_output=True, text=True, check=False)
+            if result.returncode == 0 and destination.exists() and destination.stat().st_size > 0:
+                return True
+            fallback_cmd = [
+                FFMPEG_BIN,
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                f"{from_s:.3f}",
+                "-f",
+                "h264",
+                "-i",
+                str(source),
+                "-t",
+                f"{dur_s:.3f}",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-pix_fmt",
+                "yuv420p",
+                str(destination),
+            ]
+            result = subprocess.run(fallback_cmd, capture_output=True, text=True, check=False)
+            return result.returncode == 0 and destination.exists() and destination.stat().st_size > 0
+
         cmd = [
             FFMPEG_BIN,
             "-y",
@@ -445,9 +499,6 @@ def export_sequence(
             "-i",
             str(source),
         ]
-        if ranged:
-            duration_ms = to_ms - from_ms
-            cmd.extend(["-ss", f"{from_ms / 1000:.3f}", "-t", f"{duration_ms / 1000:.3f}"])
         if not full:
             cmd.extend(["-vf", "scale='min(1280,iw)':-2"])
         cmd.extend(

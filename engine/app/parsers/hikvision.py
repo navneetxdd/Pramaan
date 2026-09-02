@@ -25,9 +25,9 @@ class HikvisionAdapter:
             if view_len <= 0:
                 return []
             with mmap.mmap(handle.fileno(), view_len, access=mmap.ACCESS_READ) as data:
-                return self._scan_mapped(bytes(data))
+                return self._scan_mapped(data)
 
-    def _scan_mapped(self, data: bytes) -> list[RecoveredSegment]:
+    def _scan_mapped(self, data: mmap.mmap | bytes) -> list[RecoveredSegment]:
         master = parse_master_block(data, MASTER_BLOCK_OFFSET)
         if not master:
             return []

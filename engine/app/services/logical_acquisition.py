@@ -103,6 +103,19 @@ def _base_url(scheme: Scheme, host: str, port: int) -> str:
     return f"{scheme}://{host}:{port}"
 
 
+def _iso_or_default(start: str | None, end: str | None) -> tuple[str, str]:
+    return (
+        start or "2020-01-01T00:00:00Z",
+        end or "2030-01-01T00:00:00Z",
+    )
+
+
+def _dahua_time(value: str | None, fallback: str) -> str:
+    if not value:
+        return fallback
+    return value.replace("T", " ").replace("Z", "")[:19]
+
+
 def _hikvision_search_clips(
     session: requests.Session,
     *,
@@ -111,16 +124,21 @@ def _hikvision_search_clips(
     port: int,
     user: str,
     password: str,
+    channel: int | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ) -> list[LogicalClip]:
     clips: list[LogicalClip] = []
     position = 0
+    track_id = (channel or 1) * 100 + 1
+    span_start, span_end = _iso_or_default(start_time, end_time)
     while True:
         search_id = uuid.uuid4().hex
         search_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <CMSearchDescription>
   <searchID>{search_id}</searchID>
-  <trackList><trackID>101</trackID></trackList>
-  <timeSpanList><timeSpan><startTime>2020-01-01T00:00:00Z</startTime><endTime>2030-01-01T00:00:00Z</endTime></timeSpan></timeSpanList>
+  <trackList><trackID>{track_id}</trackID></trackList>
+  <timeSpanList><timeSpan><startTime>{span_start}</startTime><endTime>{span_end}</endTime></timeSpan></timeSpanList>
   <maxResults>100</maxResults>
   <searchResultPostion>{position}</searchResultPostion>
 </CMSearchDescription>"""
@@ -200,6 +218,9 @@ def _dahua_search_clips(
     port: int,
     user: str,
     password: str,
+    channel: int | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ) -> list[LogicalClip]:
     base = f"{_base_url(scheme, host, port)}/cgi-bin/mediaFileFind.cgi"
     create = _request_with_auth_fallback(session, "GET", f"{base}?action=factory.create", user, password)
@@ -212,13 +233,16 @@ def _dahua_search_clips(
     if not object_id:
         raise RuntimeError("Dahua mediaFileFind did not return an object id")
 
+    ch = channel or 1
+    start = _dahua_time(start_time, "2020-01-01 00:00:00")
+    end = _dahua_time(end_time, "2030-01-01 00:00:00")
     find = _request_with_auth_fallback(
         session,
         "GET",
         (
             f"{base}?action=findFile&object={object_id}"
-            "&condition.Channel=1&condition.StartTime=2020-01-01%2000:00:00"
-            "&condition.EndTime=2030-01-01%2000:00:00&condition.Types[0]=dav"
+            f"&condition.Channel={ch}&condition.StartTime={quote(start)}"
+            f"&condition.EndTime={quote(end)}&condition.Types[0]=dav"
         ),
         user,
         password,
@@ -243,7 +267,7 @@ def _dahua_search_clips(
                 path = line.split("=", 1)[1].strip()
         if not path:
             break
-        clips.append(LogicalClip(remote_path=path, filename=Path(path).name or f"dahua_{len(clips)}.dav", track="1"))
+        clips.append(LogicalClip(remote_path=path, filename=Path(path).name or f"dahua_{len(clips)}.dav", track=str(ch)))
         if "found=0" in nxt.text or len(clips) >= 100:
             break
     _request_with_auth_fallback(session, "GET", f"{base}?action=close&object={object_id}", user, password)
@@ -295,15 +319,36 @@ def discover_logical_clips(
     password: str,
     vendor: Vendor,
     scheme: Scheme = "http",
+    channel: int | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ) -> list[LogicalClip]:
     if vendor == "onvif":
         return _onvif_search_clips(host, port, user, password)
     session = _session(user, password)
     if vendor == "hikvision":
         return _hikvision_search_clips(
-            session, scheme=scheme, host=host, port=port, user=user, password=password
+            session,
+            scheme=scheme,
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            channel=channel,
+            start_time=start_time,
+            end_time=end_time,
         )
-    return _dahua_search_clips(session, scheme=scheme, host=host, port=port, user=user, password=password)
+    return _dahua_search_clips(
+        session,
+        scheme=scheme,
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        channel=channel,
+        start_time=start_time,
+        end_time=end_time,
+    )
 
 
 def download_logical_clip(
@@ -339,12 +384,23 @@ async def acquire_logical_network(
     vendor: Vendor,
     scheme: Scheme = "http",
     max_clips: int = 4,
+    channel: int | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ) -> dict:
     if not get_case(case_id):
         raise ValueError("Case not found")
 
     clips = discover_logical_clips(
-        host=host, port=port, user=user, password=password, vendor=vendor, scheme=scheme
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        vendor=vendor,
+        scheme=scheme,
+        channel=channel,
+        start_time=start_time,
+        end_time=end_time,
     )
     if not clips:
         raise RuntimeError("No recordings returned by the device index")

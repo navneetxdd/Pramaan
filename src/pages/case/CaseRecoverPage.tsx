@@ -270,12 +270,12 @@ export function CaseRecoverPage() {
             },
             {
               key: "frames",
-              header: "Frames",
+              header: "Playable frames",
               className: "mono",
               cell: (seg) =>
                 seg.playable_frame_count != null
-                  ? `${seg.playable_frame_count} playable`
-                  : `${seg.frame_count ?? "—"} container`,
+                  ? String(seg.playable_frame_count)
+                  : "—",
             },
             {
               key: "ts",

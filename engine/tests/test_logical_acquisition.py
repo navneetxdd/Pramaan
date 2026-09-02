@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 class _HikvisionIsapiHandler(BaseHTTPRequestHandler):
     clip_bytes: bytes = b"\x00\x00\x00\x01\x65" + b"\xab" * 256
+    last_search_xml: str | None = None
 
     def log_message(self, format: str, *args) -> None:  # noqa: A003
         return
@@ -38,6 +39,8 @@ class _HikvisionIsapiHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         if urlparse(self.path).path.endswith("/ISAPI/ContentMgmt/search"):
+            length = int(self.headers.get("Content-Length", "0"))
+            _HikvisionIsapiHandler.last_search_xml = self.rfile.read(length).decode("utf-8")
             body = """<?xml version="1.0" encoding="UTF-8"?>
 <CMSearchResult>
   <responseStatus>true</responseStatus>
@@ -179,6 +182,31 @@ class LogicalAcquisitionTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, response.text)
             body = response.json()
             self.assertGreaterEqual(body["clips_acquired"], 1)
+        finally:
+            _stop_mock_isapi_server(server, thread)
+
+    def test_hikvision_search_respects_channel_and_time_range(self) -> None:
+        handler = _HikvisionIsapiHandler
+        handler.last_search_xml = None
+        server, thread, port = _start_mock_isapi_server(handler)
+        try:
+            session = _session("admin", "secret")
+            clips = _hikvision_search_clips(
+                session,
+                scheme="http",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
+                channel=3,
+                start_time="2021-06-01T08:00:00Z",
+                end_time="2021-06-01T09:00:00Z",
+            )
+            self.assertGreaterEqual(len(clips), 1)
+            xml = handler.last_search_xml or ""
+            self.assertIn("<trackID>301</trackID>", xml)
+            self.assertIn("2021-06-01T08:00:00Z", xml)
+            self.assertIn("2021-06-01T09:00:00Z", xml)
         finally:
             _stop_mock_isapi_server(server, thread)
 

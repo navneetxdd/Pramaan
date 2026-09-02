@@ -43,6 +43,14 @@ class LiveCapture(BaseModel):
     duration_s: int = Field(default=30, ge=1, le=120)
 
 
+class LivePullRecordings(BaseModel):
+    actor: str
+    channel: int = Field(default=1, ge=1, le=256)
+    start_time: str | None = None
+    end_time: str | None = None
+    max_clips: int = Field(default=4, ge=1, le=20)
+
+
 def _gate() -> None:
     if not live_devices._gate_enabled():
         raise HTTPException(
@@ -172,5 +180,25 @@ def live_capture(device_id: str, body: LiveCapture) -> dict:
             channel=body.channel,
             duration_s=body.duration_s,
         )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/live-devices/{device_id}/pull-recordings")
+async def pull_live_recordings(device_id: str, body: LivePullRecordings) -> dict:
+    _gate()
+    if not live_devices.get_live_device(device_id):
+        raise HTTPException(status_code=404, detail="Live device not found")
+    try:
+        return await live_devices.pull_recordings(
+            device_id,
+            actor=body.actor.strip(),
+            channel=body.channel,
+            start_time=body.start_time,
+            end_time=body.end_time,
+            max_clips=body.max_clips,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

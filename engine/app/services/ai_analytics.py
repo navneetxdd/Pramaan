@@ -26,6 +26,7 @@ logger = logging.getLogger("forensic.engine")
 SAMPLE_FPS = 1.0
 SCENE_CHANGE_THRESHOLD = 0.18
 FOREGROUND_RATIO_THRESHOLD = 0.005
+MOTION_CONFIDENCE_FLOOR = 0.35
 OBJECT_CONFIDENCE_THRESHOLD = 0.35
 OBJECT_NMS_THRESHOLD = 0.45
 YOLOX_INPUT_SIZE = (416, 416)
@@ -305,12 +306,15 @@ def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str], int]:
             significant = [contour for contour in contours if cv2.contourArea(contour) >= 64]
             if significant:
                 x, y, width, height = cv2.boundingRect(cv2.convexHull(cv2.vconcat(significant)))
+                confidence = min(1.0, foreground_ratio / 0.25)
+                if confidence < MOTION_CONFIDENCE_FLOOR:
+                    continue
                 findings.append(
                     {
                         "frame_offset_ms": offset_ms,
                         "finding_type": "motion",
                         "label": "Foreground motion candidate",
-                        "confidence": min(1.0, foreground_ratio / 0.25),
+                        "confidence": confidence,
                         "bbox": {
                             "x": int(x),
                             "y": int(y),
@@ -319,6 +323,7 @@ def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str], int]:
                             "detector": "opencv_mog2",
                             "threshold": FOREGROUND_RATIO_THRESHOLD,
                             "sample_fps": SAMPLE_FPS,
+                            "filter": f"confidence_floor_{MOTION_CONFIDENCE_FLOOR}",
                         },
                     }
                 )

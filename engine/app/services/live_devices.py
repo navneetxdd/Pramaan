@@ -52,7 +52,89 @@ def _ffmpeg_stderr_tail(stderr: str, limit: int = 2000) -> str:
     return text[-limit:] if len(text) > limit else text
 
 
+def _which_ffmpeg() -> bool:
+    import shutil
+
+    return bool(shutil.which(FFMPEG_BIN))
+
+
+def _rtsp_output_codecs(include_audio: bool) -> list[str]:
+    if include_audio:
+        return ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k"]
+    return ["-c:v", "copy", "-an"]
+
+
+def _should_retry_video_only(stderr: str) -> bool:
+    text = (stderr or "").lower()
+    return any(
+        token in text
+        for token in (
+            "pcm_mulaw",
+            "pcm_alaw",
+            "codec not currently supported",
+            "could not find tag for codec",
+            "audio encoder",
+            "unknown encoder 'aac'",
+        )
+    )
+
+
+def _run_ffmpeg_with_audio_fallback(
+    cmd_base: list[str],
+    *,
+    output_path: Path | None = None,
+    timeout: int | None = None,
+) -> tuple[subprocess.CompletedProcess[str], str | None]:
+    """Run ffmpeg with AAC audio; fall back to video-only on codec errors."""
+    cmd = [*cmd_base, *_rtsp_output_codecs(True)]
+    if output_path is not None:
+        cmd.append(str(output_path))
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=timeout,
+    )
+    if result.returncode == 0:
+        if output_path is None or output_path.exists():
+            return result, None
+    stderr = result.stderr or result.stdout or ""
+    if not _should_retry_video_only(stderr):
+        return result, None
+    cmd_retry = [*cmd_base, *_rtsp_output_codecs(False)]
+    if output_path is not None:
+        cmd_retry.append(str(output_path))
+    retry = subprocess.run(
+        cmd_retry,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=timeout,
+    )
+    return retry, "dropped"
+
+
 def _probe_rtsp(uri: str, timeout: int = 8) -> str | None:
+    import shutil
+
+    if shutil.which("ffprobe"):
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-rtsp_transport",
+            "tcp",
+            "-i",
+            uri,
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+        except subprocess.TimeoutExpired:
+            return "ffmpeg probe timed out"
+        if result.returncode == 0:
+            return None
+        return _ffmpeg_stderr_tail(result.stderr or result.stdout or "ffprobe failed")
     if not _which_ffmpeg():
         return "ffmpeg not found on PATH"
     cmd = [
@@ -64,6 +146,7 @@ def _probe_rtsp(uri: str, timeout: int = 8) -> str | None:
         "tcp",
         "-i",
         uri,
+        "-an",
         "-t",
         "1",
         "-f",
@@ -77,12 +160,6 @@ def _probe_rtsp(uri: str, timeout: int = 8) -> str | None:
     if result.returncode == 0:
         return None
     return _ffmpeg_stderr_tail(result.stderr or result.stdout or "ffmpeg probe failed")
-
-
-def _which_ffmpeg() -> bool:
-    from shutil import which
-
-    return which(FFMPEG_BIN) is not None
 
 
 def _store_credentials(device_id: str, user: str, password: str) -> None:
@@ -495,12 +572,13 @@ def mjpeg_stream(device_id: str, channel: int, fps: int = 6) -> subprocess.Popen
     return proc
 
 
-def mp4_stream(device_id: str, channel: int) -> subprocess.Popen[bytes]:
+def mp4_stream(device_id: str, channel: int, *, include_audio: bool = True) -> subprocess.Popen[bytes]:
     row = get_live_device(device_id)
     if not row:
         raise ValueError("Live device not found")
     uri = _channel_uri(row, channel, quality="main")
-    key = _stream_key(device_id, channel, "mp4")
+    suffix = "mp4a" if include_audio else "mp4v"
+    key = _stream_key(device_id, channel, suffix)
     _acquire_stream_slot(key)
     cmd = [
         FFMPEG_BIN,
@@ -511,8 +589,7 @@ def mp4_stream(device_id: str, channel: int) -> subprocess.Popen[bytes]:
         "tcp",
         "-i",
         uri,
-        "-c",
-        "copy",
+        *_rtsp_output_codecs(include_audio),
         "-f",
         "mp4",
         "-movflags",
@@ -554,22 +631,55 @@ async def iter_mjpeg(device_id: str, channel: int, fps: int, disconnect) -> Asyn
 
 
 async def iter_mp4(device_id: str, channel: int, disconnect) -> AsyncIterator[bytes]:  # type: ignore[no-untyped-def]
-    key = _stream_key(device_id, channel, "mp4")
-    proc = mp4_stream(device_id, channel)
-    try:
-        if not proc.stdout:
-            return
-        while True:
-            if await disconnect():
-                break
-            chunk = proc.stdout.read(65536)
-            if not chunk:
-                if proc.poll() is not None:
-                    break
+    for include_audio in (True, False):
+        suffix = "mp4a" if include_audio else "mp4v"
+        key = _stream_key(device_id, channel, suffix)
+        proc = mp4_stream(device_id, channel, include_audio=include_audio)
+        try:
+            if not proc.stdout:
                 continue
-            yield chunk
-    finally:
-        _release_stream(key)
+            prefix = b""
+            while len(prefix) < 4096:
+                if await disconnect():
+                    return
+                chunk = proc.stdout.read(4096)
+                if chunk:
+                    prefix += chunk
+                elif proc.poll() is not None:
+                    break
+            if prefix:
+                yield prefix
+                while True:
+                    if await disconnect():
+                        break
+                    chunk = proc.stdout.read(65536)
+                    if not chunk:
+                        if proc.poll() is not None:
+                            break
+                        continue
+                    yield chunk
+                if not include_audio:
+                    logger.info(
+                        "Live MP4 stream for %s ch%s using video-only fallback",
+                        device_id,
+                        channel,
+                    )
+                return
+            stderr = b""
+            if proc.stderr:
+                stderr = proc.stderr.read()
+            if include_audio and _should_retry_video_only(stderr.decode("utf-8", errors="replace")):
+                logger.warning(
+                    "Live MP4 stream for %s ch%s retrying without audio: %s",
+                    device_id,
+                    channel,
+                    _ffmpeg_stderr_tail(stderr.decode("utf-8", errors="replace"), 400),
+                )
+                continue
+            raise RuntimeError(_ffmpeg_stderr_tail(stderr.decode("utf-8", errors="replace")))
+        finally:
+            _release_stream(key)
+    raise RuntimeError("Live MP4 stream failed with and without audio")
 
 
 def capture_snapshot(case_id: str, device_id: str, *, actor: str, channel: int) -> dict[str, Any]:
@@ -635,7 +745,7 @@ def capture_clip(
     live_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     dest = live_dir / f"{ts}_ch{channel}.mp4"
-    cmd = [
+    cmd_base = [
         FFMPEG_BIN,
         "-hide_banner",
         "-loglevel",
@@ -644,14 +754,11 @@ def capture_clip(
         "tcp",
         "-i",
         uri,
-        "-c",
-        "copy",
         "-t",
         str(duration),
-        str(dest),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if result.returncode != 0 or not dest.exists():
+    result, audio_state = _run_ffmpeg_with_audio_fallback(cmd_base, output_path=dest, timeout=duration + 30)
+    if result.returncode != 0 or not dest.exists() or dest.stat().st_size == 0:
         raise RuntimeError(_ffmpeg_stderr_tail(result.stderr))
     identification = identify_image(dest)
     device = register_device_from_path(
@@ -674,4 +781,41 @@ def capture_clip(
         "channel": channel,
         "duration_s": duration,
         "source_uri": uri,
+        "audio": audio_state or "aac",
     }
+
+
+async def pull_recordings(
+    device_id: str,
+    *,
+    actor: str,
+    channel: int,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    max_clips: int = 4,
+) -> dict[str, Any]:
+    from engine.app.services.logical_acquisition import acquire_logical_network
+
+    row = get_live_device(device_id)
+    if not row:
+        raise ValueError("Live device not found")
+    vendor = row["vendor"]
+    if vendor == "generic_rtsp":
+        raise ValueError("Logical recording pull is not supported for generic RTSP devices")
+    if device_id not in _CREDENTIALS:
+        raise ValueError("Reconnect this device to supply credentials for recording pull")
+    user, password = _get_credentials(device_id)
+    return await acquire_logical_network(
+        row["case_id"],
+        actor.strip(),
+        host=row["host"],
+        port=int(row["port"]),
+        user=user,
+        password=password,
+        vendor=vendor,  # type: ignore[arg-type]
+        scheme=row["scheme"],  # type: ignore[arg-type]
+        max_clips=max_clips,
+        channel=channel,
+        start_time=start_time,
+        end_time=end_time,
+    )

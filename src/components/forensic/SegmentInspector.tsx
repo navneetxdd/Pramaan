@@ -112,7 +112,10 @@ export function SegmentInspector({
         segment?.timestamp_confidence ?? detail?.timestamp_confidence ?? "—",
       ],
       ["Recovery job", detail?.recovery_job_id ?? segment?.job_id ?? "—"],
-      ["Container frames", segment?.frame_count ?? detail?.frame_count ?? "—"],
+      [
+        "Container units",
+        segment?.container_units ?? detail?.frame_count ?? "—",
+      ],
       [
         "Playable frames",
         segment?.playable_frame_count != null

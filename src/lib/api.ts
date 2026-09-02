@@ -116,7 +116,7 @@ export type Segment = {
   vendor: string;
   offset_start: number;
   offset_end: number;
-  frame_count: number;
+  container_units: number;
   playable_frame_count?: number | null;
   confidence: number;
   validation: string;
@@ -455,8 +455,11 @@ export const api = {
       scheme?: "http" | "https";
       user: string;
       password: string;
-      vendor?: "hikvision" | "dahua";
+      vendor?: "hikvision" | "dahua" | "onvif";
       max_clips?: number;
+      channel?: number;
+      start_time?: string;
+      end_time?: string;
     },
   ) =>
     request<{
@@ -864,6 +867,25 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+
+  livePullRecordings: (
+    deviceId: string,
+    body: {
+      actor: string;
+      channel: number;
+      start_time?: string;
+      end_time?: string;
+      max_clips?: number;
+    },
+  ) =>
+    request<{ clips_acquired: number; devices: unknown[] }>(
+      `/api/v1/live-devices/${deviceId}/pull-recordings`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ),
 
   liveMjpegUrl: (deviceId: string, channel: number, fps = 6) =>
     resolveApiUrl(

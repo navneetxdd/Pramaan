@@ -1,0 +1,8 @@
+rtspAddress: :8554
+paths:
+  cam1:
+    source: publisher
+  cam2:
+    source: publisher
+  cam3:
+    source: publisher

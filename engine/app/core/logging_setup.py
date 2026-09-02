@@ -31,37 +31,52 @@ def block_outbound_sockets() -> None:
         logger.info("Outbound socket guard disabled (PRAMAAN_ALLOW_LOGICAL_ACQUIRE)")
         return
 
-    allowed = {"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"}
-    original_connect = socket.socket.connect
-    original_connect_ex = socket.socket.connect_ex
-    original_create_connection = socket.create_connection
+    if getattr(block_outbound_sockets, "_installed", False):
+        return
 
-    def _host_allowed(address) -> str:  # type: ignore[no-untyped-def]
-        host = address[0] if isinstance(address, tuple) else str(address)
-        return host
+    allowed = {"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"}
+    originals = {
+        "connect": socket.socket.connect,
+        "connect_ex": socket.socket.connect_ex,
+        "create_connection": socket.create_connection,
+    }
+    block_outbound_sockets._originals = originals  # type: ignore[attr-defined]
+    block_outbound_sockets._installed = True  # type: ignore[attr-defined]
 
     def guarded_connect(self, address):  # type: ignore[no-untyped-def]
-        host = _host_allowed(address)
+        host = address[0] if isinstance(address, tuple) else str(address)
         if host not in allowed:
             raise OSError(f"Outbound network blocked by policy: {host}")
-        return original_connect(self, address)
+        return originals["connect"](self, address)
 
     def guarded_connect_ex(self, address):  # type: ignore[no-untyped-def]
-        host = _host_allowed(address)
+        host = address[0] if isinstance(address, tuple) else str(address)
         if host not in allowed:
             return 10061
-        return original_connect_ex(self, address)
+        return originals["connect_ex"](self, address)
 
     def guarded_create_connection(address, *args, **kwargs):  # type: ignore[no-untyped-def]
-        host = _host_allowed(address)
+        host = address[0] if isinstance(address, tuple) else str(address)
         if host not in allowed:
             raise OSError(f"Outbound network blocked by policy: {host}")
-        return original_create_connection(address, *args, **kwargs)
+        return originals["create_connection"](address, *args, **kwargs)
 
     socket.socket.connect = guarded_connect  # type: ignore[method-assign]
     socket.socket.connect_ex = guarded_connect_ex  # type: ignore[method-assign]
     socket.create_connection = guarded_create_connection  # type: ignore[method-assign]
     logger.info("Outbound socket guard active (localhost only)")
+
+
+def restore_outbound_sockets() -> None:
+    """Undo block_outbound_sockets — for tests that patch the guard."""
+    originals = getattr(block_outbound_sockets, "_originals", None)
+    if not originals:
+        return
+    socket.socket.connect = originals["connect"]  # type: ignore[method-assign]
+    socket.socket.connect_ex = originals["connect_ex"]  # type: ignore[method-assign]
+    socket.create_connection = originals["create_connection"]  # type: ignore[method-assign]
+    block_outbound_sockets._originals = None  # type: ignore[attr-defined]
+    block_outbound_sockets._installed = False  # type: ignore[attr-defined]
 
 
 def bootstrap() -> None:

@@ -1,19 +1,124 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { Camera, Grid2X2, Plus, Radio } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  AlertCircle,
+  Camera,
+  Grid2X2,
+  Loader2,
+  Plus,
+  Radio,
+} from "lucide-react";
 import { useCaseContext } from "@/context/CaseContext";
 import { PageHeader } from "@/components/visily/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, type LiveDeviceRecord } from "@/lib/api";
 import { shortHash } from "@/lib/utils";
-import { resolveApiUrl } from "@/lib/apiBase";
 import { toast } from "sonner";
 
 type GridSize = 1 | 4 | 9 | 16;
+type TileState = "connecting" | "live" | "error";
+
+type GridTile = {
+  device: LiveDeviceRecord;
+  channel: LiveDeviceRecord["channels"][number];
+  key: string;
+};
+
+function StreamTile({
+  deviceId,
+  channel,
+  label,
+  onExpand,
+  onSnapshot,
+  onRecord,
+}: {
+  deviceId: string;
+  channel: number;
+  label: string;
+  onExpand: () => void;
+  onSnapshot: () => void;
+  onRecord: () => void;
+}) {
+  const [state, setState] = useState<TileState>("connecting");
+  const [retryKey, setRetryKey] = useState(0);
+
+  const streamUrl = useMemo(
+    () => `${api.liveMjpegUrl(deviceId, channel)}?t=${retryKey}`,
+    [deviceId, channel, retryKey],
+  );
+
+  return (
+    <div className="relative overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+      <img
+        key={streamUrl}
+        alt={label}
+        className="aspect-video w-full object-cover"
+        src={streamUrl}
+        onLoad={() => setState("live")}
+        onError={() => setState("error")}
+      />
+      {state === "connecting" ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-[var(--surface-2)]/80">
+          <Loader2 className="h-6 w-6 animate-spin text-[var(--text-tertiary)]" />
+        </div>
+      ) : null}
+      {state === "error" ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--surface-2)]/90 px-3 text-center">
+          <AlertCircle className="h-5 w-5 text-[var(--danger-500)]" />
+          <p className="text-[11px] text-[var(--text-secondary)]">
+            Stream unavailable
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setState("connecting");
+              setRetryKey((k) => k + 1);
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/50 px-2 py-1 text-[10px] text-white">
+        <span className="truncate">{label}</span>
+        <span className="flex shrink-0 items-center gap-1">
+          {state === "connecting" ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              connecting
+            </>
+          ) : null}
+          {state === "live" ? (
+            <>
+              <Radio className="h-3 w-3 text-emerald-400" />
+              live
+            </>
+          ) : null}
+          {state === "error" ? (
+            <span className="text-red-300">offline</span>
+          ) : null}
+        </span>
+      </div>
+      <div className="flex gap-1 p-2">
+        <Button size="sm" variant="secondary" onClick={onSnapshot}>
+          Snapshot
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onRecord}>
+          Record 30s
+        </Button>
+        <Button size="sm" onClick={onExpand}>
+          Expand
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export function CaseLiveDevicesPage() {
   const { caseId, workspace } = useCaseContext();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [devices, setDevices] = useState<LiveDeviceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [gateBlocked, setGateBlocked] = useState(false);
@@ -35,8 +140,16 @@ export function CaseLiveDevicesPage() {
     authorized: false,
   });
   const [probeResult, setProbeResult] = useState<string | null>(null);
+  const [pullBusy, setPullBusy] = useState(false);
+  const [pullForm, setPullForm] = useState({
+    channel: 1,
+    start: "",
+    end: "",
+    maxClips: 4,
+  });
 
   const actor = workspace?.case?.examiner_name || "Examiner";
+  const pullDeviceId = searchParams.get("pull");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -63,12 +176,31 @@ export function CaseLiveDevicesPage() {
   }, [refresh]);
 
   const activeDevice = useMemo(
-    () => devices.find((d) => d.id === focused?.deviceId) ?? devices[0],
-    [devices, focused],
+    () =>
+      devices.find((d) => d.id === (pullDeviceId || focused?.deviceId)) ??
+      devices[0],
+    [devices, pullDeviceId, focused],
   );
 
-  const channels = activeDevice?.channels ?? [];
-  const visibleChannels = channels.slice(0, gridSize);
+  useEffect(() => {
+    if (activeDevice?.channels[0]) {
+      setPullForm((prev) => ({
+        ...prev,
+        channel: prev.channel || activeDevice.channels[0].channel,
+      }));
+    }
+  }, [activeDevice]);
+
+  const gridTiles = useMemo<GridTile[]>(() => {
+    const flat = devices.flatMap((device) =>
+      device.channels.map((channel) => ({
+        device,
+        channel,
+        key: `${device.id}:${channel.channel}`,
+      })),
+    );
+    return flat.slice(0, gridSize);
+  }, [devices, gridSize]);
 
   async function testConnection() {
     if (!form.authorized) {
@@ -131,6 +263,42 @@ export function CaseLiveDevicesPage() {
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Capture failed");
+    }
+  }
+
+  async function handlePullRecordings() {
+    if (!activeDevice) return;
+    if (activeDevice.vendor === "generic_rtsp") {
+      toast.error("Logical pull is not available for generic RTSP devices");
+      return;
+    }
+    if (!activeDevice.credentialed) {
+      toast.error(
+        "Reconnect this device with credentials before pulling recordings",
+      );
+      return;
+    }
+    setPullBusy(true);
+    try {
+      const result = await api.livePullRecordings(activeDevice.id, {
+        actor,
+        channel: pullForm.channel,
+        start_time: pullForm.start
+          ? new Date(pullForm.start).toISOString()
+          : undefined,
+        end_time: pullForm.end
+          ? new Date(pullForm.end).toISOString()
+          : undefined,
+        max_clips: pullForm.maxClips,
+      });
+      toast.success(`${result.clips_acquired} clip(s) acquired`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Recording pull failed",
+        { duration: Infinity },
+      );
+    } finally {
+      setPullBusy(false);
     }
   }
 
@@ -264,83 +432,128 @@ export function CaseLiveDevicesPage() {
                   gridTemplateColumns: `repeat(${Math.ceil(Math.sqrt(gridSize))}, minmax(0, 1fr))`,
                 }}
               >
-                {activeDevice
-                  ? visibleChannels.map((channel) => (
-                      <div
-                        key={channel.channel}
-                        className="relative overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-2)]"
-                      >
-                        <img
-                          alt={channel.label}
-                          className="aspect-video w-full object-cover"
-                          src={api.liveMjpegUrl(
-                            activeDevice.id,
-                            channel.channel,
-                          )}
-                        />
-                        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/50 px-2 py-1 text-[10px] text-white">
-                          <span>{channel.label}</span>
-                          <span className="flex items-center gap-1">
-                            <Radio className="h-3 w-3 text-emerald-400" />
-                            live
-                          </span>
-                        </div>
-                        <div className="flex gap-1 p-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() =>
-                              void captureSnapshot(
-                                activeDevice.id,
-                                channel.channel,
-                              )
-                            }
-                          >
-                            Snapshot
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() =>
-                              void captureClip(activeDevice.id, channel.channel)
-                            }
-                          >
-                            Record 30s
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              setFocused({
-                                deviceId: activeDevice.id,
-                                channel: channel.channel,
-                              })
-                            }
-                          >
-                            Expand
-                          </Button>
-                        </div>
-                      </div>
-                    ))
-                  : null}
+                {gridTiles.map(({ device, channel, key }) => (
+                  <StreamTile
+                    key={key}
+                    deviceId={device.id}
+                    channel={channel.channel}
+                    label={`${device.display_name} · ${channel.label}`}
+                    onExpand={() =>
+                      setFocused({
+                        deviceId: device.id,
+                        channel: channel.channel,
+                      })
+                    }
+                    onSnapshot={() =>
+                      void captureSnapshot(device.id, channel.channel)
+                    }
+                    onRecord={() =>
+                      void captureClip(device.id, channel.channel)
+                    }
+                  />
+                ))}
               </div>
             </>
           )}
 
           {activeDevice ? (
             <div className="mt-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3">
-              <p className="text-[11px] font-semibold text-[var(--text-primary)]">
-                Pull recordings from this device
-              </p>
-              <p className="mt-1 text-[12px] text-[var(--text-secondary)]">
-                Use logical acquisition with enumerated channels and a time
-                range.
-              </p>
-              <Link
-                className="mt-2 inline-flex text-[12px] font-medium text-[var(--accent-600)] underline"
-                to={`/cases/${caseId}/live?pull=${activeDevice.id}`}
-              >
-                Open recording pull for {activeDevice.display_name}
-              </Link>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold text-[var(--text-primary)]">
+                  Pull recordings from {activeDevice.display_name}
+                </p>
+                {pullDeviceId !== activeDevice.id ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setSearchParams({ pull: activeDevice.id })}
+                  >
+                    Open pull panel
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setSearchParams({})}
+                  >
+                    Close
+                  </Button>
+                )}
+              </div>
+              {pullDeviceId === activeDevice.id ? (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <label className="text-[12px] text-[var(--text-secondary)]">
+                    Channel
+                    <select
+                      className="field mt-1 w-full"
+                      value={pullForm.channel}
+                      onChange={(e) =>
+                        setPullForm({
+                          ...pullForm,
+                          channel: Number(e.target.value),
+                        })
+                      }
+                    >
+                      {activeDevice.channels.map((ch) => (
+                        <option key={ch.channel} value={ch.channel}>
+                          {ch.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-[12px] text-[var(--text-secondary)]">
+                    Max clips
+                    <Input
+                      className="mt-1"
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={pullForm.maxClips}
+                      onChange={(e) =>
+                        setPullForm({
+                          ...pullForm,
+                          maxClips: Number(e.target.value) || 4,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="text-[12px] text-[var(--text-secondary)]">
+                    Start (local)
+                    <Input
+                      className="mt-1"
+                      type="datetime-local"
+                      value={pullForm.start}
+                      onChange={(e) =>
+                        setPullForm({ ...pullForm, start: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="text-[12px] text-[var(--text-secondary)]">
+                    End (local)
+                    <Input
+                      className="mt-1"
+                      type="datetime-local"
+                      value={pullForm.end}
+                      onChange={(e) =>
+                        setPullForm({ ...pullForm, end: e.target.value })
+                      }
+                    />
+                  </label>
+                  <div className="sm:col-span-2">
+                    <Button
+                      disabled={pullBusy}
+                      onClick={() => void handlePullRecordings()}
+                    >
+                      {pullBusy ? "Pulling…" : "Pull recordings"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-1 text-[12px] text-[var(--text-secondary)]">
+                  Enumerate channels and specify a time range to acquire clips
+                  over ISAPI, Dahua CGI, or ONVIF.
+                </p>
+              )}
             </div>
           ) : null}
         </main>
