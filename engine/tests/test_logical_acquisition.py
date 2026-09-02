@@ -28,6 +28,13 @@ class _HikvisionIsapiHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:  # noqa: A003
         return
 
+    def _send_bytes(self, status: int, payload: bytes, content_type: str = "application/octet-stream") -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_POST(self) -> None:  # noqa: N802
         if urlparse(self.path).path.endswith("/ISAPI/ContentMgmt/search"):
             body = """<?xml version="1.0" encoding="UTF-8"?>
@@ -48,21 +55,30 @@ class _HikvisionIsapiHandler(BaseHTTPRequestHandler):
     </searchMatchItem>
   </matchList>
 </CMSearchResult>"""
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(body.encode("utf-8"))
+            self._send_bytes(200, body.encode("utf-8"), "application/xml")
             return
-        self.send_response(404)
-        self.end_headers()
+        self._send_bytes(404, b"")
 
     def do_GET(self) -> None:  # noqa: N802
         if "download" in self.path or "playbackURI" in self.path:
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(self.clip_bytes)
+            self._send_bytes(200, self.clip_bytes)
             return
-        self.send_response(404)
-        self.end_headers()
+        self._send_bytes(404, b"")
+
+
+def _start_mock_isapi_server(handler: type[_HikvisionIsapiHandler]) -> tuple[ThreadingHTTPServer, threading.Thread, int]:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    time.sleep(0.05)
+    return server, thread, port
+
+
+def _stop_mock_isapi_server(server: ThreadingHTTPServer, thread: threading.Thread) -> None:
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=2)
 
 
 class LogicalAcquisitionTests(unittest.TestCase):
@@ -121,10 +137,7 @@ class LogicalAcquisitionTests(unittest.TestCase):
     def test_hikvision_isapi_search_finds_nested_playback_uri(self) -> None:
         handler = _HikvisionIsapiHandler
         handler.clip_bytes = b"\x00\x00\x00\x01\x65" + b"\xcd" * 128
-        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        port = server.server_address[1]
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
+        server, thread, port = _start_mock_isapi_server(handler)
         try:
             session = _session("admin", "secret")
             clips = _hikvision_search_clips(
@@ -138,15 +151,12 @@ class LogicalAcquisitionTests(unittest.TestCase):
             self.assertGreaterEqual(len(clips), 1)
             self.assertTrue(clips[0].remote_path.startswith("rtsp://"))
         finally:
-            server.shutdown()
+            _stop_mock_isapi_server(server, thread)
 
     def test_logical_hikvision_acquire_via_isapi_mock(self) -> None:
         handler = _HikvisionIsapiHandler
         handler.clip_bytes = b"\x00\x00\x00\x01\x65" + b"\xef" * 128
-        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        port = server.server_address[1]
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
+        server, thread, port = _start_mock_isapi_server(handler)
         try:
             created = self.client.post(
                 "/api/v1/cases",
@@ -169,7 +179,7 @@ class LogicalAcquisitionTests(unittest.TestCase):
             body = response.json()
             self.assertGreaterEqual(body["clips_acquired"], 1)
         finally:
-            server.shutdown()
+            _stop_mock_isapi_server(server, thread)
 
 
 if __name__ == "__main__":

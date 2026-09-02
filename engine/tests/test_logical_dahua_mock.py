@@ -37,6 +37,14 @@ class _DahuaDigestHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:  # noqa: A003
         return
 
+    def _send_text(self, body: str) -> None:
+        payload = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/cgi-bin/mediaFileFind.cgi":
@@ -55,17 +63,17 @@ class _DahuaDigestHandler(BaseHTTPRequestHandler):
                 body = "OK\n"
             else:
                 body = "OK\n"
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(body.encode("utf-8"))
+            self._send_text(body)
             return
         if parsed.path.startswith("/cgi-bin/RPC_Loadfile"):
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(self.dav_bytes)))
             self.end_headers()
             self.wfile.write(self.dav_bytes)
             return
         self.send_response(404)
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
 
@@ -109,6 +117,8 @@ class LogicalDahuaMockTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(device_sha, expected_sha)
         finally:
             server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
 
 
 if __name__ == "__main__":
