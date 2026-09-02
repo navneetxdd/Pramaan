@@ -118,12 +118,15 @@ def validate_nal_header(data: bytes, offset: int) -> tuple[int, dict] | None:
         parsed = HoneywellNalHeader.parse(data[offset : offset + 20])
     except Exception:
         return None
-    total = 20 + 6 + int(parsed.nal_length)
+    payload_offset = offset + 20
+    if payload_offset + 4 > len(data):
+        return None
+    payload_prefix = data[payload_offset : payload_offset + 6]
+    if not (payload_prefix.startswith(NAL_START_4) or payload_prefix.startswith(b"\x00\x00\x01")):
+        return None
+    total = 20 + int(parsed.nal_length)
     if offset + total > len(data):
         return None
-    if data[offset + 20 : offset + 26] != NAL_START_4 + bytes([parsed.frame_type]):
-        if NAL_START_4 not in data[offset + 20 : offset + 26]:
-            return None
     return total, parsed
 
 

@@ -79,52 +79,53 @@ def _hikvision_search_clips(
     user: str,
     password: str,
 ) -> list[LogicalClip]:
-    search_id = uuid.uuid4().hex
-    search_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+    clips: list[LogicalClip] = []
+    position = 0
+    while True:
+        search_id = uuid.uuid4().hex
+        search_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <CMSearchDescription>
   <searchID>{search_id}</searchID>
   <trackList><trackID>101</trackID></trackList>
   <timeSpanList><timeSpan><startTime>2020-01-01T00:00:00Z</startTime><endTime>2030-01-01T00:00:00Z</endTime></timeSpan></timeSpanList>
   <maxResults>100</maxResults>
-  <searchResultPostion>0</searchResultPostion>
+  <searchResultPostion>{position}</searchResultPostion>
 </CMSearchDescription>"""
-    url = f"{_base_url(scheme, host, port)}/ISAPI/ContentMgmt/search"
-    response = _request_with_auth_fallback(
-        session,
-        "POST",
-        url,
-        user,
-        password,
-        data=search_xml.encode("utf-8"),
-        headers={"Content-Type": "application/xml"},
-    )
-    response.raise_for_status()
-    root = ET.fromstring(response.text)
-    clips: list[LogicalClip] = []
-    for match in root.iter():
-        if not match.tag.endswith("matchItem"):
-            continue
-        playback_uri = None
-        start_time = None
-        end_time = None
-        for child in match:
-            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-            if tag == "playbackURI" and child.text:
-                playback_uri = child.text.strip()
-            elif tag == "startTime" and child.text:
-                start_time = child.text.strip()
-            elif tag == "endTime" and child.text:
-                end_time = child.text.strip()
-        if playback_uri:
-            name = Path(playback_uri.split("?")[0]).name or f"clip_{len(clips)}.mp4"
-            clips.append(
-                LogicalClip(
-                    remote_path=playback_uri,
-                    filename=name,
-                    start_time=start_time,
-                    end_time=end_time,
+        url = f"{_base_url(scheme, host, port)}/ISAPI/ContentMgmt/search"
+        response = _request_with_auth_fallback(
+            session,
+            "POST",
+            url,
+            user,
+            password,
+            data=search_xml.encode("utf-8"),
+            headers={"Content-Type": "application/xml"},
+        )
+        response.raise_for_status()
+        root = ET.fromstring(response.text)
+        status = None
+        page_count = 0
+        for element in root.iter():
+            tag = element.tag.split("}")[-1] if "}" in element.tag else element.tag
+            if tag == "responseStatusStrg" and element.text:
+                status = element.text.strip().upper()
+            elif tag == "playbackURI" and element.text:
+                uri = element.text.strip()
+                name = Path(uri.split("?")[0]).name or f"clip_{len(clips)}.mp4"
+                clips.append(
+                    LogicalClip(
+                        remote_path=uri,
+                        filename=name,
+                    )
                 )
-            )
+                page_count += 1
+        if status == "NO MATCHES" or page_count == 0:
+            break
+        if status != "MORE":
+            break
+        position += page_count
+        if position > 10_000:
+            break
     return clips
 
 

@@ -5,7 +5,6 @@ from pathlib import Path
 
 from engine.app.parsers.schemas.dhav import (
     DHAV_TYPE_I,
-    DHAV_TYPE_P,
     build_h264_ext_tlvs,
     seal_dhav_video_frame,
 )
@@ -18,13 +17,11 @@ def _frame_time(index: int) -> datetime:
     return _LAB_EPOCH.replace(second=min(59, 20 + index % 40))
 
 
-def _video_frame(frame_type: int, channel: int, frame_number: int, index: int) -> bytes:
-    if frame_type == DHAV_TYPE_I:
-        payload = get_nal_source().next_decodable_access_unit(min_len=64)
-    else:
-        payload = get_nal_source().next_single_nal()
+def _video_frame(channel: int, frame_number: int, index: int) -> bytes:
+    source = get_nal_source()
+    payload = source.next_gop() + source.next_gop()
     return seal_dhav_video_frame(
-        frame_type=frame_type,
+        frame_type=DHAV_TYPE_I,
         channel=channel,
         frame_number=frame_number,
         when=_frame_time(index),
@@ -47,24 +44,19 @@ def build_dahua_lab_specimen() -> bytes:
     frame_number = 0
     index = 0
     for channel in (1, 1, 2, 1, 2):
-        # I-frame then contiguous P-frames (single GOP per channel burst)
-        chunks.append(_video_frame(DHAV_TYPE_I, channel, frame_number, index))
+        chunks.append(_video_frame(channel, frame_number, index))
         frame_number += 1
         index += 1
-        for _ in range(2):
-            chunks.append(_video_frame(DHAV_TYPE_P, channel, frame_number, index))
-            frame_number += 1
-            index += 1
         chunks.append(b"\xff" * 64)
 
     chunks.append(b"\x00" * 8192)
-    chunks.append(_video_frame(DHAV_TYPE_I, channel=1, frame_number=frame_number, index=index))
+    chunks.append(_video_frame(channel=1, frame_number=frame_number, index=index))
     frame_number += 1
     index += 1
     chunks.append(b"\x00" * 4096)
 
     for channel in (2, 2, 1):
-        chunks.append(_video_frame(DHAV_TYPE_I, channel, frame_number, index))
+        chunks.append(_video_frame(channel, frame_number, index))
         frame_number += 1
         index += 1
         chunks.append(b"\xee" * 32)

@@ -1,26 +1,26 @@
 {
-  "generated_at": "2026-09-01T18:13:07.520126+00:00",
+  "generated_at": "2026-09-02T02:52:54.775420+00:00",
   "note": "Public DVR/NVR OEM disk images are NOT available from CFReDS or Digital Corpora. Place operator captures under validation_data/oem/ or set PRAMAAN_OEM_IMAGE_DIR.",
   "assets": [
     {
       "id": "fixtures_tier1_dahua_known_answer_bin",
       "path": "fixtures/tier1/dahua_known_answer.bin",
-      "bytes": 283261,
-      "sha256": "0042cc546b6fcfa1ca8f40ae77b7d36b895afae656f6921ea27e7678d41ddd75",
+      "bytes": 950491,
+      "sha256": "f348b18cd59042e865127dbdaad043ef3c49626117dab17e09bee35b954f3df0",
       "kind": "generated_known_answer"
     },
     {
       "id": "fixtures_tier1_honeywell_known_answer_bin",
       "path": "fixtures/tier1/honeywell_known_answer.bin",
       "bytes": 4259904,
-      "sha256": "f9f8a7e50a08bb3e6b7d740ba86a7c824439d43e04cdd01b0ab124ffdefde49b",
+      "sha256": "34e6fe848023ae1a7b5080df4159bd4d98801e7c7efe4fed57202e2757629019",
       "kind": "generated_known_answer"
     },
     {
       "id": "fixtures_tier1_hikvision_known_answer_bin",
       "path": "fixtures/tier1/hikvision_known_answer.bin",
       "bytes": 4194304,
-      "sha256": "895f0b61db723ccfd345332eaafd415a53b8b9eed39a257de6c43867cb964d69",
+      "sha256": "3b9d8a7dea4d504e758b0aa2af68a440c6109d1164da7985b959cf6dfb8f826a",
       "kind": "generated_known_answer"
     },
     {
@@ -31,6 +31,15 @@
       "kind": "generated_known_answer"
     },
     {
+      "id": "caviar_walk1_h264_fallback",
+      "path": "fixtures/media/caviar_walk1_320x240.h264",
+      "bytes": 1032790,
+      "sha256": "df3df4933bec77f005610fbddc59d416a96c70c7bae8ff2eae510265d7798d50",
+      "purpose": "Committed CAVIAR Annex-B fallback for lab specimens (regenerate with x264 keyint=6 for GOP structure)",
+      "license": "CC BY-SA; acknowledge EC Funded CAVIAR project/IST 2001 37540",
+      "kind": "generated_known_answer"
+    },
+    {
       "id": "digitalcorpora_ubnist1_narrative",
       "path": "external/digitalcorpora/nps-2009-ubnist1/narrative.txt",
       "bytes": 685,
@@ -38,7 +47,7 @@
       "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2009-ubnist1/narrative.txt",
       "purpose": "Tier-2 FAT corpus reference (full ubnist1.gen3.raw is ~2.1 GB \u2014 fetch separately if needed)",
       "license": "NPS-created content is public domain; inspect embedded-file rights",
-      "retrieved_at": "2026-09-01T18:13:09.225171+00:00",
+      "retrieved_at": "2026-09-02T02:52:56.238179+00:00",
       "kind": "download"
     },
     {
@@ -49,7 +58,7 @@
       "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2014-xbox1/narrative.txt",
       "purpose": "Filesystem scenario metadata for extended tier-2 regression",
       "license": "NPS-created content is public domain; inspect embedded-file rights",
-      "retrieved_at": "2026-09-01T18:13:09.228162+00:00",
+      "retrieved_at": "2026-09-02T02:52:56.239234+00:00",
       "kind": "download"
     },
     {
@@ -60,7 +69,7 @@
       "url": "https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx",
       "purpose": "Optional YuNet face detection for AI analytics (replaces Haar fallback when present)",
       "license": "Apache-2.0",
-      "retrieved_at": "2026-09-01T18:13:09.231193+00:00",
+      "retrieved_at": "2026-09-02T02:52:56.240396+00:00",
       "kind": "download"
     },
     {
@@ -71,7 +80,7 @@
       "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx",
       "purpose": "YOLOX Nano COCO object-candidate detector for offline analytics",
       "license": "Apache-2.0",
-      "retrieved_at": "2026-09-01T18:13:09.240871+00:00",
+      "retrieved_at": "2026-09-02T02:52:56.245174+00:00",
       "kind": "download"
     }
   ],
@@ -126,10 +135,15 @@
   "oem_drop_zone": "validation_data\\oem",
   "oem_files": [
     ".gitkeep",
+    "dahua_19.25.00-19.25.50-R.dav",
+    "dfr-02-xfat.dd",
     "fat16_deleted_entry.img",
+    "hikvision_NVR_Camera01.mp4",
     "lab_dahua_dhfs.img",
     "lab_hikvision_fs.img",
     "lab_honeywell_fs.img",
-    "nps-2009-canon2-gen6.E01"
+    "meva_school_G474.avi",
+    "nps-2009-canon2-gen6.E01",
+    "nps-2013-canon1.E01"
   ]
 }

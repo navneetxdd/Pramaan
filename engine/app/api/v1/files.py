@@ -25,7 +25,7 @@ def _resolve_export_path(filename: str) -> Path:
     return path
 
 
-def _ffmpeg_transcode_stream(source: Path):
+def _ffmpeg_transcode_stream(source: Path, *, full: bool = False):
     ffmpeg = shutil.which(FFMPEG_BIN)
     if not ffmpeg:
         raise HTTPException(status_code=503, detail="FFmpeg not available for inline playback")
@@ -42,18 +42,24 @@ def _ffmpeg_transcode_stream(source: Path):
             "h264",
             "-i",
             str(playable_path),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-pix_fmt",
-            "yuv420p",
-            "-f",
-            "mp4",
-            "-movflags",
-            "frag_keyframe+empty_moov",
-            "pipe:1",
         ]
+        if not full:
+            cmd.extend(["-vf", "scale='min(1280,iw)':-2"])
+        cmd.extend(
+            [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-pix_fmt",
+                "yuv420p",
+                "-f",
+                "mp4",
+                "-movflags",
+                "frag_keyframe+empty_moov",
+                "pipe:1",
+            ]
+        )
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if not proc.stdout:
             raise HTTPException(status_code=500, detail="FFmpeg transcode pipe failed")
@@ -74,11 +80,12 @@ def _ffmpeg_transcode_stream(source: Path):
 def download_file(
     filename: str,
     transcode: int = Query(0, ge=0, le=1),
+    full: int = Query(0, ge=0, le=1),
 ) -> Response:
     path = _resolve_export_path(filename)
     if transcode and path.suffix.lower() in {".h264", ".264"}:
         return StreamingResponse(
-            _ffmpeg_transcode_stream(path),
+            _ffmpeg_transcode_stream(path, full=bool(full)),
             media_type="video/mp4",
             headers={"Cache-Control": "no-store"},
         )

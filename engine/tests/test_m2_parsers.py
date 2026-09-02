@@ -9,7 +9,7 @@ from pathlib import Path
 from engine.app.parsers.dahua_dhfs import DahuaDhavAdapter
 from engine.app.parsers.hikvision import HikvisionAdapter
 from engine.app.parsers.schemas.dhav import validate_dhav_frame
-from engine.app.parsers.schemas.hkvi import seal_hkvi_block, validate_hkvi_block
+from engine.app.verification.hikvision_specimen import build_hikvision_lab_specimen
 from engine.app.verification.lab_specimen import build_dahua_lab_specimen
 
 
@@ -44,28 +44,15 @@ class DhavParserGoldenTests(unittest.TestCase):
         self.assertEqual(unreferenced[0].validation_evidence.get("recovery_context"), "unreferenced_carve")
 
 
-class HkviParserGoldenTests(unittest.TestCase):
-    def test_sealed_block_passes_four_check_validation(self) -> None:
-        payload = b"\x00" * 128 + b"\x00\x00\x00\x01\x65" + b"\xab" * 64
-        block = seal_hkvi_block(payload, channel=2)
-        result = validate_hkvi_block(block, 0)
-        self.assertIsNotNone(result)
-        assert result is not None
-        self.assertTrue(result.ok)
-        self.assertEqual(result.validation_level, "hkvi_block_4")
-
-    def test_adapter_finds_sealed_blocks(self) -> None:
-        blob = seal_hkvi_block(b"\x00" * 256, channel=1, recorder_epoch=1_700_000_000) + b"\xff" * 64 + seal_hkvi_block(
-            b"\x00" * 192, channel=3, recorder_epoch=1_700_000_060
-        )
+class HikvisionParserGoldenTests(unittest.TestCase):
+    def test_lab_specimen_uses_hikbtree_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "hkvi.bin"
-            path.write_bytes(blob)
+            path = Path(tmp) / "specimen.bin"
+            path.write_bytes(build_hikvision_lab_specimen())
             segments = HikvisionAdapter().scan(path)
-        self.assertEqual(len(segments), 2)
-        self.assertTrue(all(s.validation == "hkvi_block_4" for s in segments))
-        self.assertTrue(any(s.recorder_start_ts for s in segments))
-        self.assertTrue(any(s.timestamp_source == "hkvi_block_epoch" for s in segments))
+        self.assertGreater(len(segments), 0)
+        self.assertTrue(all(s.validation in {"hikbtree_indexed", "hikbtree_stale_entry"} for s in segments))
+        self.assertTrue(any(s.timestamp_source == "hikbtree_entry" for s in segments))
 
 
 if __name__ == "__main__":

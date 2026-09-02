@@ -21,7 +21,7 @@ class HikvisionAdapter:
         data = image_path.read_bytes() if max_bytes is None else image_path.read_bytes()[:max_bytes]
         master = parse_master_block(data, MASTER_BLOCK_OFFSET)
         if not master:
-            return _scan_legacy_hikvi(image_path, max_bytes=max_bytes)
+            return []
 
         tree_offset = int(master["hikbtree_offset"])
         entries = parse_hikbtree_entries(data, tree_offset)
@@ -75,46 +75,6 @@ def _unix_iso(value: int) -> str | None:
         return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
     except (OverflowError, OSError, ValueError):
         return None
-
-
-def _scan_legacy_hikvi(image_path: Path, *, max_bytes: int | None) -> list[RecoveredSegment]:
-    """Fallback for old HKVI-shaped tier-1 bytes until fixtures are rebuilt."""
-    from engine.app.parsers.schemas.hkvi import HKVI_MAGIC, validate_hkvi_block
-
-    segments: list[RecoveredSegment] = []
-    data = image_path.read_bytes() if max_bytes is None else image_path.read_bytes()[:max_bytes]
-    offset = 0
-    while offset + 32 < len(data):
-        hit = data.find(HKVI_MAGIC, offset)
-        if hit < 0:
-            break
-        parsed = validate_hkvi_block(data, hit)
-        if parsed and parsed.checks.get("size_consistency"):
-            segments.append(
-                RecoveredSegment(
-                    channel=parsed.channel,
-                    vendor="Hikvision",
-                    offset_start=hit,
-                    offset_end=hit + parsed.block_len,
-                    frame_count=1,
-                    confidence=parsed.confidence,
-                    validation=parsed.validation_level,
-                    raw_bytes=data[hit : hit + parsed.block_len],
-                    codec="h264",
-                    recorder_start_ts=parsed.recorder_iso,
-                    recorder_end_ts=parsed.recorder_iso,
-                    timestamp_source="hkvi_block_epoch" if parsed.recorder_iso else "unavailable",
-                    timestamp_confidence=0.8 if parsed.recorder_iso else None,
-                    parser_name="hikvision",
-                    parser_version="3-legacy",
-                    signature_evidence={"block_header": "HKVI"},
-                    validation_evidence=parsed.checks,
-                )
-            )
-            offset = hit + parsed.block_len
-        else:
-            offset = hit + 4
-    return segments
 
 
 def _merge(segments: list[RecoveredSegment]) -> list[RecoveredSegment]:

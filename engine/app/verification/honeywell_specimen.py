@@ -37,7 +37,8 @@ def _machine_data_sector() -> bytes:
 
 
 def _build_nal_frame(*, frame_type: int, timestamp_us: int, payload_extra: int = 64) -> bytes:
-    nal_body = get_nal_source().next_decodable_access_unit(payload_extra + 8)
+    source = get_nal_source()
+    nal_body = source.next_gop() + source.next_gop()
     payload = nal_body
     header = HoneywellNalHeader.build(
         {
@@ -63,11 +64,11 @@ def build_honeywell_lab_specimen() -> bytes:
         (2, active_ts + 30, 0x82),
     ]
     video_parts: list[bytes] = []
-    frame_offsets: list[tuple[int, int, int, int]] = []
+    frame_offsets: list[tuple[int, int, int, int, int]] = []
     cursor = VIDEO_DATA_BASE
     for channel, ts, ftype in frames:
-        frame_offsets.append((channel, ts, cursor, ftype))
         frame = _build_nal_frame(frame_type=ftype, timestamp_us=ts * 1_000_000)
+        frame_offsets.append((channel, ts, cursor, ftype, len(frame)))
         video_parts.append(frame)
         video_parts.append(CHANNEL_DELIMITER)
         cursor += len(frame) + len(CHANNEL_DELIMITER)
@@ -100,12 +101,12 @@ def build_honeywell_lab_specimen() -> bytes:
     )
     blob[PARTITION_BASE + 0x40 : PARTITION_BASE + 0x40 + len(group)] = group
 
-    for index, (channel, ts, offset, _ftype) in enumerate(frame_offsets):
+    for index, (channel, ts, offset, _ftype, frame_len) in enumerate(frame_offsets):
         entry = HoneywellChannelEntry.build(
             {
                 "channel_id": channel,
                 "stream_type": 0x00,
-                "frame_length_rounded": rounded_frame_length_u16(512),
+                "frame_length_rounded": rounded_frame_length_u16(frame_len),
                 "frame_start_time": ts,
                 "frame_start_offset": offset,
                 "reserved": b"\x00" * 4,

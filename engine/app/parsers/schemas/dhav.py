@@ -145,7 +145,7 @@ def seal_dhav_video_frame(
     struct.pack_into("<H", header, 20, ts_ms & 0xFFFF)
     header[22] = len(ext) & 0xFF
     header[23] = _header_checksum(bytes(header))
-    seek_back = frame_len - 8
+    seek_back = frame_len
     footer = DHAV_FOOTER + struct.pack("<I", seek_back)
     return bytes(header) + ext + payload + footer
 
@@ -192,7 +192,7 @@ def validate_dhav_frame(data: bytes, offset: int = 0) -> DhavValidationResult | 
     footer_start = end - DHAV_FOOTER_SIZE
     checks["footer_signature"] = data[footer_start : footer_start + 4] == DHAV_FOOTER
     seek_back = struct.unpack_from("<I", data, footer_start + 4)[0]
-    checks["seek_back"] = seek_back == frame_len - 8
+    checks["seek_back"] = seek_back == frame_len
 
     recorder_unix = dhav_datetime_to_unix(date_val, timestamp_ms)
     ts_source = "dhav_header_date" if recorder_unix else "unavailable"

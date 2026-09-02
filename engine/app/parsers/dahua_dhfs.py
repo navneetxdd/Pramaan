@@ -87,6 +87,9 @@ class DahuaDhavAdapter:
         return _merge_adjacent(segments)
 
 
+MIN_SEGMENT_BYTES = 512
+
+
 def _merge_adjacent(segments: list[RecoveredSegment]) -> list[RecoveredSegment]:
     if not segments:
         return []
@@ -128,4 +131,4 @@ def _merge_adjacent(segments: list[RecoveredSegment]) -> list[RecoveredSegment]:
             )
         else:
             merged.append(seg)
-    return merged
+    return [seg for seg in merged if (seg.offset_end - seg.offset_start) >= MIN_SEGMENT_BYTES]

@@ -360,7 +360,11 @@ def device_timeline(device_id: str) -> dict:
 
 
 @router.post("/devices/{device_id}/sequences/{segment_id}/export")
-def export_sequence(device_id: str, segment_id: str) -> dict:
+def export_sequence(
+    device_id: str,
+    segment_id: str,
+    full: int = Query(0, ge=0, le=1),
+) -> dict:
     device = get_device(device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -402,14 +406,20 @@ def export_sequence(device_id: str, segment_id: str) -> dict:
             "h264",
             "-i",
             str(source),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-pix_fmt",
-            "yuv420p",
-            str(destination),
         ]
+        if not full:
+            cmd.extend(["-vf", "scale='min(1280,iw)':-2"])
+        cmd.extend(
+            [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-pix_fmt",
+                "yuv420p",
+                str(destination),
+            ]
+        )
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         return result.returncode == 0 and destination.exists() and destination.stat().st_size > 0
 

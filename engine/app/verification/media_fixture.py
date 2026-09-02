@@ -10,6 +10,7 @@ from engine.app.core.config import FFMPEG_BIN, VALIDATION_DATA_DIR
 from engine.app.parsers.unwrap import NAL_START_4
 
 CAVIAR_MPG = VALIDATION_DATA_DIR / "external" / "caviar" / "Walk1.mpg"
+# Committed fallback must keep GOP structure (regenerate with: x264-params keyint=6).
 H264_FALLBACK = VALIDATION_DATA_DIR / "fixtures" / "media" / "caviar_walk1_320x240.h264"
 
 _annexb_cache: bytes | None = None
@@ -130,6 +131,19 @@ def get_nal_source() -> "NalPayloadSource":
     return _shared_nal_source
 
 
+def annexb_four_byte_startcodes(data: bytes) -> bytes:
+    """Normalize Annex-B NALs to 4-byte start codes for OEM specimen layouts."""
+    parts: list[bytes] = []
+    for nal in split_annexb_nals(data):
+        if nal.startswith(NAL_START_4):
+            parts.append(nal)
+        elif nal.startswith(b"\x00\x00\x01"):
+            parts.append(NAL_START_4 + nal[3:])
+        else:
+            parts.append(nal)
+    return b"".join(parts)
+
+
 class NalPayloadSource:
     """Round-robin whole-NAL payloads for specimen builders."""
 
@@ -138,9 +152,14 @@ class NalPayloadSource:
         if not self._nals:
             raise RuntimeError("CAVIAR NAL split produced no units")
         self._cursor = 0
+        self._gop_starts = [index for index, nal in enumerate(self._nals) if _nal_type(nal) == 5]
+        if not self._gop_starts:
+            raise RuntimeError("CAVIAR NAL cache has no IDR access units")
+        self._gop_cursor = 0
 
     def reset(self) -> None:
         self._cursor = 0
+        self._gop_cursor = 0
 
     def next_payload(self, min_len: int) -> bytes:
         if min_len <= 0:
@@ -163,6 +182,22 @@ class NalPayloadSource:
         nal = self._nals[self._cursor % len(self._nals)]
         self._cursor += 1
         return nal
+
+    def next_gop(self) -> bytes:
+        """Return one full GOP: [SPS][PPS][SEI?][IDR][P…] up to the next IDR."""
+        starts = self._gop_starts
+        start_index = starts[self._gop_cursor % len(starts)]
+        self._gop_cursor += 1
+        gop_index = starts.index(start_index)
+        end_index = starts[gop_index + 1] if gop_index + 1 < len(starts) else len(self._nals)
+        gop_start = start_index
+        for back in range(start_index - 1, -1, -1):
+            nal_type = _nal_type(self._nals[back])
+            if nal_type in {7, 8}:
+                gop_start = back
+            elif nal_type == 5 and back < start_index - 1:
+                break
+        return annexb_four_byte_startcodes(b"".join(self._nals[gop_start:end_index]))
 
     def next_decodable_access_unit(self, min_len: int = 64) -> bytes:
         """Return SPS+PPS+IDR NALs from one CAVIAR access unit."""

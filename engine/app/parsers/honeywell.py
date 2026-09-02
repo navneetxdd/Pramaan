@@ -9,6 +9,7 @@ from pathlib import Path
 from engine.app.parsers.base import RecoveredSegment
 from engine.app.parsers.generic_fallback import H264CarveAdapter
 from engine.app.parsers.schemas.honeywell import (
+    NAL_START_4,
     VIDEO_CHANNEL_LIST_OFFSET,
     detect_honeywell_layout,
     frame_length_bytes,
@@ -167,14 +168,17 @@ class HoneywellAdapter:
 
     def _read_nal_header(self, handle: BinaryIO, offset: int, scan_end: int) -> tuple[int, dict] | None:
         handle.seek(offset)
-        header = handle.read(26)
-        if len(header) < 26 or header[0] not in {0x82, 0x02} or header[1:4] != b"\x80\x01\x00":
+        header = handle.read(20)
+        if len(header) < 20 or header[0] not in {0x82, 0x02} or header[1:4] != b"\x80\x01\x00":
             return None
         nal_length = struct.unpack_from("<I", header, 8)[0]
-        total = 26 + nal_length
-        if total > self._MAX_FRAME_BYTES or offset + total > scan_end:
+        payload_prefix = handle.read(6)
+        if len(payload_prefix) < 4:
             return None
-        if header[20:24] != b"\x00\x00\x00\x01":
+        if not (payload_prefix.startswith(NAL_START_4) or payload_prefix.startswith(b"\x00\x00\x01")):
+            return None
+        total = 20 + nal_length
+        if total > self._MAX_FRAME_BYTES or offset + total > scan_end:
             return None
         return total, {
             "frame_type": header[0],

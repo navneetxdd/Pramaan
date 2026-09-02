@@ -23,6 +23,14 @@ class MediaFixtureTests(unittest.TestCase):
         self.assertIn(5, types)
         self.assertGreaterEqual(len(unit), 64)
 
+    def test_next_gop_returns_idr_through_next_idr(self) -> None:
+        source = NalPayloadSource()
+        gop = source.next_gop()
+        types = [_nal_type(n) for n in split_annexb_nals(gop) if _nal_type(n) is not None]
+        self.assertIn(5, types)
+        self.assertGreater(types.count(1), 0)
+        self.assertGreater(len(gop), 128)
+
 
 if __name__ == "__main__":
     unittest.main()

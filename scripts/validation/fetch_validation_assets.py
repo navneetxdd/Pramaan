@@ -99,7 +99,7 @@ REAL_DVR_SAMPLES: list[dict] = [
     {
         "id": "dahua_dav_continuous",
         "url": "https://raw.githubusercontent.com/glepore70/pronom-research/master/sample_files/d/dav/19.25.00-19.25.50-R-.dav",
-        "dest": "external/dvr/dahua/19.25.00-19.25.50-R-.dav",
+        "dest": "oem/dahua_19.25.00-19.25.50-R.dav",
         "purpose": "Real Dahua DHAV container for parser validation",
         "license": "PRONOM format sample — fetch-only",
     },
@@ -208,6 +208,7 @@ def _sync_oem_drop_zone() -> list[str]:
     candidates = [
         DATA_DIR / "external" / "digitalcorpora" / "nps-2009-canon2" / "nps-2009-canon2-gen6.E01",
         DATA_DIR / "fixtures" / "tier2" / "fat16_deleted_entry.img",
+        DATA_DIR / "oem" / "dahua_19.25.00-19.25.50-R.dav",
         DATA_DIR / "oem" / "lab_dahua_dhfs.img",
         DATA_DIR / "oem" / "lab_hikvision_fs.img",
         DATA_DIR / "oem" / "lab_honeywell_fs.img",

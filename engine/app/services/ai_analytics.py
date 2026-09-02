@@ -331,13 +331,15 @@ def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str], int]:
                 _, faces = detector.detect(frame)
                 face_rows = [] if faces is None else faces
                 for face in face_rows:
-                    x, y, width, height, score = face[:5]
+                    x, y, width, height = face[:4]
+                    score = float(face[-1])
+                    confidence = max(0.0, min(1.0, score))
                     findings.append(
                         {
                             "frame_offset_ms": offset_ms,
                             "finding_type": "face",
                             "label": "Face candidate",
-                            "confidence": float(score),
+                            "confidence": confidence,
                             "bbox": {
                                 "x": int(x),
                                 "y": int(y),

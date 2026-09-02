@@ -7,9 +7,17 @@ export const EVIDENCE_IMAGE_EXTENSIONS = [
   ".e01",
   ".ex01",
   ".001",
+  ".dav",
+  ".mp4",
+  ".avi",
+  ".264",
+  ".h264",
+  ".mkv",
+  ".ts",
 ] as const;
 
-const EVIDENCE_IMAGE_RE = /\.(bin|dd|img|raw|e01|ex01|001)$/i;
+const EVIDENCE_IMAGE_RE =
+  /\.(bin|dd|img|raw|e01|ex01|001|dav|mp4|avi|264|h264|mkv|ts)$/i;
 
 export function isEvidenceImageFile(file: File): boolean {
   return EVIDENCE_IMAGE_RE.test(file.name);

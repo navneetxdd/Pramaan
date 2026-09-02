@@ -109,7 +109,7 @@ async def create_lab_specimen(case_id: str, actor: str, vendor: str = "dahua") -
     }
 
 
-OEM_EXTENSIONS = frozenset({".bin", ".dd", ".img", ".raw", ".e01", ".ex01"})
+OEM_EXTENSIONS = frozenset({".bin", ".dd", ".img", ".raw", ".e01", ".ex01", ".dav", ".mp4", ".avi", ".264", ".h264", ".mkv", ".ts"})
 
 
 def list_oem_images() -> list[dict]:

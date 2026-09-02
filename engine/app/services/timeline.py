@@ -14,16 +14,17 @@ def build_timeline_for_device(device_id: str) -> dict:
     findings_by_sequence: dict[str, list[dict]] = {}
     for finding in findings:
         findings_by_sequence.setdefault(finding["sequence_id"], []).append(finding)
-    by_channel: dict[int, list[dict]] = {}
+    by_channel: dict[int | None, list[dict]] = {}
 
     for index, seq in enumerate(sequences):
-        channel = int(seq["channel"]) if seq["channel"] is not None else 0
+        raw_channel = seq.get("channel")
+        channel_key: int | None = int(raw_channel) if raw_channel is not None else None
         start_off = int(seq.get("byte_start") or 0)
         end_off = int(seq.get("byte_end") or start_off)
         entry = {
             **seq,
             "timeline_index": index,
-            "sequence_on_channel": len(by_channel.get(channel, [])) + 1,
+            "sequence_on_channel": len(by_channel.get(channel_key, [])) + 1,
             "byte_length": seq.get("byte_length") or max(end_off - start_off, 0),
             "offset_time_label": seq.get("corrected_start_ts") or seq.get("recorder_start_ts"),
             "deleted_candidate": seq["validation_level"] in {
@@ -38,12 +39,17 @@ def build_timeline_for_device(device_id: str) -> dict:
             "validation": seq["validation_level"],
             "ai_findings": findings_by_sequence.get(seq["id"], []),
         }
-        by_channel.setdefault(channel, []).append(entry)
+        by_channel.setdefault(channel_key, []).append(entry)
+
+    def _channel_label(channel: int | None) -> str:
+        if channel is None:
+            return "Unknown channel"
+        return f"Channel {channel}"
 
     channels = [
         {
             "channel": channel,
-            "label": f"Camera {channel}" if channel else "Unknown channel",
+            "label": _channel_label(channel),
             "segment_count": len(items),
             "segments": items,
         }

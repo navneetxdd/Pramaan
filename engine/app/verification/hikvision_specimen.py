@@ -30,7 +30,8 @@ def build_hikvision_lab_specimen() -> bytes:
     data_cursor = DATA_BASE
     frame_index = 0
     for channel in (1, 1, 2, 1):
-        access_unit = get_nal_source().next_decodable_access_unit(min_len=64)
+        source = get_nal_source()
+        access_unit = source.next_gop() + source.next_gop()
         ps_blob = wrap_mpegps(access_unit)
         disk[data_cursor : data_cursor + len(ps_blob)] = ps_blob
         start = _LAB_EPOCH + frame_index * 60

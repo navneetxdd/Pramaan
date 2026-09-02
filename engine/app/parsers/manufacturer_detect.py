@@ -22,7 +22,7 @@ OEM_PROFILES: list[dict] = [
         "vendor": "Hikvision",
         "adapter": "hikvision",
         "family": "hikvision",
-        "tokens": [b"HIKVISION@HANGZHOU", b"HIKBTREE", b"HIKVISION", b"HIKV", b"HIKVISION-DVR"],
+        "tokens": [b"HIKVISION@HANGZHOU", b"HIKBTREE", b"HIKVISION-DVR"],
         "weight": 1.0,
         "capability_tier": "experimental_parser",
         "validation_scope": "synthetic_and_known_fixtures",
