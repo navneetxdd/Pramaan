@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pause, Play } from "lucide-react";
+import { ChevronRight, Pause, Play } from "lucide-react";
 import { api, type Segment, type TimelineChannel } from "@/lib/api";
 import { resolveApiUrl } from "@/lib/apiBase";
 import { formatOffset } from "@/lib/utils";
@@ -12,6 +12,8 @@ const DELETED_VALIDATIONS = new Set([
   "h264_nal_tail",
   "slack_recovered",
 ]);
+
+const SCRUB_WINDOW_MS = 15_000;
 
 type PlaybackDeckProps = {
   channels: TimelineChannel[];
@@ -58,16 +60,21 @@ function parseSegmentEnd(
       const parsed = Date.parse(raw);
       if (!Number.isNaN(parsed)) return parsed;
     }
-    return start + 5000;
+    return start;
   }
-  const byteLen =
-    seg.byte_length ?? (seg.offset_end ?? start) - (seg.offset_start ?? start);
-  return start + Math.max(byteLen, 1);
+  if (seg.offset_end != null) return seg.offset_end;
+  const byteLen = seg.byte_length ?? 1;
+  return (seg.offset_start ?? start) + Math.max(byteLen, 1);
 }
 
 function formatPlayhead(value: number, useTime: boolean): string {
   if (!useTime) return formatOffset(value);
   return new Date(value).toISOString().replace("T", " ").slice(0, 19);
+}
+
+function exportCacheKey(segId: string, fromMs?: number, toMs?: number): string {
+  if (fromMs == null || toMs == null) return segId;
+  return `${segId}:${fromMs}:${toMs}`;
 }
 
 export function PlaybackDeck({
@@ -119,15 +126,19 @@ export function PlaybackDeck({
   const effectivePlayhead = playhead ?? domain.min;
 
   const resolveExport = useCallback(
-    async (segId: string) => {
-      const cached = exportCache.get(segId);
+    async (seg: Segment, fromMs?: number, toMs?: number) => {
+      const key = exportCacheKey(seg.id, fromMs, toMs);
+      const cached = exportCache.get(key);
       if (cached) return cached;
-      const result = await api.exportSegment(deviceId, segId);
+      const result = await api.exportSegment(deviceId, seg.id, {
+        fromMs,
+        toMs,
+      });
       const entry = {
         url: resolveApiUrl(result.download_url),
         mediaType: result.media_type,
       };
-      exportCache.set(segId, entry);
+      exportCache.set(key, entry);
       return entry;
     },
     [deviceId, exportCache],
@@ -145,6 +156,29 @@ export function PlaybackDeck({
     [channels, effectivePlayhead, useTime],
   );
 
+  const stepToNextSegment = useCallback(() => {
+    const ordered = [...flatSegments].sort((a, b) => {
+      const aStart = parseSegmentStart(a, useTime);
+      const bStart = parseSegmentStart(b, useTime);
+      return aStart - bStart;
+    });
+    const current = ordered.find((seg) => {
+      const start = parseSegmentStart(seg, useTime);
+      return Math.abs(start - effectivePlayhead) < 1;
+    });
+    const idx = current ? ordered.indexOf(current) : -1;
+    const next = ordered[idx + 1] ?? ordered[0];
+    if (!next) return;
+    onPlayheadChange(parseSegmentStart(next, useTime));
+    onSelectSegment(next.id);
+  }, [
+    effectivePlayhead,
+    flatSegments,
+    onPlayheadChange,
+    onSelectSegment,
+    useTime,
+  ]);
+
   useEffect(() => {
     let cancelled = false;
     async function syncLanes() {
@@ -160,15 +194,25 @@ export function PlaybackDeck({
         nextGaps[channel.channel] = false;
         onSelectSegment(seg.id);
         try {
-          const exported = await resolveExport(seg.id);
+          const start = parseSegmentStart(seg, useTime);
+          const end = parseSegmentEnd(seg, start, useTime);
+          let fromMs: number | undefined;
+          let toMs: number | undefined;
+          if (useTime) {
+            const relPlayhead = effectivePlayhead - start;
+            fromMs = Math.max(0, relPlayhead - SCRUB_WINDOW_MS);
+            toMs = Math.min(end - start, relPlayhead + SCRUB_WINDOW_MS);
+          }
+          const exported = await resolveExport(seg, fromMs, toMs);
           if (cancelled) return;
           nextUrls[channel.channel] = exported.url;
           nextMedia[channel.channel] = exported.mediaType;
-          const start = parseSegmentStart(seg, useTime);
           const video = videoRefs.current[channel.channel];
           if (video) {
             const offsetSec = useTime
-              ? (effectivePlayhead - start) / 1000 + driftOffsetSeconds
+              ? (effectivePlayhead - start) / 1000 +
+                driftOffsetSeconds -
+                (fromMs ?? 0) / 1000
               : 0;
             if (video.src !== exported.url) {
               video.src = exported.url;
@@ -203,7 +247,7 @@ export function PlaybackDeck({
   ]);
 
   useEffect(() => {
-    if (!playing) {
+    if (!playing || !useTime) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       return;
     }
@@ -211,9 +255,7 @@ export function PlaybackDeck({
     const tick = (now: number) => {
       const delta = now - last;
       last = now;
-      const span = domain.max - domain.min || 1;
-      const step = useTime ? delta : span * 0.02;
-      let next = effectivePlayhead + step;
+      let next = effectivePlayhead + delta;
       if (next >= domain.max) {
         next = domain.min;
       }
@@ -269,21 +311,40 @@ export function PlaybackDeck({
           <p className="mono text-[11px] text-[var(--text-tertiary)]">
             {useTime
               ? formatPlayhead(effectivePlayhead, true)
-              : "byte-offset order — no recorder clock"}
+              : "byte-offset order — step through segments"}
           </p>
         </div>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => setPlaying((value) => !value)}
-          aria-label={playing ? "Pause" : "Play"}
-        >
-          {playing ? (
-            <Pause className="h-4 w-4" />
-          ) : (
-            <Play className="h-4 w-4" />
-          )}
-        </Button>
+        <div className="flex gap-2">
+          {!useTime ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={stepToNextSegment}
+              aria-label="Step to next segment"
+            >
+              Step
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setPlaying((value) => !value)}
+            aria-label={playing ? "Pause" : "Play"}
+            disabled={!useTime}
+            title={
+              useTime
+                ? undefined
+                : "Byte-offset mode — use Step to advance between segments"
+            }
+          >
+            {playing ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
       </div>
 
       <div className={`grid gap-3 ${gridCols}`}>

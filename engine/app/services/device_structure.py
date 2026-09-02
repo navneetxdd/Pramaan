@@ -5,6 +5,8 @@ from pathlib import Path
 from engine.app.core.repository import get_device
 from engine.app.parsers.image_io import evidence_size, read_image_bytes
 
+from engine.app.parsers.schemas.dhav import DHAV_HEADER, validate_dhav_frame
+
 OEM_MARKERS: list[tuple[bytes, str]] = [
     (b"DHFS4.1", "Dahua DHFS4.1"),
     (b"DHFS4", "Dahua DHFS4"),
@@ -78,6 +80,8 @@ def probe_device_structure(device_id: str) -> dict:
     sample_len = min(size, 64 * 1024 * 1024)
     sample = read_image_bytes(path, 0, sample_len)
     seen_offsets: set[int] = set()
+    unverified_dhav = 0
+    max_unverified_dhav = 20
     for token, label in OEM_MARKERS:
         start = 0
         while True:
@@ -86,13 +90,26 @@ def probe_device_structure(device_id: str) -> dict:
                 break
             if idx not in seen_offsets:
                 seen_offsets.add(idx)
+                node_label = label
+                meta: dict[str, object] = {"marker": token.decode("ascii", errors="replace")}
+                if token == DHAV_HEADER:
+                    parsed = validate_dhav_frame(sample, idx)
+                    if parsed and parsed.checks.get("size_consistency"):
+                        meta["verified"] = True
+                    else:
+                        meta["verified"] = False
+                        node_label = "DHAV byte match (unverified)"
+                        unverified_dhav += 1
+                        if unverified_dhav > max_unverified_dhav:
+                            start = idx + len(token)
+                            continue
                 root_children.append(
                     {
-                        "label": label,
+                        "label": node_label,
                         "offset": idx,
                         "size": 4096,
                         "type": "oem_marker",
-                        "meta": {"marker": token.decode("ascii", errors="replace")},
+                        "meta": meta,
                         "children": [],
                     }
                 )

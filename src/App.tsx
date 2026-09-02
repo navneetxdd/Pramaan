@@ -13,6 +13,7 @@ import { CaseTimelinePage } from "@/pages/case/CaseTimelinePage";
 import { CaseCustodyPage } from "@/pages/case/CaseCustodyPage";
 import { CaseReportPage } from "@/pages/case/CaseReportPage";
 import { CaseAiAnalyticsPage } from "@/pages/case/CaseAiAnalyticsPage";
+import { CaseLiveDevicesPage } from "@/pages/case/CaseLiveDevicesPage";
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
             <Route index element={<CaseOverviewPage />} />
             <Route path="evidence" element={<CaseEvidenceCatalogPage />} />
             <Route path="jobs" element={<CaseJobsPage />} />
+            <Route path="live" element={<CaseLiveDevicesPage />} />
             <Route path="acquire" element={<CaseAcquirePage />} />
             <Route path="device-id" element={<CaseDeviceIdPage />} />
             <Route path="recover" element={<CaseRecoverPage />} />

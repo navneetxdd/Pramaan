@@ -21,6 +21,7 @@ from engine.app.core.repository import (
     persist_job,
     set_device_drift_offset,
     update_device_identification,
+    update_sequence_playable_frame_count,
     verify_device_integrity,
 )
 from engine.app.parsers.manufacturer_detect import identify_image
@@ -31,6 +32,37 @@ from engine.app.services.recovery import run_recovery_job, segments_as_legacy
 from engine.app.services.timeline import build_timeline_for_device
 
 logger = logging.getLogger("forensic.engine")
+
+FFPROBE_BIN = "ffprobe"
+
+
+def _count_decoded_frames(video_path: Path) -> int | None:
+    if not shutil.which(FFPROBE_BIN):
+        return None
+    cmd = [
+        FFPROBE_BIN,
+        "-v",
+        "error",
+        "-count_frames",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=nb_read_frames",
+        "-of",
+        "csv=p=0",
+        str(video_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return None
+    raw = (result.stdout or "").strip()
+    if not raw or raw.upper() == "N/A":
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
 
 router = APIRouter(tags=["devices"])
 
@@ -364,6 +396,8 @@ def export_sequence(
     device_id: str,
     segment_id: str,
     full: int = Query(0, ge=0, le=1),
+    from_ms: int | None = Query(None, ge=0),
+    to_ms: int | None = Query(None, ge=0),
 ) -> dict:
     device = get_device(device_id)
     if not device:
@@ -371,6 +405,8 @@ def export_sequence(
     seq = next((s for s in list_sequences(device_id) if s["id"] == segment_id), None)
     if not seq:
         raise HTTPException(status_code=404, detail="Segment not found")
+    if from_ms is not None and to_ms is not None and to_ms <= from_ms:
+        raise HTTPException(status_code=400, detail="to_ms must be greater than from_ms")
 
     artifact_path = Path(seq["output_path"])
     byte_length = seq.get("byte_length")
@@ -393,6 +429,8 @@ def export_sequence(
         h264 = ensure_playable_h264(chunk)
     raw_path.write_bytes(h264)
 
+    ranged = from_ms is not None and to_ms is not None
+
     def transcode_to_mp4(source: Path, destination: Path) -> bool:
         if not shutil.which(FFMPEG_BIN):
             return False
@@ -407,6 +445,9 @@ def export_sequence(
             "-i",
             str(source),
         ]
+        if ranged:
+            duration_ms = to_ms - from_ms
+            cmd.extend(["-ss", f"{from_ms / 1000:.3f}", "-t", f"{duration_ms / 1000:.3f}"])
         if not full:
             cmd.extend(["-vf", "scale='min(1280,iw)':-2"])
         cmd.extend(
@@ -427,6 +468,10 @@ def export_sequence(
     if transcode_to_mp4(raw_path, mp4_path):
         raw_path.unlink(missing_ok=True)
         out_path = mp4_path
+        if not ranged:
+            frame_count = _count_decoded_frames(mp4_path)
+            if frame_count is not None:
+                update_sequence_playable_frame_count(segment_id, frame_count)
 
     return {
         "filename": out_path.name,

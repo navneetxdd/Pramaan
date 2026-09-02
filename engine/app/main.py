@@ -21,6 +21,7 @@ from engine.app.api.v1.reports import router as reports_router
 from engine.app.api.v1.settings import router as settings_router
 from engine.app.api.v1.signing import router as signing_router
 from engine.app.api.v1.tool_verification import router as verification_router
+from engine.app.api.v1.live import router as live_router
 from engine.app.api.v1.datasets import router as datasets_router
 from engine.app.api.v1.version import router as version_router
 from engine.app.core.logging_setup import bootstrap
@@ -87,4 +88,5 @@ app.include_router(files_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
 app.include_router(signing_router, prefix="/api/v1")
 app.include_router(verification_router, prefix="/api/v1")
+app.include_router(live_router, prefix="/api/v1")
 

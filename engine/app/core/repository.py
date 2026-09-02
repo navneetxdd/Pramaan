@@ -652,6 +652,59 @@ def insert_ai_finding(
     return dict(row)
 
 
+def update_sequence_playable_frame_count(sequence_id: str, frame_count: int) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE recovered_sequences SET playable_frame_count = ? WHERE id = ?",
+            (frame_count, sequence_id),
+        )
+
+
+def update_ai_finding_report_state(finding_id: str, report_state: str) -> dict | None:
+    if report_state not in {"INCLUDED", "EXCLUDED"}:
+        raise ValueError("report_state must be INCLUDED or EXCLUDED")
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE ai_findings SET report_state = ? WHERE id = ?",
+            (report_state, finding_id),
+        )
+        row = conn.execute("SELECT * FROM ai_findings WHERE id = ?", (finding_id,)).fetchone()
+    if not row:
+        return None
+    item = dict(row)
+    if item.get("bbox_json"):
+        try:
+            item["bbox"] = json.loads(item["bbox_json"])
+        except json.JSONDecodeError:
+            item["bbox"] = None
+    return item
+
+
+def list_included_ai_findings_for_case(case_id: str) -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT f.*, s.device_id
+            FROM ai_findings f
+            JOIN recovered_sequences s ON s.id = f.sequence_id
+            JOIN devices d ON d.id = s.device_id
+            WHERE d.case_id = ? AND COALESCE(f.report_state, 'EXCLUDED') = 'INCLUDED'
+            ORDER BY f.frame_offset_ms ASC
+            """,
+            (case_id,),
+        ).fetchall()
+    out = []
+    for row in rows:
+        item = dict(row)
+        if item.get("bbox_json"):
+            try:
+                item["bbox"] = json.loads(item["bbox_json"])
+            except json.JSONDecodeError:
+                item["bbox"] = None
+        out.append(item)
+    return out
+
+
 def list_ai_findings_for_device(device_id: str) -> list[dict]:
     with get_db() as conn:
         rows = conn.execute(

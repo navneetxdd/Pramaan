@@ -10,6 +10,7 @@ import { VirtualTable } from "@/components/ui/virtual-table";
 import { Input } from "@/components/ui/input";
 import { useActivity } from "@/context/ActivityContext";
 import { DashboardStat } from "@/components/visily/DashboardStat";
+import { PageHeader } from "@/components/visily/PageHeader";
 
 export function CaseAiAnalyticsPage() {
   const { caseId, workspace, refresh } = useCaseContext();
@@ -88,6 +89,23 @@ export function CaseAiAnalyticsPage() {
     }
   }
 
+  async function toggleReportState(finding: AiFinding) {
+    const next = finding.report_state === "INCLUDED" ? "EXCLUDED" : "INCLUDED";
+    try {
+      const result = await api.updateAiFindingReportState(finding.id, next);
+      setFindings((prev) =>
+        prev.map((item) => (item.id === finding.id ? result.finding : item)),
+      );
+      toast.success(
+        next === "INCLUDED"
+          ? "Lead included in report"
+          : "Lead excluded from report",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Update failed");
+    }
+  }
+
   const motionCount = findings.filter(
     (f) => f.finding_type === "motion",
   ).length;
@@ -101,21 +119,11 @@ export function CaseAiAnalyticsPage() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="visily-hero-dark px-5 py-4">
-        <div className="visily-hero-dark-bg" aria-hidden />
-        <div className="relative z-[1]">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">
-            Investigative leads
-          </p>
-          <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">
-            Findings
-          </h1>
-          <p className="mt-1 text-[12px] text-[var(--text-muted-on-dark)]">
-            Four distinct pipelines: foreground motion, scene change, face
-            candidate, and YOLOX object candidate — leads only.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        kicker="Investigative leads"
+        title="Findings"
+        subtitle="Four distinct pipelines: foreground motion, scene change, face candidate, and YOLOX object candidate — leads only."
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {demoUnavailable ? (
@@ -239,6 +247,21 @@ export function CaseAiAnalyticsPage() {
                 header: "Detector",
                 className: "mono text-[10px]",
                 cell: (f) => f.bbox?.detector ?? f.bbox?.model ?? "—",
+              },
+              {
+                key: "report",
+                header: "Report",
+                cell: (f) => (
+                  <Button
+                    size="sm"
+                    variant={
+                      f.report_state === "INCLUDED" ? "default" : "secondary"
+                    }
+                    onClick={() => void toggleReportState(f)}
+                  >
+                    {f.report_state === "INCLUDED" ? "Included" : "Include"}
+                  </Button>
+                ),
               },
             ]}
           />

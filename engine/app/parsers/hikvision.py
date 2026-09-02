@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mmap
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,7 +19,15 @@ class HikvisionAdapter:
     version = "3"
 
     def scan(self, image_path: Path, *, max_bytes: int | None = None) -> list[RecoveredSegment]:
-        data = image_path.read_bytes() if max_bytes is None else image_path.read_bytes()[:max_bytes]
+        with image_path.open("rb") as handle:
+            file_size = handle.seek(0, 2)
+            view_len = file_size if max_bytes is None else min(file_size, max_bytes)
+            if view_len <= 0:
+                return []
+            with mmap.mmap(handle.fileno(), view_len, access=mmap.ACCESS_READ) as data:
+                return self._scan_mapped(bytes(data))
+
+    def _scan_mapped(self, data: bytes) -> list[RecoveredSegment]:
         master = parse_master_block(data, MASTER_BLOCK_OFFSET)
         if not master:
             return []

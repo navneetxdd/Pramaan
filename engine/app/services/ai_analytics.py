@@ -330,10 +330,13 @@ def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str], int]:
                 detector.setInputSize((width, height))
                 _, faces = detector.detect(frame)
                 face_rows = [] if faces is None else faces
+                min_face_h = max(24, int(0.012 * height))
                 for face in face_rows:
                     x, y, width, height = face[:4]
                     score = float(face[-1])
                     confidence = max(0.0, min(1.0, score))
+                    if height < min_face_h or confidence < 0.7:
+                        continue
                     findings.append(
                         {
                             "frame_offset_ms": offset_ms,
@@ -355,12 +358,14 @@ def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str], int]:
                 full_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 faces = detector.detectMultiScale(full_gray, scaleFactor=1.08, minNeighbors=4, minSize=(24, 24))
                 for x, y, width, height in faces:
+                    min_face_h = max(24, int(0.012 * frame.shape[0]))
+                    if height < min_face_h:
+                        continue
                     findings.append(
                         {
                             "frame_offset_ms": offset_ms,
                             "finding_type": "face",
                             "label": "Face candidate",
-                            "confidence": 0.68,
                             "bbox": {
                                 "x": int(x),
                                 "y": int(y),

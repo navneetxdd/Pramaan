@@ -290,6 +290,8 @@ def segments_as_legacy(device_id: str, job_meta: dict | None = None) -> list[dic
                 "offset_end": seq.get("byte_end"),
                 "byte_length": seq.get("byte_length"),
                 "frame_count": seq["frame_count"],
+                "playable_frame_count": seq.get("playable_frame_count"),
+                "container_units": seq["frame_count"],
                 "confidence": _confidence_score(seq["confidence"], seq["validation_level"]),
                 "validation": seq["validation_level"],
                 "confidence_tier": seq["confidence"],

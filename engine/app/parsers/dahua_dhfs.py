@@ -33,11 +33,20 @@ class DahuaDhavAdapter:
                 total_read += len(chunk)
                 window = carry + chunk
                 local_offset = 0
+                partial_carry_from: int | None = None
                 while True:
                     hit = window.find(DHAV_HEADER, local_offset)
                     if hit < 0:
                         break
                     parsed = validate_dhav_frame(window, hit)
+                    needs_more = parsed is None or (
+                        parsed is not None
+                        and not parsed.checks["size_consistency"]
+                        and hit + parsed.frame_len > len(window)
+                    )
+                    if needs_more:
+                        partial_carry_from = hit
+                        break
                     if parsed and parsed.checks["size_consistency"]:
                         abs_start = offset_base - len(carry) + hit
                         abs_end = abs_start + parsed.frame_len
@@ -81,7 +90,10 @@ class DahuaDhavAdapter:
                     else:
                         local_offset = hit + 4
 
-                carry = window[-overlap:] if len(window) > overlap else window
+                if partial_carry_from is not None:
+                    carry = window[partial_carry_from:]
+                else:
+                    carry = window[-overlap:] if len(window) > overlap else window
                 offset_base += len(chunk)
 
         return _merge_adjacent(segments)

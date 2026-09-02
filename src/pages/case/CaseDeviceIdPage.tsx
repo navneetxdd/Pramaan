@@ -7,6 +7,7 @@ import { capabilityTierLabel } from "@/lib/integrity";
 import { ConfidenceBadge } from "@/components/forensic/ConfidenceBadge";
 import { HexViewer } from "@/components/forensic/HexViewer";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/visily/PageHeader";
 import { formatBytes, formatOffset } from "@/lib/utils";
 
 type StructureNode = {
@@ -103,33 +104,19 @@ export function CaseDeviceIdPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="visily-hero-dark px-5 py-4">
-        <div className="visily-hero-dark-bg" aria-hidden />
-
-        <div className="relative z-[1] flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">
-              Step 2 · Identification
-            </p>
-
-            <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">
-              Device & format analysis
-            </h1>
-
-            <p className="mt-1 max-w-xl text-[12px] text-[var(--text-muted-on-dark)]">
-              Signature scan and partition layout — selects the recovery
-              adapter. Routing hints only until field-validated.
-            </p>
-          </div>
-
+      <PageHeader
+        kicker="Step 2 · Identification"
+        title="Device & format analysis"
+        subtitle="Signature scan and partition layout — selects the recovery adapter. Routing hints only until field-validated."
+        actions={
           <Button
             disabled={!deviceId || scanning}
             onClick={() => void runIdentify()}
           >
             {scanning ? "Scanning…" : "Run identification"}
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {evidence.length === 0 ? (
         <section className="visily-card p-8 text-[13px] text-[var(--text-secondary)]">

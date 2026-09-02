@@ -13,6 +13,7 @@ import { formatBytes, formatOffset } from "@/lib/utils";
 import { formatTimestampSource } from "@/lib/integrity";
 import { FindingsTrack } from "@/components/forensic/FindingsTrack";
 import { SegmentInspector } from "@/components/forensic/SegmentInspector";
+import { PageHeader } from "@/components/visily/PageHeader";
 
 function parseSegmentStart(seg: Segment, useTime: boolean): number {
   if (useTime) {
@@ -149,21 +150,11 @@ export function CaseTimelinePage() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="visily-hero-dark px-5 py-4">
-        <div className="visily-hero-dark-bg" aria-hidden />
-        <div className="relative z-[1]">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">
-            Temporal review
-          </p>
-          <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">
-            Recovery timeline
-          </h1>
-          <p className="mt-1 text-[12px] text-[var(--text-muted-on-dark)]">
-            Multi-camera playback deck with shared transport. Deleted recoveries
-            are highlighted on each lane.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        kicker="Temporal review"
+        title="Recovery timeline"
+        subtitle="Multi-camera playback deck with shared transport. Deleted recoveries are highlighted on each lane."
+      />
 
       <section className="visily-card p-3">
         <label className="label">Evidence device</label>

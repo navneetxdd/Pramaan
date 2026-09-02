@@ -16,6 +16,7 @@ from engine.app.main import app  # noqa: E402
 from engine.app.services.logical_acquisition import (  # noqa: E402
     LogicalClip,
     _hikvision_search_clips,
+    _logical_dest_name,
     _session,
 )
 from requests.auth import HTTPDigestAuth  # noqa: E402
@@ -180,6 +181,14 @@ class LogicalAcquisitionTests(unittest.TestCase):
             self.assertGreaterEqual(body["clips_acquired"], 1)
         finally:
             _stop_mock_isapi_server(server, thread)
+
+    def test_logical_dest_names_do_not_collide_for_same_track(self) -> None:
+        blob = b"\x00\x00\x00\x01\x65" + b"\xab" * 32
+        first = _logical_dest_name("hikvision", "101", 0, "2020-01-01T00:00:00Z", blob)
+        second = _logical_dest_name("hikvision", "101", 1, "2020-01-01T00:00:00Z", blob)
+        self.assertNotEqual(first, second)
+        self.assertIn("_000_", first)
+        self.assertIn("_001_", second)
 
 
 if __name__ == "__main__":

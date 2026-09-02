@@ -46,20 +46,16 @@
     box-shadow: var(--shadow-card);
   }
 
-  .visily-hero-dark {
-    @apply relative overflow-hidden rounded-lg px-5 py-5;
-    background: var(--surface-dark);
-    box-shadow: var(--shadow-hero);
+  .visily-hero {
+    @apply relative overflow-hidden rounded-xl border px-5 py-5;
+    border-color: var(--border-default);
+    background: var(--surface-2);
   }
 
-  .visily-hero-dark-bg {
+  .visily-hero-bg {
     @apply pointer-events-none absolute inset-0;
-    background: var(--hero-gradient);
-  }
-
-  .visily-hero-dark-pattern {
-    @apply pointer-events-none absolute inset-0 opacity-60;
-    background: var(--hero-pattern);
+    background: var(--accent-soft);
+    mask-image: radial-gradient(circle at 20% 20%, black, transparent 70%);
   }
 
   .visily-filter-pane {
@@ -159,18 +155,6 @@
   .visily-card-title {
     @apply text-[11px] font-semibold uppercase tracking-wider;
     color: var(--text-tertiary);
-  }
-
-  .visily-hero {
-    @apply relative overflow-hidden rounded-xl border px-5 py-5;
-    border-color: var(--border-default);
-    background: var(--surface-2);
-  }
-
-  .visily-hero-bg {
-    @apply pointer-events-none absolute inset-0;
-    background: var(--hero-gradient);
-    mask-image: radial-gradient(circle at 20% 20%, black, transparent 70%);
   }
 
   .visily-badge {

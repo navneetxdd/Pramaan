@@ -14,6 +14,7 @@ from engine.app.core.repository import (
     get_case,
     list_custody_for_case,
     list_devices,
+    list_included_ai_findings_for_case,
     list_jobs_for_case,
     list_sequences,
 )
@@ -83,12 +84,25 @@ def build_json_report(case_id: str, *, require_intact_chain: bool = True) -> dic
         raise ValueError(f"Custody chain broken at row {chain.get('first_broken_row_id')}")
     devices = list_devices(case_id)
     recovery = _recovery_summary(case_id)
+    leads = list_included_ai_findings_for_case(case_id)
     return {
         "case": _case_legacy_shape(case),
         "evidence_count": len(devices),
         "evidence": [_device_report_row(d) for d in devices],
         "recovery_summary": recovery,
         "total_segments_recovered": sum(item["segment_count"] for item in recovery),
+        "investigative_leads": [
+            {
+                "finding_id": lead["id"],
+                "device_id": lead.get("device_id"),
+                "sequence_id": lead.get("sequence_id"),
+                "finding_type": lead.get("finding_type"),
+                "label": lead.get("label"),
+                "frame_offset_ms": lead.get("frame_offset_ms"),
+                "confidence": lead.get("confidence"),
+            }
+            for lead in leads
+        ],
         "custody_events": [_custody_legacy(e) for e in custody],
         "custody_chain_valid": {"ok": chain["intact"], **chain},
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -133,6 +147,14 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
         f"<tr><td>{escape(str(event['created_at']))}</td><td>{escape(str(event['action']))}</td>"
         f"<td>{escape(str(event['actor']))}</td><td>{escape(str(event.get('detail') or ''))}</td></tr>"
         for event in report["custody_events"][:50]
+    )
+    lead_rows = "".join(
+        f"<tr><td>{escape(str(lead.get('finding_type') or '—'))}</td>"
+        f"<td>{escape(str(lead.get('label') or '—'))}</td>"
+        f"<td>{int(lead.get('frame_offset_ms') or 0)}</td>"
+        f"<td>{escape(f'{lead.get('confidence'):.2f}' if lead.get('confidence') is not None else '—')}</td>"
+        f"<td><code>{escape(str(lead.get('finding_id', ''))[:12])}…</code></td></tr>"
+        for lead in report.get("investigative_leads", [])
     )
     capability_rows = ""
     timeline_notes: list[str] = []
@@ -192,6 +214,9 @@ th{{background:#161d30}} code{{font-family:monospace;font-size:12px}}
 <h2>Timeline normalization</h2><p>{timeline_section}</p>
 <h2>Recovery summary</h2><table><tr><th>Job/Device</th><th>Status</th><th>Vendor</th><th>Adapter</th><th>Segments</th></tr>{recovery_rows}</table>
 <h2>Segment provenance</h2><table><tr><th>Ch</th><th>Byte start</th><th>Byte end</th><th>Parser</th><th>Validation</th><th>Artifact SHA-256</th></tr>{provenance_rows or '<tr><td colspan="6">No recovered sequences.</td></tr>'}</table>
+<h2>Investigative leads (examiner-selected)</h2>
+<p>Leads marked INCLUDED by the examiner. These are analytical hints only — not verified evidence.</p>
+<table><tr><th>Type</th><th>Label</th><th>Offset (ms)</th><th>Confidence</th><th>Finding ID</th></tr>{lead_rows or '<tr><td colspan="5">No examiner-selected leads.</td></tr>'}</table>
 <h2>Custody ledger</h2><table><tr><th>Time</th><th>Action</th><th>Actor</th><th>Detail</th></tr>{custody_rows}</table>
 <p>{escape(str(report['methodology']))}</p>
 </body></html>"""

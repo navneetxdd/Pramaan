@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 from engine.app.core.job_manager import job_manager
-from engine.app.core.repository import get_case, get_device, list_ai_findings_for_device, persist_job
+from engine.app.core.repository import (
+    get_case,
+    get_device,
+    list_ai_findings_for_device,
+    persist_job,
+    update_ai_finding_report_state,
+)
 from engine.app.services.ai_analytics import run_ai_analytics_job
 
 router = APIRouter(tags=["ai-analytics"])
@@ -12,6 +20,10 @@ router = APIRouter(tags=["ai-analytics"])
 
 class AiAnalyticsRequest(BaseModel):
     actor: str = Field(min_length=1)
+
+
+class AiFindingReportStateUpdate(BaseModel):
+    report_state: Literal["INCLUDED", "EXCLUDED"]
 
 
 @router.post("/devices/{device_id}/ai-analytics")
@@ -53,3 +65,14 @@ def list_device_ai_findings(device_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Device not found")
     findings = list_ai_findings_for_device(device_id)
     return {"device_id": device_id, "findings": findings, "count": len(findings)}
+
+
+@router.patch("/ai-findings/{finding_id}")
+def patch_ai_finding_report_state(finding_id: str, body: AiFindingReportStateUpdate) -> dict:
+    try:
+        updated = update_ai_finding_report_state(finding_id, body.report_state)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not updated:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    return {"finding": updated}

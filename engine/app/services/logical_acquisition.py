@@ -33,6 +33,39 @@ class LogicalClip:
     filename: str
     start_time: str | None = None
     end_time: str | None = None
+    track: str | None = None
+
+
+def _extension_from_magic(blob: bytes) -> str:
+    if blob.startswith(b"DHAV"):
+        return ".dav"
+    if blob[:4] == b"\x00\x00\x00\x01" or b"\x00\x00\x01\xba" in blob[:4096]:
+        return ".mpg"
+    if b"ftyp" in blob[:64]:
+        return ".mp4"
+    return ".bin"
+
+
+def _compact_time(value: str | None) -> str:
+    if not value:
+        return "unknown"
+    return value.replace("-", "").replace(":", "").replace("T", "").replace("Z", "")[:14]
+
+
+def _logical_dest_name(vendor: str, track: str, index: int, start: str | None, blob: bytes) -> str:
+    ext = _extension_from_magic(blob)
+    return f"logical_{vendor}_{track}_{index:03d}_{_compact_time(start)}{ext}"
+
+
+def _track_from_playback_uri(uri: str) -> str:
+    if "/tracks/" in uri:
+        return uri.split("/tracks/", 1)[1].split("?")[0].rstrip("/") or "0"
+    if "channel=" in uri.lower():
+        for part in uri.split("&"):
+            if part.lower().startswith("channel="):
+                return part.split("=", 1)[1]
+    stem = Path(uri.split("?")[0]).stem
+    return stem if stem.isdigit() else "0"
 
 
 def _session(user: str, password: str) -> requests.Session:
@@ -111,11 +144,17 @@ def _hikvision_search_clips(
                 status = element.text.strip().upper()
             elif tag == "playbackURI" and element.text:
                 uri = element.text.strip()
-                name = Path(uri.split("?")[0]).name or f"clip_{len(clips)}.mp4"
+                start_time = None
+                if "starttime=" in uri.lower():
+                    for part in uri.split("?"):
+                        if "starttime=" in part.lower():
+                            start_time = part.split("=", 1)[1]
                 clips.append(
                     LogicalClip(
                         remote_path=uri,
-                        filename=name,
+                        filename=Path(uri.split("?")[0]).name or f"clip_{len(clips)}.mp4",
+                        start_time=start_time,
+                        track=_track_from_playback_uri(uri),
                     )
                 )
                 page_count += 1
@@ -204,7 +243,7 @@ def _dahua_search_clips(
                 path = line.split("=", 1)[1].strip()
         if not path:
             break
-        clips.append(LogicalClip(remote_path=path, filename=Path(path).name or f"dahua_{len(clips)}.dav"))
+        clips.append(LogicalClip(remote_path=path, filename=Path(path).name or f"dahua_{len(clips)}.dav", track="1"))
         if "found=0" in nxt.text or len(clips) >= 100:
             break
     _request_with_auth_fallback(session, "GET", f"{base}?action=close&object={object_id}", user, password)
@@ -314,7 +353,7 @@ async def acquire_logical_network(
     storage = case_storage_dir(case_id)
     storage.mkdir(parents=True, exist_ok=True)
 
-    for clip in clips[:max_clips]:
+    for index, clip in enumerate(clips[:max_clips]):
         blob = download_logical_clip(
             host=host,
             port=port,
@@ -326,8 +365,11 @@ async def acquire_logical_network(
         )
         if not blob:
             continue
-        safe_name = Path(clip.filename).name or f"{uuid.uuid4().hex}.bin"
-        dest = storage / f"logical_{safe_name}"
+        track = clip.track or "0"
+        dest_name = _logical_dest_name(vendor, track, index, clip.start_time, blob)
+        dest = storage / dest_name
+        if dest.exists():
+            raise RuntimeError(f"Logical clip would overwrite existing file: {dest_name}")
         dest.write_bytes(blob)
         md5, sha256 = hash_file(dest)
         identification = identify_image(dest)

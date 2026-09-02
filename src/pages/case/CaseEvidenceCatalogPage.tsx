@@ -25,17 +25,20 @@ const categoryIcons = {
 };
 
 function inferCategory(item: EvidenceRecord): keyof typeof categoryIcons {
-  const name = item.filename.toLowerCase();
-  if (name.includes("specimen") || name.includes("lab")) return "specimen";
-  if (item.media_type?.includes("physical") || name.includes("physical"))
+  const method = (item.acquisition_method || "").toLowerCase();
+  if (method.includes("synthetic") || method.includes("specimen"))
+    return "specimen";
+  if (method.includes("physical") || item.media_type?.includes("physical"))
     return "block";
   return "disk";
 }
 
 function inferStatus(item: EvidenceRecord): string {
-  if (item.acquisition_status === "complete") return "verified";
-  if (item.acquisition_status === "pending") return "awaiting hash";
-  return "parsing";
+  const verification = (item.verification_status || "").toLowerCase();
+  if (verification === "verified") return "verified";
+  if (verification === "pending") return "awaiting hash";
+  if (verification === "failed") return "failed";
+  return item.acquisition_status === "complete" ? "verified" : "parsing";
 }
 
 function statusBadgeClass(status: string) {
@@ -116,9 +119,29 @@ export function CaseEvidenceCatalogPage() {
         id: "type",
         label: "Evidence type",
         options: [
-          { id: "dvr", label: "DVR/NVR image" },
-          { id: "dd", label: "Raw DD / IMG" },
-          { id: "e01", label: "E01 (input)" },
+          {
+            id: "dvr",
+            label: "DVR/NVR image",
+            count: evidence.filter(
+              (e) =>
+                e.media_type?.includes("dvr") ||
+                /\.(dav|mp4|avi)$/i.test(e.filename) ||
+                e.acquisition_method?.includes("logical"),
+            ).length,
+          },
+          {
+            id: "dd",
+            label: "Raw DD / IMG",
+            count: evidence.filter((e) =>
+              /\.(dd|img|raw|bin)$/i.test(e.filename),
+            ).length,
+          },
+          {
+            id: "e01",
+            label: "E01 (input)",
+            count: evidence.filter((e) => /\.(e01|001)$/i.test(e.filename))
+              .length,
+          },
         ],
       },
     ],

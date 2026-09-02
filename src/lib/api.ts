@@ -117,6 +117,7 @@ export type Segment = {
   offset_start: number;
   offset_end: number;
   frame_count: number;
+  playable_frame_count?: number | null;
   confidence: number;
   validation: string;
   confidence_tier?: string;
@@ -142,6 +143,32 @@ export type Segment = {
   output_md5?: string | null;
   output_sha256?: string | null;
   recovery_job_id?: string | null;
+};
+
+export type LiveDeviceRecord = {
+  id: string;
+  case_id: string;
+  display_name: string;
+  host: string;
+  port: number;
+  scheme: string;
+  vendor: "hikvision" | "dahua" | "onvif" | "generic_rtsp";
+  channel_count: number;
+  channels: Array<{
+    channel: number;
+    label: string;
+    main_uri: string;
+    sub_uri: string;
+    snapshot_uri: string | null;
+  }>;
+  device_info: {
+    model?: string | null;
+    serial?: string | null;
+    firmware?: string | null;
+  };
+  added_by: string;
+  added_at: string;
+  credentialed: boolean;
 };
 
 export type SegmentDetail = {
@@ -217,6 +244,7 @@ export type AiFinding = {
   finding_type: string;
   label: string | null;
   confidence: number | null;
+  report_state?: "INCLUDED" | "EXCLUDED" | null;
   bbox?: {
     x?: number;
     y?: number;
@@ -690,11 +718,35 @@ export const api = {
       md5_ok?: boolean;
     }>(`/api/v1/devices/${imageId}/verify`),
 
-  exportSegment: (deviceId: string, segmentId: string) =>
-    request<{ filename: string; download_url: string; media_type: string }>(
-      `/api/v1/devices/${deviceId}/sequences/${segmentId}/export`,
+  exportSegment: (
+    deviceId: string,
+    segmentId: string,
+    options?: { fromMs?: number; toMs?: number; full?: boolean },
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.fromMs != null) params.set("from_ms", String(options.fromMs));
+    if (options?.toMs != null) params.set("to_ms", String(options.toMs));
+    if (options?.full) params.set("full", "1");
+    const qs = params.toString();
+    return request<{
+      filename: string;
+      download_url: string;
+      media_type: string;
+    }>(
+      `/api/v1/devices/${deviceId}/sequences/${segmentId}/export${qs ? `?${qs}` : ""}`,
       { method: "POST" },
-    ),
+    );
+  },
+
+  updateAiFindingReportState: (
+    findingId: string,
+    reportState: "INCLUDED" | "EXCLUDED",
+  ) =>
+    request<{ finding: AiFinding }>(`/api/v1/ai-findings/${findingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ report_state: reportState }),
+    }),
 
   getSettings: () =>
     request<{
@@ -758,5 +810,68 @@ export const api = {
     request<{ job_id: string; dataset_id: string; status: string }>(
       `/api/v1/datasets/${encodeURIComponent(datasetId)}/fetch`,
       { method: "POST" },
+    ),
+
+  listLiveDevices: (caseId: string) =>
+    request<{ devices: LiveDeviceRecord[] }>(
+      `/api/v1/cases/${caseId}/live-devices`,
+    ),
+
+  addLiveDevice: (
+    caseId: string,
+    body: {
+      actor: string;
+      display_name: string;
+      vendor: LiveDeviceRecord["vendor"];
+      host: string;
+      port: number;
+      scheme?: string;
+      user?: string;
+      password?: string;
+      rtsp_url_override?: string;
+    },
+  ) =>
+    request<LiveDeviceRecord>(`/api/v1/cases/${caseId}/live-devices`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  liveSnapshot: (deviceId: string, body: { actor: string; channel: number }) =>
+    request<{
+      filename: string;
+      sha256: string;
+      taken_at_utc: string;
+      channel: number;
+      source_uri: string;
+    }>(`/api/v1/live-devices/${deviceId}/snapshot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  liveCapture: (
+    deviceId: string,
+    body: { actor: string; channel: number; duration_s?: number },
+  ) =>
+    request<{
+      evidence: EvidenceRecord;
+      channel: number;
+      duration_s: number;
+      source_uri: string;
+    }>(`/api/v1/live-devices/${deviceId}/capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  liveMjpegUrl: (deviceId: string, channel: number, fps = 6) =>
+    resolveApiUrl(
+      `/api/v1/live-devices/${deviceId}/stream.mjpeg?channel=${channel}&fps=${fps}`,
+    ),
+
+  liveMp4Url: (deviceId: string, channel: number) =>
+    resolveApiUrl(
+      `/api/v1/live-devices/${deviceId}/stream.mp4?channel=${channel}&quality=main`,
     ),
 };

@@ -30,10 +30,21 @@ class DahuaRealDavTests(unittest.TestCase):
         if cls.dav_path is None:
             raise unittest.SkipTest("real Dahua .dav sample not staged")
 
+    def test_single_continuous_segment_on_real_dav(self) -> None:
+        segments = DahuaDhavAdapter().scan(self.dav_path)
+        video_segments = [s for s in segments if s.codec == "h264" and s.validation != "unreferenced_carve"]
+        self.assertEqual(len(video_segments), 1, f"expected 1 segment, got {len(video_segments)}")
+        seg = video_segments[0]
+        self.assertEqual(seg.channel, 0)
+        span = seg.offset_end - seg.offset_start
+        self.assertGreaterEqual(span, 20_000_000)
+        self.assertIn("2017-09-18T19:25:16", seg.recorder_start_ts or "")
+        self.assertIn("2017-09-18T19:25:50", seg.recorder_end_ts or "")
+
     def test_scan_finds_video_segments_with_2017_timestamps(self) -> None:
         segments = DahuaDhavAdapter().scan(self.dav_path)
         video_segments = [s for s in segments if s.codec == "h264" and s.validation != "unreferenced_carve"]
-        self.assertGreaterEqual(len(video_segments), 3)
+        self.assertGreaterEqual(len(video_segments), 1)
         dated = [s for s in video_segments if s.recorder_start_ts and "2017" in s.recorder_start_ts]
         self.assertGreater(len(dated), 0)
         large = [s for s in video_segments if (s.offset_end - s.offset_start) >= 10_000]

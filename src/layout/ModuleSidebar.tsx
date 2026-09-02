@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Fingerprint,
   GanttChartSquare,
+  Radio,
 } from "lucide-react";
 
 import { useEffect, useState } from "react";
@@ -50,6 +51,8 @@ const globalNav: NavItem[] = [
 
 const caseWorkflow: NavItem[] = [
   { to: "", label: "Overview", icon: LayoutDashboard, end: true },
+
+  { to: "live", label: "Live devices", icon: Radio },
 
   { to: "acquire", label: "Acquisition", icon: HardDriveDownload, step: 1 },
 

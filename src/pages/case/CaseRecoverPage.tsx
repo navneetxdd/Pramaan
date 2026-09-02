@@ -269,6 +269,15 @@ export function CaseRecoverPage() {
                 ),
             },
             {
+              key: "frames",
+              header: "Frames",
+              className: "mono",
+              cell: (seg) =>
+                seg.playable_frame_count != null
+                  ? `${seg.playable_frame_count} playable`
+                  : `${seg.frame_count ?? "—"} container`,
+            },
+            {
               key: "ts",
               header: "Timestamp",
               cell: (seg) => (

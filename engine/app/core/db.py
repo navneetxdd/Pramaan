@@ -12,7 +12,7 @@ from typing import Any, Iterator
 from engine.app.core.config import APP_VERSION, WORK_DIR
 
 DATABASE_PATH = WORK_DIR / "forensic.db"
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _LOCK = threading.Lock()
 
@@ -93,7 +93,8 @@ CREATE TABLE IF NOT EXISTS recovered_sequences (
   parser_version TEXT,
   recovery_job_id TEXT,
   signature_evidence_json TEXT,
-  validation_evidence_json TEXT
+  validation_evidence_json TEXT,
+  playable_frame_count INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS custody_log (
@@ -115,7 +116,8 @@ CREATE TABLE IF NOT EXISTS ai_findings (
   finding_type TEXT NOT NULL,
   label TEXT,
   confidence REAL,
-  bbox_json TEXT
+  bbox_json TEXT,
+  report_state TEXT NOT NULL DEFAULT 'EXCLUDED'
 );
 
 CREATE TABLE IF NOT EXISTS reports (
@@ -147,6 +149,23 @@ CREATE TABLE IF NOT EXISTS jobs (
   error TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS live_devices (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  display_name TEXT NOT NULL,
+  host TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  scheme TEXT NOT NULL DEFAULT 'http',
+  vendor TEXT NOT NULL,
+  channel_count INTEGER NOT NULL DEFAULT 1,
+  model_hint TEXT,
+  serial_hint TEXT,
+  firmware_hint TEXT,
+  channels_json TEXT NOT NULL,
+  added_by TEXT NOT NULL,
+  added_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_devices_case ON devices(case_id);
@@ -255,6 +274,29 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         _add_columns(conn, "custody_log", {"evidence_digest": "TEXT"})
     if current < 7:
         _add_columns(conn, "cases", {"ephemeral": "INTEGER NOT NULL DEFAULT 0"})
+    if current < 8:
+        _add_columns(conn, "ai_findings", {"report_state": "TEXT NOT NULL DEFAULT 'EXCLUDED'"})
+        _add_columns(conn, "recovered_sequences", {"playable_frame_count": "INTEGER"})
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS live_devices (
+              id TEXT PRIMARY KEY,
+              case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+              display_name TEXT NOT NULL,
+              host TEXT NOT NULL,
+              port INTEGER NOT NULL,
+              scheme TEXT NOT NULL DEFAULT 'http',
+              vendor TEXT NOT NULL,
+              channel_count INTEGER NOT NULL DEFAULT 1,
+              model_hint TEXT,
+              serial_hint TEXT,
+              firmware_hint TEXT,
+              channels_json TEXT NOT NULL,
+              added_by TEXT NOT NULL,
+              added_at TEXT NOT NULL
+            );
+            """
+        )
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 

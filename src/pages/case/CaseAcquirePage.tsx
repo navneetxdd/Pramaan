@@ -23,6 +23,8 @@ import { HANDLER_FIELD_HINT, HANDLER_FIELD_LABEL } from "@/lib/caseRegistry";
 
 import { Button } from "@/components/ui/button";
 
+import { PageHeader } from "@/components/visily/PageHeader";
+
 import { Input } from "@/components/ui/input";
 
 import {
@@ -496,40 +498,25 @@ export function CaseAcquirePage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="visily-hero-dark px-5 py-4">
-        <div className="visily-hero-dark-bg" aria-hidden />
-
-        <div className="relative z-[1]">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">
-            Step 1 · Preservation
-          </p>
-
-          <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">
-            Acquire evidence
-          </h1>
-
-          <p className="mt-1 max-w-2xl text-[12px] text-[var(--text-muted-on-dark)]">
-            Image or register read-only copies. Source media is never modified —
-            hashes are verified before the catalog.
-          </p>
-
-          <ol className="mt-4 flex flex-wrap gap-2">
-            {STEPS.map((label, idx) => (
-              <li
-                key={label}
-
-                className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                  idx <= activeStep
-                    ? "bg-[var(--accent-500)] text-white"
-                    : "border border-white/20 text-[var(--text-muted-on-dark)]"
-                }`}
-              >
-                {idx + 1}. {label}
-              </li>
-            ))}
-          </ol>
-        </div>
-      </div>
+      <PageHeader
+        kicker="Step 1 · Preservation"
+        title="Acquire evidence"
+        subtitle="Image or register read-only copies. Source media is never modified — hashes are verified before the catalog."
+      />
+      <ol className="flex flex-wrap gap-2 px-5">
+        {STEPS.map((label, idx) => (
+          <li
+            key={label}
+            className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide ${
+              idx <= activeStep
+                ? "bg-[var(--accent-500)] text-white"
+                : "border border-[var(--border-subtle)] text-[var(--text-secondary)]"
+            }`}
+          >
+            {idx + 1}. {label}
+          </li>
+        ))}
+      </ol>
 
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(260px,300px)_1fr_minmax(220px,260px)]">
         <section className="visily-card min-h-0 space-y-4 overflow-y-auto p-4">
@@ -716,79 +703,16 @@ export function CaseAcquirePage() {
             )}
           </div>
 
-          <details
-            className="border-t pt-3"
-            style={{ borderColor: "var(--border-subtle)" }}
-          >
-            <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
-              Network logical pull (advanced)
-            </summary>
-
-            <div className="mt-2 space-y-2">
-              <p className="text-[11px] text-amber-900">
-                HTTP Digest to Hikvision ISAPI or Dahua CGI. Accessible clips
-                only — no deleted or unallocated recovery.
-              </p>
-
-              <select
-                className="field w-full"
-                value={logicalScheme}
-                onChange={(e) =>
-                  setLogicalScheme(e.target.value as typeof logicalScheme)
-                }
-              >
-                <option value="http">HTTP</option>
-                <option value="https">HTTPS</option>
-              </select>
-
-              <Input
-                placeholder="NVR IP"
-                value={logicalHost}
-                onChange={(e) => setLogicalHost(e.target.value)}
-              />
-
-              <Input
-                placeholder="Port"
-                value={logicalPort}
-                onChange={(e) => setLogicalPort(e.target.value)}
-              />
-
-              <Input
-                placeholder="Username"
-                value={logicalUser}
-                onChange={(e) => setLogicalUser(e.target.value)}
-              />
-
-              <Input
-                type="password"
-                placeholder="Password (not stored)"
-                value={logicalPassword}
-                onChange={(e) => setLogicalPassword(e.target.value)}
-              />
-
-              <select
-                className="field w-full"
-                value={logicalVendor}
-                onChange={(e) =>
-                  setLogicalVendor(e.target.value as typeof logicalVendor)
-                }
-              >
-                <option value="hikvision">Hikvision ISAPI</option>
-
-                <option value="dahua">Dahua CGI</option>
-              </select>
-
-              <Button
-                className="w-full"
-                variant="secondary"
-                disabled={busy}
-                onClick={() => void handleLogicalAcquire()}
-              >
-                <Network className="h-4 w-4" />
-                Pull clips
-              </Button>
-            </div>
-          </details>
+          <p className="mt-3 text-[12px] text-[var(--text-secondary)]">
+            Network recording pull moved to{" "}
+            <Link
+              className="font-medium text-[var(--accent-600)] underline"
+              to={`/cases/${caseId}/live`}
+            >
+              Live devices
+            </Link>
+            .
+          </p>
         </section>
 
         <section className="visily-card flex flex-col p-5">

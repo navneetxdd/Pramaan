@@ -4,6 +4,7 @@ import { api, type CustodyEvent } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { VirtualTable } from "@/components/ui/virtual-table";
 import { DashboardStat } from "@/components/visily/DashboardStat";
+import { PageHeader } from "@/components/visily/PageHeader";
 import { Shield, ShieldCheck, ShieldOff } from "lucide-react";
 
 export function CaseCustodyPage() {
@@ -23,21 +24,11 @@ export function CaseCustodyPage() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="visily-hero-dark px-5 py-4">
-        <div className="visily-hero-dark-bg" aria-hidden />
-        <div className="relative z-[1] flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">
-              Audit trail
-            </p>
-            <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">
-              Chain of custody
-            </h1>
-            <p className="mt-1 text-[12px] text-[var(--text-muted-on-dark)]">
-              Append-only custody log with hash-linked verification for this
-              case.
-            </p>
-          </div>
+      <PageHeader
+        kicker="Audit trail"
+        title="Chain of custody"
+        subtitle="Append-only custody log with hash-linked verification for this case."
+        actions={
           <Badge
             variant={
               intact ? "success" : intact === false ? "danger" : "outline"
@@ -45,8 +36,8 @@ export function CaseCustodyPage() {
           >
             {intact ? "INTACT" : intact === false ? "BROKEN" : "CHECKING"}
           </Badge>
-        </div>
-      </div>
+        }
+      />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <DashboardStat

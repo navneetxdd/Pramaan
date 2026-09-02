@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { isNotFound } from "@/lib/apiError";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/visily/PageHeader";
 
 export function CaseReportPage() {
   const { caseId, workspace } = useCaseContext();
@@ -46,32 +47,17 @@ export function CaseReportPage() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="visily-hero-dark px-5 py-4">
-        <div className="visily-hero-dark-bg" aria-hidden />
-        <div className="relative z-[1] flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-400)]">
-              Case deliverable
-            </p>
-            <h1 className="mt-1 text-[20px] font-semibold text-[var(--text-on-dark)]">
-              Forensic report
-            </h1>
-            <p className="mt-1 text-[12px] text-[var(--text-muted-on-dark)]">
-              Live HTML preview of the signed forensic report.
-            </p>
-            {fingerprint ? (
-              <p className="mono mt-2 text-[10px] text-[var(--text-muted-on-dark)]">
-                signature: {fingerprint.slice(0, 24)}… · self-signed integrity
-                only
-              </p>
-            ) : null}
-          </div>
-          <div className="flex gap-2">
-            <Button
-              asChild
-              variant="secondary"
-              className="border-white/20 bg-white/10 text-white hover:bg-white/15"
-            >
+      <PageHeader
+        kicker="Case deliverable"
+        title="Forensic report"
+        subtitle={
+          fingerprint
+            ? `Live HTML preview of the signed forensic report. Signature: ${fingerprint.slice(0, 24)}… · self-signed integrity only`
+            : "Live HTML preview of the signed forensic report."
+        }
+        actions={
+          <>
+            <Button asChild variant="secondary">
               <a
                 href={api.reportHtmlUrl(caseId)}
                 target="_blank"
@@ -85,9 +71,9 @@ export function CaseReportPage() {
                 Download PDF
               </a>
             </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="grid min-h-[560px] gap-3 lg:grid-cols-[240px_1fr]">
         <section className="visily-card p-3">

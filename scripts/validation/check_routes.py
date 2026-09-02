@@ -55,6 +55,7 @@ EXPECTED = {
     "POST /api/v1/devices/{device_id}/recover",
     "POST /api/v1/devices/{device_id}/ai-analytics",
     "GET /api/v1/devices/{device_id}/ai-findings",
+    "PATCH /api/v1/ai-findings/{finding_id}",
     "GET /api/v1/jobs/{job_id}",
     "GET /api/v1/jobs/{job_id}/events",
     "GET /api/v1/files/{filename}",
@@ -64,6 +65,14 @@ EXPECTED = {
     "POST /api/v1/tool-verification/run",
     "GET /api/v1/datasets",
     "POST /api/v1/datasets/{dataset_id}/fetch",
+    "POST /api/v1/cases/{case_id}/live-devices",
+    "GET /api/v1/cases/{case_id}/live-devices",
+    "POST /api/v1/live-devices/{device_id}/reconnect",
+    "DELETE /api/v1/live-devices/{device_id}",
+    "GET /api/v1/live-devices/{device_id}/stream.mjpeg",
+    "GET /api/v1/live-devices/{device_id}/stream.mp4",
+    "POST /api/v1/live-devices/{device_id}/snapshot",
+    "POST /api/v1/live-devices/{device_id}/capture",
 }
 
 
