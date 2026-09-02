@@ -29,6 +29,11 @@ type ExportCacheEntry = {
   mediaType: string;
 };
 
+type LaneExportWindow = {
+  segStart: number;
+  fromMs: number;
+};
+
 function segmentDeleted(seg: Segment): boolean {
   if ((seg as { deleted_candidate?: boolean }).deleted_candidate) return true;
   const validation = seg.validation ?? "";
@@ -77,6 +82,18 @@ function exportCacheKey(segId: string, fromMs?: number, toMs?: number): string {
   return `${segId}:${fromMs}:${toMs}`;
 }
 
+function findSegmentAtPlayhead(
+  segments: Segment[],
+  playhead: number,
+  useTime: boolean,
+): Segment | undefined {
+  return segments.find((seg) => {
+    const start = parseSegmentStart(seg, useTime);
+    const end = parseSegmentEnd(seg, start, useTime);
+    return playhead >= start && playhead <= end;
+  });
+}
+
 export function PlaybackDeck({
   channels,
   deviceId,
@@ -88,9 +105,12 @@ export function PlaybackDeck({
   const [playing, setPlaying] = useState(false);
   const exportCacheRef = useRef(new Map<string, ExportCacheEntry>());
   const syncTokenRef = useRef(0);
+  const laneExportWindowRef = useRef<Record<number, LaneExportWindow>>({});
+  const lastSelectedSegmentRef = useRef<string | null>(null);
   const [laneUrls, setLaneUrls] = useState<Record<number, string>>({});
   const [laneMedia, setLaneMedia] = useState<Record<number, string>>({});
   const [laneGaps, setLaneGaps] = useState<Record<number, boolean>>({});
+  const [laneLoading, setLaneLoading] = useState<Record<number, boolean>>({});
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
   const rafRef = useRef<number | null>(null);
 
@@ -149,14 +169,28 @@ export function PlaybackDeck({
   const segmentAtPlayhead = useCallback(
     (channel: number) => {
       const items = channels.find((c) => c.channel === channel)?.segments ?? [];
-      return items.find((seg) => {
-        const start = parseSegmentStart(seg, useTime);
-        const end = parseSegmentEnd(seg, start, useTime);
-        return effectivePlayhead >= start && effectivePlayhead <= end;
-      });
+      return findSegmentAtPlayhead(items, effectivePlayhead, useTime);
     },
     [channels, effectivePlayhead, useTime],
   );
+
+  const syncSignature = useMemo(() => {
+    return channels
+      .map((channel) => {
+        const seg = findSegmentAtPlayhead(
+          channel.segments,
+          effectivePlayhead,
+          useTime,
+        );
+        if (!seg) return `${channel.channel}:gap`;
+        const start = parseSegmentStart(seg, useTime);
+        const bucket = useTime
+          ? Math.floor((effectivePlayhead - start) / SCRUB_WINDOW_MS)
+          : 0;
+        return `${channel.channel}:${seg.id}:${bucket}`;
+      })
+      .join("|");
+  }, [channels, effectivePlayhead, useTime]);
 
   const stepToNextSegment = useCallback(() => {
     const ordered = [...flatSegments].sort((a, b) => {
@@ -184,70 +218,119 @@ export function PlaybackDeck({
   useEffect(() => {
     const token = ++syncTokenRef.current;
     let cancelled = false;
+
     async function syncLanes() {
       const nextUrls: Record<number, string> = {};
       const nextMedia: Record<number, string> = {};
       const nextGaps: Record<number, boolean> = {};
+      const nextLoading: Record<number, boolean> = {};
+
+      let primarySegmentId: string | null = null;
+
       for (const channel of channels) {
-        const seg = segmentAtPlayhead(channel.channel);
+        const seg = findSegmentAtPlayhead(
+          channel.segments,
+          effectivePlayhead,
+          useTime,
+        );
         if (!seg) {
           nextGaps[channel.channel] = true;
+          delete nextUrls[channel.channel];
+          delete nextMedia[channel.channel];
           continue;
         }
+
         nextGaps[channel.channel] = false;
-        onSelectSegment(seg.id);
+        if (primarySegmentId == null) {
+          primarySegmentId = seg.id;
+        }
+
+        const start = parseSegmentStart(seg, useTime);
+        const end = parseSegmentEnd(seg, start, useTime);
+        let fromMs: number | undefined;
+        let toMs: number | undefined;
+        if (useTime) {
+          const relPlayhead = effectivePlayhead - start;
+          const bucket = Math.floor(relPlayhead / SCRUB_WINDOW_MS);
+          fromMs = Math.max(0, bucket * SCRUB_WINDOW_MS);
+          toMs = Math.min(end - start, fromMs + SCRUB_WINDOW_MS * 2);
+        }
+
+        const cacheKey = exportCacheKey(seg.id, fromMs, toMs);
+        const cached = exportCacheRef.current.get(cacheKey);
+        if (cached) {
+          nextUrls[channel.channel] = cached.url;
+          nextMedia[channel.channel] = cached.mediaType;
+          laneExportWindowRef.current[channel.channel] = {
+            segStart: start,
+            fromMs: fromMs ?? 0,
+          };
+          continue;
+        }
+
+        nextLoading[channel.channel] = true;
         try {
-          const start = parseSegmentStart(seg, useTime);
-          const end = parseSegmentEnd(seg, start, useTime);
-          let fromMs: number | undefined;
-          let toMs: number | undefined;
-          if (useTime) {
-            const relPlayhead = effectivePlayhead - start;
-            fromMs = Math.max(0, relPlayhead - SCRUB_WINDOW_MS);
-            toMs = Math.min(end - start, relPlayhead + SCRUB_WINDOW_MS);
-          }
           const exported = await resolveExport(seg, fromMs, toMs);
           if (cancelled || token !== syncTokenRef.current) return;
           nextUrls[channel.channel] = exported.url;
           nextMedia[channel.channel] = exported.mediaType;
-          const video = videoRefs.current[channel.channel];
-          if (video) {
-            const offsetSec = useTime
-              ? (effectivePlayhead - start) / 1000 +
-                driftOffsetSeconds -
-                (fromMs ?? 0) / 1000
-              : 0;
-            if (video.src !== exported.url) {
-              video.src = exported.url;
-            }
-            if (Number.isFinite(offsetSec) && offsetSec >= 0) {
-              video.currentTime = offsetSec;
-            }
-          }
+          laneExportWindowRef.current[channel.channel] = {
+            segStart: start,
+            fromMs: fromMs ?? 0,
+          };
         } catch {
+          if (cancelled || token !== syncTokenRef.current) return;
           nextGaps[channel.channel] = true;
+          delete nextUrls[channel.channel];
+          delete nextMedia[channel.channel];
+        } finally {
+          nextLoading[channel.channel] = false;
         }
       }
-      if (!cancelled) {
-        setLaneUrls(nextUrls);
-        setLaneMedia(nextMedia);
-        setLaneGaps(nextGaps);
+
+      if (cancelled || token !== syncTokenRef.current) return;
+
+      if (
+        primarySegmentId &&
+        primarySegmentId !== lastSelectedSegmentRef.current
+      ) {
+        lastSelectedSegmentRef.current = primarySegmentId;
+        onSelectSegment(primarySegmentId);
       }
+
+      setLaneUrls(nextUrls);
+      setLaneMedia(nextMedia);
+      setLaneGaps(nextGaps);
+      setLaneLoading(nextLoading);
     }
+
     void syncLanes();
     return () => {
       cancelled = true;
     };
-  }, [
-    channels,
-    deviceId,
-    driftOffsetSeconds,
-    effectivePlayhead,
-    onSelectSegment,
-    resolveExport,
-    segmentAtPlayhead,
-    useTime,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync on bucket/segment changes only
+  }, [syncSignature, channels, deviceId, resolveExport, onSelectSegment]);
+
+  useEffect(() => {
+    if (!useTime) return;
+    for (const channel of channels) {
+      const window = laneExportWindowRef.current[channel.channel];
+      const video = videoRefs.current[channel.channel];
+      const url = laneUrls[channel.channel];
+      if (!window || !video || !url) continue;
+      const offsetSec =
+        (effectivePlayhead - window.segStart) / 1000 +
+        driftOffsetSeconds -
+        window.fromMs / 1000;
+      if (
+        Number.isFinite(offsetSec) &&
+        offsetSec >= 0 &&
+        Math.abs(video.currentTime - offsetSec) > 0.2
+      ) {
+        video.currentTime = offsetSec;
+      }
+    }
+  }, [effectivePlayhead, driftOffsetSeconds, channels, laneUrls, useTime]);
 
   useEffect(() => {
     if (!playing || !useTime) {
@@ -282,7 +365,7 @@ export function PlaybackDeck({
         video.pause();
       }
     }
-  }, [playing, channels, laneUrls, segmentAtPlayhead, effectivePlayhead]);
+  }, [playing, channels, laneUrls, segmentAtPlayhead]);
 
   if (channels.length === 0) {
     return (
@@ -381,7 +464,7 @@ export function PlaybackDeck({
                   ref={(el) => {
                     videoRefs.current[channel.channel] = el;
                   }}
-                  className="aspect-video w-full bg-black"
+                  className="aspect-video w-full bg-[var(--surface-4)]"
                   src={
                     laneMedia[channel.channel] === "h264"
                       ? `${laneUrls[channel.channel]}${laneUrls[channel.channel].includes("?") ? "&" : "?"}transcode=1`
@@ -394,7 +477,9 @@ export function PlaybackDeck({
                 <div className="flex aspect-video items-center justify-center bg-[var(--surface-4)] text-[12px] text-[var(--text-tertiary)]">
                   {laneGaps[channel.channel]
                     ? "No segment at playhead"
-                    : "Exporting…"}
+                    : laneLoading[channel.channel]
+                      ? "Exporting…"
+                      : "Preparing playback…"}
                 </div>
               )}
             </div>

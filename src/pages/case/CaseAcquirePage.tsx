@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  HardDrive,
-  Network,
-  Play,
-  RotateCcw,
-  Server,
-  Upload,
-} from "lucide-react";
+import { HardDrive, Play, RotateCcw, Server, Upload } from "lucide-react";
 
 import { Link } from "react-router-dom";
 
@@ -162,40 +155,6 @@ export function CaseAcquirePage() {
     setHashState(
       check.ok && check.sha256_ok !== false ? "verified" : "mismatch",
     );
-  }
-
-  function trackJob(jobId: string) {
-    return subscribeJobEvents(jobId, {
-      onEvent: (event) => {
-        if (typeof event.progress === "number") setProgress(event.progress);
-
-        if (event.message) setStatusMessage(event.message);
-
-        if (event.status === "completed") {
-          setProgress(100);
-
-          toast.success("Imaging complete");
-
-          void verifyLatestHash();
-
-          void loadSources();
-        }
-
-        if (event.status === "failed") {
-          setHashState("mismatch");
-
-          toast.error(event.error ?? "Imaging failed", { duration: Infinity });
-        }
-
-        if (event.status === "interrupted") {
-          toast.warning("Imaging interrupted — resume when ready");
-
-          void loadSources();
-        }
-      },
-
-      onError: (err) => toast.error(err.message, { duration: Infinity }),
-    });
   }
 
   async function handleAcquireUpload() {
@@ -424,6 +383,34 @@ export function CaseAcquirePage() {
 
     return items;
   }, [evidence, resumable]);
+
+  function queueStatusClass(status: string): string {
+    const normalized = status.toLowerCase();
+    if (
+      normalized.includes("fail") ||
+      normalized.includes("interrupt") ||
+      normalized.includes("error") ||
+      normalized.includes("mismatch")
+    ) {
+      return "rounded bg-red-50 px-2 py-0.5 text-[9px] font-bold uppercase text-red-800";
+    }
+    if (
+      normalized.includes("progress") ||
+      normalized.includes("running") ||
+      normalized.includes("pending") ||
+      normalized.includes("imaging")
+    ) {
+      return "rounded bg-amber-50 px-2 py-0.5 text-[9px] font-bold uppercase text-amber-900";
+    }
+    if (
+      normalized.includes("complete") ||
+      normalized.includes("registered") ||
+      normalized.includes("verified")
+    ) {
+      return "rounded bg-emerald-50 px-2 py-0.5 text-[9px] font-bold uppercase text-emerald-800";
+    }
+    return "rounded bg-[var(--surface-3)] px-2 py-0.5 text-[9px] font-bold uppercase text-[var(--text-secondary)]";
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -700,7 +687,7 @@ export function CaseAcquirePage() {
                   <div className="flex justify-between gap-4">
                     <dt>Status</dt>
 
-                    <dd>{latest.acquisition_status ?? "complete"}</dd>
+                    <dd>{latest.acquisition_status ?? "—"}</dd>
                   </div>
                 </dl>
               </div>
@@ -757,7 +744,7 @@ export function CaseAcquirePage() {
                     </p>
 
                     <div className="mt-2 flex items-center justify-between">
-                      <span className="rounded bg-emerald-50 px-2 py-0.5 text-[9px] font-bold uppercase text-emerald-800">
+                      <span className={queueStatusClass(item.status)}>
                         {item.status}
                       </span>
 

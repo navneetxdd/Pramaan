@@ -166,6 +166,12 @@ export function CaseLiveDevicesPage() {
         setGateBlocked(true);
       }
       setDevices([]);
+      if (
+        !message.includes("403") &&
+        !message.toLowerCase().includes("logical_acquire")
+      ) {
+        toast.error(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -177,7 +183,7 @@ export function CaseLiveDevicesPage() {
 
   const activeDevice = useMemo(
     () =>
-      devices.find((d) => d.id === (pullDeviceId || focused?.deviceId)) ??
+      devices.find((d) => d.id === (focused?.deviceId ?? pullDeviceId)) ??
       devices[0],
     [devices, pullDeviceId, focused],
   );
@@ -343,9 +349,10 @@ export function CaseLiveDevicesPage() {
                       ? "border-[var(--accent-500)] bg-[var(--surface-0)]"
                       : "border-[var(--border-subtle)] bg-[var(--surface-2)]"
                   }`}
-                  onClick={() =>
-                    setFocused({ deviceId: device.id, channel: 1 })
-                  }
+                  onClick={() => {
+                    setSearchParams({});
+                    setFocused({ deviceId: device.id, channel: 1 });
+                  }}
                 >
                   <p className="font-semibold text-[var(--text-primary)]">
                     {device.display_name}
@@ -640,7 +647,7 @@ export function CaseLiveDevicesPage() {
               </Button>
               <Button onClick={() => void testConnection()}>
                 <Camera className="h-4 w-4" />
-                Test connection
+                Connect & add device
               </Button>
             </div>
           </div>

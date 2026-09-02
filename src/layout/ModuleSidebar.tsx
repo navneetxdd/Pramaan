@@ -297,6 +297,8 @@ export function useBreadcrumb(): { section: string; page: string } {
     const labels: Record<string, string> = {
       dashboard: "Case overview",
 
+      live: "Live devices",
+
       evidence: "Evidence catalog",
 
       acquire: "Acquisition",
