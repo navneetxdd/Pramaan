@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -38,6 +39,7 @@ class DahuaRealDavTests(unittest.TestCase):
         large = [s for s in video_segments if (s.offset_end - s.offset_start) >= 10_000]
         self.assertTrue(any(s.validation == "dual_signature_4" for s in large))
 
+    @unittest.skipUnless(shutil.which("ffprobe"), "ffprobe not installed")
     def test_exported_largest_segment_decodes_many_frames(self) -> None:
         from engine.app.parsers.unwrap import unwrap_to_h264
         from engine.app.verification.media_fixture import ensure_playable_h264

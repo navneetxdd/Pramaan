@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -13,6 +14,7 @@ from engine.app.main import app  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 
+@unittest.skipUnless(shutil.which("ffprobe"), "ffprobe not installed")
 class E1ExportFrameTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
