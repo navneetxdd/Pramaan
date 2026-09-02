@@ -152,7 +152,7 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
         f"<tr><td>{escape(str(lead.get('finding_type') or '—'))}</td>"
         f"<td>{escape(str(lead.get('label') or '—'))}</td>"
         f"<td>{int(lead.get('frame_offset_ms') or 0)}</td>"
-        f"<td>{escape(f'{lead.get('confidence'):.2f}' if lead.get('confidence') is not None else '—')}</td>"
+        f"<td>{escape(format(lead['confidence'], '.2f') if lead.get('confidence') is not None else '—')}</td>"
         f"<td><code>{escape(str(lead.get('finding_id', ''))[:12])}…</code></td></tr>"
         for lead in report.get("investigative_leads", [])
     )
