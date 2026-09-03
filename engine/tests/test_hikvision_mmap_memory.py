@@ -1,66 +1,86 @@
+"""Memory-safety contract for the Hikvision adapter on a desktop client.
+
+The Tauri shell runs on ordinary laptops against images that can be multi-terabyte. Two things
+must therefore never happen, and both regressed before:
+
+1. materializing the mapping as a ``bytes`` object, and
+2. retaining each segment's payload in ``raw_bytes``, which on a real drive with thousands of
+   data blocks is gigabytes resident before a single artifact is written.
+
+See docs/reference/hikvision_fs.md §10.
+"""
+
 from __future__ import annotations
 
-import struct
 import tempfile
+import time
 import tracemalloc
 import unittest
 from pathlib import Path
 
 from engine.app.parsers.hikvision import HikvisionAdapter
-from engine.app.parsers.schemas.hikvision_fs import (
-    HikbtreeEntry,
-    MASTER_BLOCK_OFFSET,
-    MPEG_PS_PACK,
-    build_hikbtree_header,
-    build_hikbtree_page,
-    build_master_block,
-)
+from engine.tests.support import hikvision_builder as builder
 
-HIKBTREE_OFFSET = 0x100000
-PAGE_OFFSET = HIKBTREE_OFFSET + 0x100
+SPARSE_SIZE = 512 * 1024 * 1024
+PEAK_ALLOCATION_BUDGET = 64 * 1024 * 1024
 
 
 class HikvisionMmapMemoryTests(unittest.TestCase):
-    def test_scanning_large_image_does_not_allocate_whole_file(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            image = Path(tmp) / "hikvision_sparse.bin"
-            sparse_size = 512 * 1024 * 1024
-            data_offset = sparse_size - (256 * 1024)
-            entry = HikbtreeEntry(
-                channel=1,
-                start_unix=1_600_000_000,
-                end_unix=1_600_000_100,
-                data_offset=data_offset,
-                has_footage=True,
-                stale=False,
-            )
-            with image.open("wb") as handle:
-                handle.truncate(sparse_size)
-                handle.seek(MASTER_BLOCK_OFFSET)
-                handle.write(
-                    build_master_block(
-                        hikbtree_offset=HIKBTREE_OFFSET,
-                        hikbtree_size=0x1000,
-                        init_time=1_600_000_000,
-                        video_area_offset=data_offset,
-                    )
-                )
-                handle.seek(HIKBTREE_OFFSET)
-                handle.write(build_hikbtree_header(PAGE_OFFSET))
-                handle.seek(PAGE_OFFSET)
-                handle.write(build_hikbtree_page([entry]))
-                handle.seek(data_offset)
-                handle.write(MPEG_PS_PACK + struct.pack(">H", 0) + b"\x00" * 128)
+    """The emulated filesystem at the head of a large sparse file.
 
-            tracemalloc.start()
-            try:
-                segments = HikvisionAdapter().scan(image)
-            finally:
-                _current, peak = tracemalloc.get_traced_memory()
-                tracemalloc.stop()
+    Built once for the class: creating the file is the expensive part, not scanning it.
+    """
 
-            self.assertGreaterEqual(len(segments), 1)
-            self.assertLess(peak, 200 * 1024 * 1024, f"peak allocation {peak} bytes too high")
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._tmp = tempfile.TemporaryDirectory(prefix="pramaan-hikmem-")
+        cls.image = Path(cls._tmp.name) / "hikvision_sparse.img"
+        with cls.image.open("wb") as handle:
+            handle.write(builder.build_emulated_bytes())
+            handle.truncate(SPARSE_SIZE)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmp.cleanup()
+
+    def test_scan_does_not_allocate_in_proportion_to_the_image(self) -> None:
+        self.assertEqual(self.image.stat().st_size, SPARSE_SIZE)
+
+        tracemalloc.start()
+        try:
+            segments = HikvisionAdapter().scan(self.image)
+        finally:
+            _current, peak = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+
+        self.assertEqual(len(segments), builder.EXPECTED_RECORDING_COUNT)
+        self.assertLess(
+            peak,
+            PEAK_ALLOCATION_BUDGET,
+            f"peak allocation {peak} bytes scanning a {SPARSE_SIZE} byte image",
+        )
+
+    def test_segments_carry_byte_ranges_not_payloads(self) -> None:
+        segments = HikvisionAdapter().scan(self.image)
+        self.assertTrue(segments)
+        self.assertEqual(sum(len(segment.raw_bytes) for segment in segments), 0)
+        for segment in segments:
+            self.assertGreater(segment.offset_end, segment.offset_start)
+
+    def test_scan_of_a_sparse_image_completes_promptly(self) -> None:
+        """Guards the C-level ``find`` scanning contract.
+
+        The previous implementation byte-scanned in a Python ``range()`` loop, ~500k iterations
+        per entry. That is a hang on real evidence, not a slow path.
+        """
+        started = time.monotonic()
+        HikvisionAdapter().scan(self.image)
+        self.assertLess(time.monotonic() - started, 20.0)
+
+    def test_max_bytes_bounds_the_mapping(self) -> None:
+        self.assertEqual(HikvisionAdapter().scan(self.image, max_bytes=0), [])
+        # A window that stops before the HIKBTREE cannot enumerate recordings.
+        self.assertEqual(HikvisionAdapter().scan(self.image, max_bytes=builder.VIDEO_AREA_OFFSET), [])
 
 
 if __name__ == "__main__":
