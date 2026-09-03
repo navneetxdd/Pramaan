@@ -24,7 +24,8 @@
 
 - Automatic marker scan + filesystem hints.
 - **Dahua** → `dahua_dhav` (DHAV frame carver; DHFS string is routing hint only).
-- **Hikvision** → `hikvision` (HIKBTREE + MPEG-PS).
+- **Hikvision** → `hikvision` (HIKBTREE index → H.264 NAL extraction; data blocks hold raw
+  H.264 Annex-B behind proprietary picture-index headers, not MPEG-PS).
 - **Inconclusive** → `needs_selection`; pick adapter manually on Recovery.
 - **FAT32/NTFS/E01 camera cards** → prefer `generic_tier2`.
 
