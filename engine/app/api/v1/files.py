@@ -25,14 +25,56 @@ def _resolve_export_path(filename: str) -> Path:
     return path
 
 
-def _ffmpeg_transcode_stream(source: Path, *, full: bool = False):
+def _prepare_playable_h264(source: Path) -> Path:
+    """Write source bytes (with SPS/PPS prefix ensured) to a temp file for ffmpeg."""
+    with tempfile.NamedTemporaryFile(suffix=".playable.h264", delete=False) as tmp:
+        playable_path = Path(tmp.name)
+    playable_path.write_bytes(ensure_playable_h264(source.read_bytes()))
+    return playable_path
+
+
+def _probe_decodable(playable_path: Path, *, timeout: float = 8.0) -> bool:
+    """Fail fast (and never hang) on a carved range that isn't a real elementary stream.
+
+    Carving only checks for one Annex-B start code near the carve point — it never
+    guarantees the rest of the range decodes. Feeding that straight to a live transcode
+    either exits instantly with zero bytes (looks like a broken empty video/mp4) or, for
+    some malformed inputs, never exits at all. Confirmed against real (non-fixture) CCTV
+    and phone footage. Probing one frame with a hard timeout catches both failure modes
+    before any response has been sent, so the caller can return an honest error instead.
+    """
+    ffmpeg = shutil.which(FFMPEG_BIN)
+    if not ffmpeg:
+        return False
+    cmd = [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "h264",
+        "-i",
+        str(playable_path),
+        "-frames:v",
+        "1",
+        "-f",
+        "null",
+        "-",
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        return proc.wait(timeout=timeout) == 0
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+        return False
+
+
+def _ffmpeg_transcode_stream(playable_path: Path, *, full: bool = False):
     ffmpeg = shutil.which(FFMPEG_BIN)
     if not ffmpeg:
         raise HTTPException(status_code=503, detail="FFmpeg not available for inline playback")
-    with tempfile.NamedTemporaryFile(suffix=".playable.h264", delete=False) as tmp:
-        playable_path = Path(tmp.name)
     try:
-        playable_path.write_bytes(ensure_playable_h264(source.read_bytes()))
         cmd = [
             ffmpeg,
             "-hide_banner",
@@ -84,8 +126,16 @@ def download_file(
 ) -> Response:
     path = _resolve_export_path(filename)
     if transcode and path.suffix.lower() in {".h264", ".264"}:
+        playable_path = _prepare_playable_h264(path)
+        if not _probe_decodable(playable_path):
+            playable_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=422,
+                detail="Recovered segment has no decodable video frames — the carved "
+                "byte range is not a continuous, playable elementary stream.",
+            )
         return StreamingResponse(
-            _ffmpeg_transcode_stream(path, full=bool(full)),
+            _ffmpeg_transcode_stream(playable_path, full=bool(full)),
             media_type="video/mp4",
             headers={"Cache-Control": "no-store"},
         )
