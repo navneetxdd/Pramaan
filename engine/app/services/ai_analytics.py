@@ -32,6 +32,12 @@ OBJECT_NMS_THRESHOLD = 0.45
 YOLOX_INPUT_SIZE = (416, 416)
 YOLOX_VERSION = "0.1.1rc0"
 
+# Review-only co-occurrence flags: two independently detected boxes overlapping in the same
+# frame. Never asserted as contact/collision — every flag carries an explicit caveat.
+PROXIMITY_INTEREST = {"person", "bicycle", "car", "motorcycle", "bus", "truck"}
+PROXIMITY_IOU_FLOOR = 0.05
+CONTACT_IOU_FLOOR = 0.20
+
 COCO_LABELS = (
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
     "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog",
@@ -265,6 +271,60 @@ def _detect_objects(frame: object) -> list[tuple[str, float, dict]]:
     return hits
 
 
+def _iou(a: dict, b: dict) -> float:
+    ax2, ay2 = a["x"] + a["w"], a["y"] + a["h"]
+    bx2, by2 = b["x"] + b["w"], b["y"] + b["h"]
+    ix1, iy1 = max(a["x"], b["x"]), max(a["y"], b["y"])
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
+    inter = iw * ih
+    union = a["w"] * a["h"] + b["w"] * b["h"] - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _flag_proximity(hits: list[tuple[str, float, dict]], offset_ms: int) -> list[dict]:
+    """Review-only flags where two independently detected objects' boxes overlap in one frame.
+
+    This does not establish physical contact, a collision, or any relationship between the
+    objects — only that their boxes overlap at this instant. Left for an examiner to review.
+    """
+    findings: list[dict] = []
+    interesting = [(label, conf, box) for label, conf, box in hits if label in PROXIMITY_INTEREST]
+    for i in range(len(interesting)):
+        label_a, conf_a, box_a = interesting[i]
+        for j in range(i + 1, len(interesting)):
+            label_b, conf_b, box_b = interesting[j]
+            if "person" not in (label_a, label_b):
+                continue  # keep this to person-involved pairs; skip e.g. two parked cars
+            iou = _iou(box_a, box_b)
+            if iou < PROXIMITY_IOU_FLOOR:
+                continue
+            contact = iou >= CONTACT_IOU_FLOOR
+            ux, uy = min(box_a["x"], box_b["x"]), min(box_a["y"], box_b["y"])
+            uw = max(box_a["x"] + box_a["w"], box_b["x"] + box_b["w"]) - ux
+            uh = max(box_a["y"] + box_a["h"], box_b["y"] + box_b["h"]) - uy
+            findings.append(
+                {
+                    "frame_offset_ms": offset_ms,
+                    "finding_type": "proximity",
+                    "label": f"{label_a} and {label_b} overlap"
+                    + (" — high overlap" if contact else ""),
+                    "confidence": round(min(conf_a, conf_b), 3),
+                    "bbox": {
+                        "x": int(ux), "y": int(uy), "w": int(uw), "h": int(uh),
+                        "detector": "bbox_iou_co_occurrence",
+                        "threshold": CONTACT_IOU_FLOOR if contact else PROXIMITY_IOU_FLOOR,
+                        "sample_fps": SAMPLE_FPS,
+                        "note": (
+                            "Two independently detected objects' boxes overlap in this frame. "
+                            "This does not establish physical contact or a collision — review the frame."
+                        ),
+                    },
+                }
+            )
+    return findings
+
+
 def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str], int]:
     if not _load_cv():
         return [], ["opencv_unavailable"], 0
@@ -382,7 +442,8 @@ def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str], int]:
                         }
                     )
 
-        for label, confidence, bbox in _detect_objects(frame):
+        object_hits = _detect_objects(frame)
+        for label, confidence, bbox in object_hits:
             findings.append(
                 {
                     "frame_offset_ms": offset_ms,
@@ -392,6 +453,7 @@ def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str], int]:
                     "bbox": bbox,
                 }
             )
+        findings.extend(_flag_proximity(object_hits, offset_ms))
 
     if frame_count == 0:
         warnings.append("no_decodable_frames")
@@ -499,7 +561,7 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
         "case_id": case_id,
         "device_id": device_id,
         "findings_count": created,
-        "finding_types": ["motion", "scene_change", "face", "object"],
+        "finding_types": ["motion", "scene_change", "face", "object", "proximity"],
         "sample_fps": SAMPLE_FPS,
         "warnings": sorted(set(warnings)),
         "investigative_leads_only": True,

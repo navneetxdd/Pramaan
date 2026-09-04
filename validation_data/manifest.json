@@ -82,6 +82,28 @@
       "license": "Apache-2.0",
       "retrieved_at": "2026-09-02T02:52:56.245174+00:00",
       "kind": "download"
+    },
+    {
+      "id": "person_reid_youtu_onnx",
+      "path": "models/person_reid_youtu.onnx",
+      "bytes": 106878407,
+      "sha256": "0579683334d4b9440221606dcb461656dd0dc64143b18f48faedaced9b4f580d",
+      "url": "https://huggingface.co/opencv/person_reid_youtureid/resolve/main/person_reid_youtu_2021nov.onnx",
+      "purpose": "Person re-identification embeddings for cross-camera trace",
+      "license": "OpenCV Zoo",
+      "retrieved_at": "2026-09-04T18:06:00+00:00",
+      "kind": "download"
+    },
+    {
+      "id": "sface_face_recognition_onnx",
+      "path": "models/face_recognition_sface.onnx",
+      "bytes": 38696353,
+      "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+      "url": "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+      "purpose": "Face-match mode for cross-camera trace, alongside YuNet detection",
+      "license": "OpenCV Zoo",
+      "retrieved_at": "2026-09-04T18:33:00+00:00",
+      "kind": "download"
     }
   ],
   "large_optional": [

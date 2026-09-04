@@ -116,16 +116,19 @@ export function CaseAiAnalyticsPage() {
   const objectCount = findings.filter(
     (f) => f.finding_type === "object",
   ).length;
+  const proximityCount = findings.filter(
+    (f) => f.finding_type === "proximity",
+  ).length;
 
   return (
     <div className="flex flex-col gap-3">
       <PageHeader
         kicker="Investigative leads"
         title="Findings"
-        subtitle="Four distinct pipelines: foreground motion, scene change, face candidate, and YOLOX object candidate — leads only."
+        subtitle="Five pipelines: foreground motion, scene change, face candidate, YOLOX object candidate, and person-object proximity — leads only, none asserted as fact."
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         {demoUnavailable ? (
           <div className="visily-card col-span-full flex items-start gap-3 border border-amber-500/40 bg-amber-50 p-4 text-amber-950">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
@@ -159,6 +162,12 @@ export function CaseAiAnalyticsPage() {
           value={String(objectCount)}
           icon={AlertTriangle}
           tone={objectCount > 0 ? "info" : undefined}
+        />
+        <DashboardStat
+          label="Proximity"
+          value={String(proximityCount)}
+          icon={AlertTriangle}
+          tone={proximityCount > 0 ? "danger" : undefined}
         />
       </div>
 

@@ -12,7 +12,7 @@ from typing import Any, Iterator
 from engine.app.core.config import APP_VERSION, WORK_DIR
 
 DATABASE_PATH = WORK_DIR / "forensic.db"
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 
 _LOCK = threading.Lock()
 
@@ -297,6 +297,52 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             );
             """
         )
+    if current < 9:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS cross_camera_runs (
+              id TEXT PRIMARY KEY,
+              case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+              status TEXT NOT NULL DEFAULT 'pending',
+              params_json TEXT,
+              summary_json TEXT,
+              actor TEXT,
+              created_at TEXT NOT NULL,
+              completed_at TEXT,
+              error TEXT
+            );
+            CREATE TABLE IF NOT EXISTS cross_camera_identities (
+              id TEXT PRIMARY KEY,
+              run_id TEXT NOT NULL REFERENCES cross_camera_runs(id) ON DELETE CASCADE,
+              label TEXT NOT NULL,
+              camera_count INTEGER NOT NULL,
+              appearance_count INTEGER NOT NULL,
+              first_seen_ms INTEGER NOT NULL,
+              last_seen_ms INTEGER NOT NULL,
+              rep_thumb_path TEXT,
+              cameras_json TEXT NOT NULL,
+              embedding BLOB
+            );
+            CREATE TABLE IF NOT EXISTS cross_camera_appearances (
+              id TEXT PRIMARY KEY,
+              identity_id TEXT NOT NULL REFERENCES cross_camera_identities(id) ON DELETE CASCADE,
+              run_id TEXT NOT NULL,
+              source_key TEXT NOT NULL,
+              source_label TEXT NOT NULL,
+              source_video TEXT NOT NULL,
+              offset_ms INTEGER NOT NULL,
+              bbox_json TEXT NOT NULL,
+              confidence REAL NOT NULL,
+              embedding BLOB
+            );
+            CREATE INDEX IF NOT EXISTS idx_ccam_ident_run ON cross_camera_identities(run_id);
+            CREATE INDEX IF NOT EXISTS idx_ccam_appear_ident ON cross_camera_appearances(identity_id);
+            CREATE INDEX IF NOT EXISTS idx_ccam_run_case ON cross_camera_runs(case_id);
+            """
+        )
+    if current < 10:
+        _add_columns(conn, "cross_camera_appearances", {"face_embedding": "BLOB"})
+        _add_columns(conn, "cross_camera_identities", {"face_embedding": "BLOB"})
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
