@@ -87,15 +87,20 @@ export function countAllocations(segments: Segment[]): AllocationCounts {
   return counts;
 }
 
-/** "6 recordings · 1 deleted" — the Recovery header summary. */
+/** "6 recordings · 1 deleted · 1 partial" — the Recovery header summary. */
 export function summariseAllocations(
   total: number,
   counts: AllocationCounts,
+  partial = 0,
 ): string {
   const noun = total === 1 ? "recording" : "recordings";
   const extras: string[] = [];
   if (counts.deleted > 0) extras.push(`${counts.deleted} deleted`);
   if (counts.recording > 0) extras.push(`${counts.recording} in progress`);
+  // Counted separately from the allocation states above because it is a
+  // different axis: a partial recording is usually also allocated, so it must
+  // not be presented as a fourth kind of allocation.
+  if (partial > 0) extras.push(`${partial} partial`);
   if (counts.unknown > 0) extras.push(`${counts.unknown} unclassified`);
   return [`${total} ${noun}`, ...extras].join(" · ");
 }
@@ -117,6 +122,62 @@ export function isPartial(segment: Segment): boolean {
 export function partialReason(segment: Segment): string {
   const reason = segment.validation_evidence?.["partial_reason"];
   return typeof reason === "string" ? reason : "";
+}
+
+export function countPartial(segments: Segment[]): number {
+  return segments.reduce((total, s) => total + (isPartial(s) ? 1 : 0), 0);
+}
+
+/**
+ * Whether this parser assessed completeness at all.
+ *
+ * Only some engines decide intact-vs-partial. For the rest, "0 partial" would
+ * be a claim they never made — indistinguishable on screen from "we checked and
+ * every recording is whole". Callers should render an em dash instead, so the
+ * absence of the check is visible rather than silently reported as a clean result.
+ */
+export function reportsRecoveryStatus(segments: Segment[]): boolean {
+  return segments.some(
+    (s) =>
+      s.validation_evidence?.["recovery_status"] != null ||
+      s.validation_evidence?.["partial"] != null,
+  );
+}
+
+/**
+ * Whether this segment's channel byte can name a camera at all.
+ *
+ * The Hikvision engine emits `channel_valid` (docs/reference/hikvision_fs.md
+ * §7.5): the channel field is a 1-based u8, so `0x00` and `0xFF` — the format's
+ * erase pattern — are provably not camera numbers. No maximum is imposed.
+ *
+ * Vendors that do not report the field are treated as valid. Absence of the
+ * field is not evidence of an invalid channel, and flagging every other parser's
+ * recordings as suspect would be worse than saying nothing.
+ */
+export function channelIsValid(segment: Segment): boolean {
+  return segment.validation_evidence?.["channel_valid"] !== false;
+}
+
+/**
+ * How many distinct cameras the recordings actually came from.
+ *
+ * Channels the recorder cannot have written are excluded, so a corrupted byte
+ * does not inflate the count into claiming a camera that never existed. The raw
+ * value is still displayed on its own row — it is dropped from the tally, not
+ * from the evidence.
+ */
+export function countPlausibleChannels(segments: Segment[]): number {
+  const channels = new Set<number>();
+  for (const segment of segments) {
+    if (!channelIsValid(segment)) continue;
+    channels.add(segment.channel ?? 0);
+  }
+  return channels.size;
+}
+
+export function countInvalidChannels(segments: Segment[]): number {
+  return segments.reduce((total, s) => total + (channelIsValid(s) ? 0 : 1), 0);
 }
 
 /**

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { RecoveryJob, Segment } from "@/lib/api";
-import { countAllocations } from "@/lib/allocation";
+import { countAllocations, countPlausibleChannels } from "@/lib/allocation";
 
 /**
  * What fills the engine log panel between runs.
@@ -76,10 +76,10 @@ export function RecoveryLastRun({
   segments: Segment[];
 }) {
   const counts = useMemo(() => countAllocations(segments), [segments]);
-  const channels = useMemo(
-    () => new Set(segments.map((s) => s.channel ?? 0)).size,
-    [segments],
-  );
+  // Same rule as the telemetry ribbon: a channel byte the recorder cannot have
+  // written is not a camera, so it is excluded from the tally. Keeping the two
+  // counts in step matters — they sit on the same screen.
+  const channels = useMemo(() => countPlausibleChannels(segments), [segments]);
 
   if (!job) {
     return (

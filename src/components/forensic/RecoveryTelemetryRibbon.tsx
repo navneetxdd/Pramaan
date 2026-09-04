@@ -1,7 +1,13 @@
 import { useMemo } from "react";
 import type { EvidenceRecord, Segment } from "@/lib/api";
 import { formatBytes } from "@/lib/utils";
-import { countAllocations } from "@/lib/allocation";
+import {
+  countAllocations,
+  countInvalidChannels,
+  countPartial,
+  countPlausibleChannels,
+  reportsRecoveryStatus,
+} from "@/lib/allocation";
 
 /**
  * Live readout strip for the current evidence image.
@@ -57,8 +63,19 @@ export function RecoveryTelemetryRibbon({
 }) {
   const counts = useMemo(() => countAllocations(segments), [segments]);
 
-  const channels = useMemo(
-    () => new Set(segments.map((s) => s.channel ?? 0)).size,
+  // Only channels the recorder could actually have written are counted: a byte
+  // holding the format's erase pattern is not a camera, and letting it inflate
+  // this figure would claim a source that never existed. The recording itself is
+  // still listed in the table, flagged as invalid.
+  const channels = useMemo(() => countPlausibleChannels(segments), [segments]);
+  const invalidChannels = useMemo(
+    () => countInvalidChannels(segments),
+    [segments],
+  );
+  const partial = useMemo(() => countPartial(segments), [segments]);
+  // Parsers that never assess completeness must not read as "checked, all whole".
+  const assessesPartial = useMemo(
+    () => reportsRecoveryStatus(segments),
     [segments],
   );
 
@@ -100,7 +117,37 @@ export function RecoveryTelemetryRibbon({
           title="Recordings recovered from a cleared index entry"
         />
         <Divider />
-        <Stat label="Channels" value={channels ? String(channels) : "—"} />
+        <Stat
+          label="Partial"
+          value={assessesPartial ? String(partial) : "—"}
+          accent={partial > 0}
+          title={
+            assessesPartial
+              ? "Recordings whose data block was partly overwritten — only the bytes inside the entry's own window are reported as recovered"
+              : "This parser does not assess whether a recording's bytes are all still present, so no completeness claim is made either way"
+          }
+        />
+        <Divider />
+        <Stat
+          label="Channels"
+          value={channels ? String(channels) : "—"}
+          title={
+            invalidChannels > 0
+              ? `${invalidChannels} recording(s) carry a channel byte that cannot name a camera and are excluded from this count`
+              : "Distinct cameras across the recovered recordings"
+          }
+        />
+        {invalidChannels > 0 ? (
+          <>
+            <Divider />
+            <Stat
+              label="Invalid ch"
+              value={String(invalidChannels)}
+              accent
+              title="Channel byte is 0x00 or 0xFF (the format's erase pattern); the raw value is preserved on the row"
+            />
+          </>
+        ) : null}
         <Divider />
         <Stat
           label="Carved"

@@ -22,7 +22,9 @@ import {
   allocationDetail,
   allocationLabel,
   allocationOf,
+  channelIsValid,
   countAllocations,
+  countPartial,
   indexTruncation,
   isPartial,
   partialReason,
@@ -53,6 +55,54 @@ function AllocationCell({ state }: { state: AllocationState }) {
     >
       <span aria-hidden="true">{glyph}</span>
       {allocationLabel(state)}
+    </span>
+  );
+}
+
+/**
+ * Marks a recording whose bytes are not all still on the platter.
+ *
+ * Sits beside {@link AllocationCell} rather than replacing it: allocation state
+ * is what the recorder's index claims, partial is what the data turned out to
+ * be, and a recording is routinely both allocated and partial. Collapsing them
+ * into one badge would lose that distinction. Carries its own glyph and word so
+ * it survives greyscale printing, and the reason is on the hover title.
+ */
+function PartialBadge({ reason }: { reason: string }) {
+  return (
+    <span
+      className="rec-pill text-[10.5px] font-semibold uppercase tracking-wide text-[var(--status-warning)]"
+      style={{ color: "var(--status-warning)" }}
+      title={
+        reason ||
+        "Part of this recording's data block was overwritten; only the bytes inside the entry's own window are reported as recovered."
+      }
+    >
+      <span aria-hidden="true">◐</span>
+      Partial
+    </span>
+  );
+}
+
+/**
+ * A channel byte the recorder cannot have written — see channelIsValid().
+ *
+ * The raw value is still shown, because suppressing what is physically on the
+ * platter would be the greater forensic sin. What changes is that it is no
+ * longer presented as an ordinary camera number.
+ */
+function InvalidChannelCell({ channel }: { channel: number | null }) {
+  return (
+    <span
+      className="inline-flex flex-col leading-tight"
+      title="This channel byte is 0x00 or 0xFF (the format's erase pattern), so it cannot name a camera. The raw value is preserved exactly as found on the platter."
+    >
+      <span className="mono text-[var(--text-secondary)] line-through decoration-[var(--status-warning)]">
+        {channel ?? "—"}
+      </span>
+      <span className="text-[9px] font-semibold uppercase tracking-wide text-[var(--status-warning)]">
+        Invalid
+      </span>
     </span>
   );
 }
@@ -340,6 +390,8 @@ export function CaseRecoverPage() {
   // warning appears only on real evidence of a damaged index.
   const truncatedIndex = useMemo(() => indexTruncation(segments), [segments]);
 
+  const partialCount = useMemo(() => countPartial(segments), [segments]);
+
   const allocationByRow = useMemo(() => {
     const map = new Map<string, AllocationState>();
     for (const segment of segments) map.set(segment.id, allocationOf(segment));
@@ -366,6 +418,10 @@ export function CaseRecoverPage() {
           `0x${start.toString(16)}`,
           `0x${end.toString(16)}`,
           allocationByRow.get(seg.id) ?? "",
+          // Searchable by the anomaly words the badges show, so "partial" and
+          // "invalid" narrow the table to exactly the rows that carry them.
+          isPartial(seg) ? "partial overwritten" : "intact",
+          channelIsValid(seg) ? "" : "invalid channel erased",
           seg.validation ?? "",
           seg.parser_name ?? "",
           seg.recorder_start_ts ?? "",
@@ -836,7 +892,11 @@ export function CaseRecoverPage() {
                   <span className="text-[11px] text-[var(--text-secondary)]">
                     {visibleSegments.length !== segments.length
                       ? `${visibleSegments.length} of ${segments.length} shown`
-                      : summariseAllocations(segments.length, allocationCounts)}
+                      : summariseAllocations(
+                          segments.length,
+                          allocationCounts,
+                          partialCount,
+                        )}
                   </span>
                   <input
                     type="search"
@@ -898,24 +958,40 @@ export function CaseRecoverPage() {
                     ? "rec-row rec-row-deleted shadow-[inset_4px_0_0_0_var(--status-danger)] bg-[rgba(220,38,38,0.06)]"
                     : allocationByRow.get(seg.id) === "recording"
                       ? "rec-row shadow-[inset_4px_0_0_0_var(--status-info)]"
-                      : "rec-row")
+                      : // Incomplete data reads as an amber edge, distinct from the
+                        // red of a deleted index entry — the two are different findings.
+                        isPartial(seg) || !channelIsValid(seg)
+                        ? "rec-row shadow-[inset_4px_0_0_0_var(--status-warning)] bg-[rgba(217,119,6,0.05)]"
+                        : "rec-row")
                 }
                 columns={[
                   {
                     key: "ch",
                     sortable: true,
                     header: "Ch",
-                    width: "56px",
-                    cell: (seg) => seg.channel ?? "—",
+                    width: "64px",
+                    cell: (seg) =>
+                      channelIsValid(seg) ? (
+                        (seg.channel ?? "—")
+                      ) : (
+                        <InvalidChannelCell channel={seg.channel ?? null} />
+                      ),
                   },
                   {
                     key: "state",
                     sortable: true,
                     header: "State",
-                    width: "124px",
+                    width: "168px",
                     cell: (seg) => {
                       const state = allocationByRow.get(seg.id) ?? "unknown";
-                      return <AllocationCell state={state} />;
+                      return (
+                        <span className="flex flex-wrap items-center gap-1">
+                          <AllocationCell state={state} />
+                          {isPartial(seg) ? (
+                            <PartialBadge reason={partialReason(seg)} />
+                          ) : null}
+                        </span>
+                      );
                     },
                   },
                   {
