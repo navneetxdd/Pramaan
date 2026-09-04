@@ -17,7 +17,7 @@ export function CaseCustodyPage() {
   useEffect(() => {
     void api.custody(caseId).then((d) => {
       setEvents(d.events);
-      setIntact(d.chain.ok);
+      setIntact(d.chain.intact);
       setFirstBrokenRowId(d.chain.first_broken_row_id);
     });
     void api.custodyStatus(caseId).then((s) => {
@@ -27,6 +27,13 @@ export function CaseCustodyPage() {
   }, [caseId]);
 
   const actors = new Set(events.map((e) => e.actor)).size;
+  // The table's "#" column is the row's position (i + 1), not its database id —
+  // translate firstBrokenRowId to that same position so the banner and the
+  // highlighted row it's pointing at agree with what the table displays.
+  const brokenRowPosition =
+    firstBrokenRowId != null
+      ? events.findIndex((e) => e.id === firstBrokenRowId) + 1 || null
+      : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -72,13 +79,11 @@ export function CaseCustodyPage() {
         >
           <p className="text-[13px] font-semibold text-[var(--status-danger)]">
             Chain broken
-            {firstBrokenRowId != null
-              ? ` at custody entry #${firstBrokenRowId}`
-              : ""}
+            {brokenRowPosition != null ? ` at row #${brokenRowPosition}` : ""}
           </p>
           <p className="mt-1 text-[12px] text-[var(--text-secondary)]">
-            {firstBrokenRowId != null
-              ? "This is the first row whose stored hash no longer matches its predecessor — everything from this row onward cannot be trusted as unaltered. Rows before it still verify."
+            {brokenRowPosition != null
+              ? "This is the first row whose stored hash no longer matches its predecessor — everything from this row onward cannot be trusted as unaltered. Rows before it still verify. It's highlighted below."
               : "The hash chain failed verification, but the exact break point could not be determined."}
           </p>
         </section>
