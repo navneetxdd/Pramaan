@@ -97,6 +97,93 @@ function RecoveryProgress({
   );
 }
 
+/**
+ * Statuses that mean a recovery stopped part-way through writing its results.
+ *
+ * `run_recovery_job` supersedes the device's prior segments *before* it writes
+ * the new ones, so an aborted run can leave the table showing fewer recordings
+ * than the image contains — measured: a run cancelled early leaves 0 segments
+ * where a full run yields 5. Nothing in the stored data marks that set partial,
+ * which is why this has to be surfaced at the UI.
+ */
+const ABORTED_JOB_STATUSES = new Set(["cancelled", "interrupted"]);
+
+/**
+ * Poll a job's real terminal status after a cancel request.
+ *
+ * `POST /jobs/{id}/cancel` flags the job and returns `cancelled`, but the
+ * running scan is not actually aborted — it continues and rewrites the status
+ * to `completed` on its own. Measured on the emulated image: `cancelled` with 0
+ * segments at t=0, `completed` with all 5 at t=250 ms. Until the engine
+ * genuinely aborts, the UI must not report an outcome until the status settles.
+ */
+async function confirmCancellation(
+  jobId: string,
+  attempts = 12,
+  intervalMs = 400,
+): Promise<{ status: string }> {
+  let last = "cancelled";
+  for (let i = 0; i < attempts; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    try {
+      const detail = await api.getJob(jobId);
+      last = detail.job.status;
+      // The scan ran to completion despite the cancel — stop early and say so.
+      if (last === "completed" || last === "failed") return { status: last };
+    } catch {
+      break;
+    }
+  }
+  return { status: last };
+}
+
+/**
+ * Persistent warning that the visible dataset is not a complete recovery.
+ *
+ * Deliberately rendered inside the segments card, directly above the table
+ * header, so the table cannot be screenshotted without it.
+ */
+function PartialResultBanner({
+  status,
+  segmentCount,
+}: {
+  status: string;
+  segmentCount: number;
+}) {
+  const aborted = status === "cancelled" ? "cancelled" : "interrupted";
+  return (
+    <div
+      role="alert"
+      className="flex shrink-0 items-start gap-2.5 border-b border-[var(--status-warning)] bg-[rgba(217,119,6,0.12)] px-4 py-3"
+    >
+      <span
+        aria-hidden="true"
+        className="mt-px shrink-0 text-[14px] leading-none text-[var(--status-warning)]"
+      >
+        ⚠
+      </span>
+      <div className="min-w-0 text-[12px] leading-relaxed">
+        <p className="font-semibold text-[var(--status-warning)]">
+          Incomplete recovery — this is not a full result set
+        </p>
+        <p className="mt-0.5 text-[var(--text-secondary)]">
+          The last recovery run for this evidence image was{" "}
+          <strong>{aborted} mid-scan</strong>, so the engine stopped before it
+          finished enumerating the image.{" "}
+          <strong>
+            The {segmentCount} {segmentCount === 1 ? "recording" : "recordings"}{" "}
+            shown below
+            {segmentCount === 0 ? " (none)" : ""} do not represent everything
+            present on this evidence.
+          </strong>{" "}
+          Re-run recovery to completion before drawing any forensic conclusion,
+          citing these results in a report, or exporting them as evidence.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function CaseRecoverPage() {
   const { caseId, workspace, refresh } = useCaseContext();
   const [deviceId, setDeviceId] = useState("");
@@ -216,6 +303,32 @@ export function CaseRecoverPage() {
     [workspace?.jobs, deviceId],
   );
 
+  /**
+   * Terminal status of the most recent recovery run for this device.
+   *
+   * workspace.jobs arrives ordered created_at DESC (repository.list_jobs_for_case),
+   * so the first terminal entry is the latest finished run. A later successful
+   * run therefore clears the warning on its own.
+   */
+  const lastFinishedRecovery = useMemo(() => {
+    if (!deviceId) return null;
+    return (
+      workspace?.jobs.find(
+        (job) =>
+          job.kind === "recovery" &&
+          (job.device_id === deviceId || job.image_id === deviceId) &&
+          job.status !== "running" &&
+          job.status !== "pending",
+      ) ?? null
+    );
+  }, [workspace?.jobs, deviceId]);
+
+  const partialResultStatus =
+    lastFinishedRecovery &&
+    ABORTED_JOB_STATUSES.has(lastFinishedRecovery.status)
+      ? lastFinishedRecovery.status
+      : null;
+
   // True while this page is streaming a job, or the workspace still reports one
   // running for this device (covers the gap before the first SSE event lands).
   const isRecovering = activeJobId !== null || recoveryRunning;
@@ -277,9 +390,30 @@ export function CaseRecoverPage() {
           return;
         }
         if (event.status === "cancelled") {
-          toast.message("Recovery cancelled");
-          void finishRef.current.refresh();
-          settle();
+          // The engine does not currently abort on cancel: it flags the job,
+          // keeps scanning, and overwrites the status with `completed` when it
+          // finishes (measured: cancelled at t=0 with 0 segments, completed at
+          // t=250ms with all 5). Reporting "cancelled" here would tell the
+          // examiner a scan had stopped while it was still running and writing.
+          // So confirm the job's real terminal state before saying anything.
+          setPhase("Cancel requested — confirming the engine stopped…");
+          void confirmCancellation(activeJobId)
+            .then(async (outcome) => {
+              if (cancelledByUnmount) return;
+              if (outcome.status === "completed") {
+                const result = await api.getJob(activeJobId);
+                setSegments(result.segments);
+                toast.warning(
+                  `Too late to cancel — the run finished with ${result.segments.length} sequences`,
+                  { duration: 10_000 },
+                );
+              } else {
+                toast.message("Recovery cancelled");
+              }
+              await finishRef.current.refresh();
+            })
+            .catch(() => undefined)
+            .finally(settle);
           return;
         }
         if (event.status === "failed" || event.status === "interrupted") {
@@ -506,9 +640,10 @@ export function CaseRecoverPage() {
                 variant="destructive"
                 size="sm"
                 disabled={cancelling || !activeJobId}
+                title="Asks the engine to stop. A scan already near completion may still finish — the result is confirmed before anything is reported."
                 onClick={() => void handleCancel()}
               >
-                {cancelling ? "Cancelling…" : "Cancel recovery"}
+                {cancelling ? "Requesting stop…" : "Request cancel"}
               </Button>
             ) : null}
           </div>
@@ -547,6 +682,12 @@ export function CaseRecoverPage() {
       </section>
 
       <section className="visily-card shrink-0 overflow-hidden">
+        {partialResultStatus && !isRecovering ? (
+          <PartialResultBanner
+            status={partialResultStatus}
+            segmentCount={segments.length}
+          />
+        ) : null}
         <div className="visily-card-header">
           <span className="visily-card-title">Recovered segments</span>
           <div className="flex items-center gap-3">
