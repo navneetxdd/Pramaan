@@ -14,6 +14,14 @@ import { HexViewer } from "@/components/forensic/HexViewer";
 import { Button } from "@/components/ui/button";
 import { getApiBase } from "@/lib/apiBase";
 
+/** Mirrors the table's allocation colours so the header pill reads the same. */
+const ALLOCATION_COLOR: Record<string, string> = {
+  allocated: "var(--status-success)",
+  deleted: "var(--status-danger)",
+  recording: "var(--status-info)",
+  unknown: "var(--text-tertiary)",
+};
+
 type ExportResult = { filename: string; download_url: string };
 
 /**
@@ -276,48 +284,79 @@ export function SegmentInspector({
    * Recording telemetry the parsers extracted from the stream itself —
    * resolution and fps from the H.264 SPS/VUI, event type from the IDR table
    * cadence. Absent values render as "—"; nothing here is defaulted or guessed.
+   *
+   * Grouped rather than listed flat: a single 12-row column forced the examiner
+   * to scan a tall list in a short pane, with each value stranded far from its
+   * label on a wide screen. Related facts now sit together and read across.
    */
-  const forensicRows = useMemo(() => {
+  const fieldGroups = useMemo((): Array<{
+    title: string;
+    fields: Array<[string, string]>;
+  }> => {
     if (!segment) return [];
     return [
-      ["Channel", displayOrDash(segment.channel ?? detail?.channel)],
-      ["Allocation state", allocationLabel(allocationOf(segment))],
-      [
-        "Event type",
-        displayOrDash(evidenceValue(segment, detail, "event_type")),
-      ],
-      [
-        "Resolution",
-        displayOrDash(evidenceValue(segment, detail, "resolution")),
-      ],
-      ["Frame rate", formatFps(evidenceValue(segment, detail, "fps"))],
-      ["Codec", displayOrDash(segment.codec ?? detail?.codec)],
-      [
-        "Recorder start",
-        displayOrDash(segment.recorder_start_ts ?? detail?.recorder_start_ts),
-      ],
-      [
-        "Recorder end",
-        displayOrDash(segment.recorder_end_ts ?? detail?.recorder_end_ts),
-      ],
-      [
-        "Timestamp source",
-        formatTimestampSource(
-          segment.timestamp_source ?? detail?.timestamp_source,
-        ),
-      ],
-      [
-        "Timestamp confidence",
-        displayOrDash(
-          segment.timestamp_confidence ?? detail?.timestamp_confidence,
-        ),
-      ],
-      [
-        "Byte range",
-        `${formatOffset(segment.offset_start)}–${formatOffset(segment.offset_end)}`,
-      ],
-      ["Size", formatBytes(segment.byte_length ?? detail?.byte_length ?? 0)],
-    ] as Array<[string, string]>;
+      {
+        title: "Recording",
+        fields: [
+          ["Channel", displayOrDash(segment.channel ?? detail?.channel)],
+          ["State", allocationLabel(allocationOf(segment))],
+          [
+            "Event type",
+            displayOrDash(evidenceValue(segment, detail, "event_type")),
+          ],
+        ],
+      },
+      {
+        title: "Stream",
+        fields: [
+          [
+            "Resolution",
+            displayOrDash(evidenceValue(segment, detail, "resolution")),
+          ],
+          ["Frame rate", formatFps(evidenceValue(segment, detail, "fps"))],
+          ["Codec", displayOrDash(segment.codec ?? detail?.codec)],
+        ],
+      },
+      {
+        title: "Recorder time",
+        fields: [
+          [
+            "Start",
+            displayOrDash(
+              segment.recorder_start_ts ?? detail?.recorder_start_ts,
+            ),
+          ],
+          [
+            "End",
+            displayOrDash(segment.recorder_end_ts ?? detail?.recorder_end_ts),
+          ],
+          [
+            "Source",
+            formatTimestampSource(
+              segment.timestamp_source ?? detail?.timestamp_source,
+            ),
+          ],
+          [
+            "Confidence",
+            displayOrDash(
+              segment.timestamp_confidence ?? detail?.timestamp_confidence,
+            ),
+          ],
+        ],
+      },
+      {
+        title: "Extent on disk",
+        fields: [
+          ["Offset", formatOffset(segment.offset_start)],
+          ["End offset", formatOffset(segment.offset_end)],
+          [
+            "Size",
+            formatBytes(segment.byte_length ?? detail?.byte_length ?? 0),
+          ],
+          ["Parser", detail?.parser_name ?? segment.parser_name ?? "—"],
+        ],
+      },
+    ];
   }, [segment, detail]);
 
   const confidenceBasis = evidenceValue(
@@ -335,12 +374,34 @@ export function SegmentInspector({
   }
 
   return (
-    <section className="visily-card flex min-h-[280px] flex-col overflow-hidden">
+    <section className="visily-card flex min-h-[384px] flex-col overflow-hidden">
       <div className="visily-card-header">
         <span className="visily-card-title">Segment inspector</span>
-        <span className="mono text-[10px] text-[var(--text-tertiary)]">
-          {segment.id.slice(0, 8)}…
-        </span>
+        {/* Identify the subject in the header, so the examiner knows what they
+            are reading before they reach the grid. */}
+        {variant === "recover" ? (
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-[11px]">
+            <span className="mono text-[var(--text-secondary)]">
+              Ch {segment.channel ?? "—"}
+            </span>
+            <span
+              className="rec-pill text-[10px] font-semibold uppercase"
+              style={{ color: ALLOCATION_COLOR[allocationOf(segment)] }}
+            >
+              {allocationLabel(allocationOf(segment))}
+            </span>
+            <span className="mono text-[var(--text-tertiary)]">
+              {formatOffset(segment.offset_start)}
+            </span>
+            <span className="mono text-[10px] text-[var(--text-tertiary)]">
+              {segment.id.slice(0, 8)}…
+            </span>
+          </div>
+        ) : (
+          <span className="mono text-[10px] text-[var(--text-tertiary)]">
+            {segment.id.slice(0, 8)}…
+          </span>
+        )}
       </div>
       <div className="flex gap-1 border-b border-[var(--border-subtle)] px-3 pt-2">
         {tabs.map((name) => (
@@ -361,38 +422,60 @@ export function SegmentInspector({
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {tab === "metadata" ? (
           <div className="space-y-3">
-            <table className="w-full text-[12px]">
-              <tbody>
-                {forensicRows.map(([label, value]) => (
-                  <tr
-                    key={label}
-                    className="border-b border-[var(--border-subtle)]"
-                  >
-                    <td className="py-1.5 pr-3 text-[var(--text-tertiary)]">
-                      {label}
-                    </td>
-                    <td className="mono py-1.5 text-[var(--text-primary)]">
-                      {value}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* Grouped key/value columns: related facts read across together
+                instead of down one long list. */}
+            <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
+              {fieldGroups.map((group) => (
+                <div key={group.title}>
+                  <p className="mb-1 border-b border-[var(--border-default)] pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+                    {group.title}
+                  </p>
+                  <dl>
+                    {group.fields.map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="flex items-baseline justify-between gap-3 border-b border-[var(--border-subtle)] py-1"
+                      >
+                        <dt className="shrink-0 text-[11px] text-[var(--text-tertiary)]">
+                          {label}
+                        </dt>
+                        <dd
+                          className="mono min-w-0 truncate text-right text-[11.5px] text-[var(--text-primary)]"
+                          title={value}
+                        >
+                          {value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              ))}
+            </div>
 
-            {typeof confidenceBasis === "string" && confidenceBasis ? (
-              <div className="rounded border border-[var(--border-subtle)] bg-[var(--surface-3)] p-2">
-                <p className="mb-1 text-[10px] font-semibold uppercase text-[var(--text-tertiary)]">
-                  Why this confidence
-                </p>
-                <p className="text-[11px] leading-relaxed text-[var(--text-secondary)]">
-                  {confidenceBasis}
-                </p>
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+              {typeof confidenceBasis === "string" && confidenceBasis ? (
+                <div className="rounded border border-[var(--border-subtle)] bg-[var(--surface-3)] p-2.5">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+                    Why this confidence
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-[var(--text-secondary)]">
+                    {confidenceBasis}
+                  </p>
+                </div>
+              ) : (
+                <div />
+              )}
+              <div className="flex shrink-0 items-start">
+                <ExportSegmentButton
+                  deviceId={deviceId}
+                  segmentId={segment.id}
+                />
               </div>
-            ) : null}
+            </div>
 
             {detail?.output_md5 || detail?.output_sha256 ? (
               <div className="space-y-1.5">
-                <p className="text-[10px] font-semibold uppercase text-[var(--text-tertiary)]">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
                   Artifact hashes
                 </p>
                 {detail.output_md5 ? (
@@ -403,7 +486,6 @@ export function SegmentInspector({
                 ) : null}
               </div>
             ) : null}
-            <ExportSegmentButton deviceId={deviceId} segmentId={segment.id} />
           </div>
         ) : null}
         {tab === "hex" ? (
