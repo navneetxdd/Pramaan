@@ -457,14 +457,20 @@ export function SegmentInspector({
                 <p className="mb-1 text-[11px] font-semibold uppercase text-[var(--text-tertiary)]">
                   Custody (digest match)
                 </p>
-                <ul className="space-y-1 text-[11px]">
+                <ul className="space-y-2 text-[11px]">
                   {custody.map((row) => (
                     <li
                       key={row.id}
-                      className="rounded border border-[var(--border-subtle)] px-2 py-1"
+                      className="space-y-1 rounded border border-[var(--border-subtle)] px-2 py-1"
                     >
-                      <span className="mono">{row.timestamp_utc}</span> ·{" "}
-                      {row.action} · {row.actor}
+                      <p>
+                        <span className="mono">{row.timestamp_utc}</span> ·{" "}
+                        {row.action} · {row.actor}
+                      </p>
+                      <p className="mono break-all text-[10px] text-[var(--text-tertiary)]">
+                        prev {row.prev_row_hash.slice(0, 12)}… → this{" "}
+                        {row.this_row_hash.slice(0, 12)}…
+                      </p>
                     </li>
                   ))}
                 </ul>

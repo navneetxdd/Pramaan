@@ -86,6 +86,12 @@ export function CaseAcquirePage() {
   const [statusMessage, setStatusMessage] = useState("");
 
   const [hashState, setHashState] = useState<HashVerifyState>("idle");
+  const [hashMismatch, setHashMismatch] = useState<{
+    expected_sha256?: string;
+    actual_sha256?: string;
+    expected_md5?: string;
+    actual_md5?: string;
+  } | null>(null);
 
   const [oemImages, setOemImages] = useState<
     Array<{ filename: string; size_bytes: number }>
@@ -152,8 +158,17 @@ export function CaseAcquirePage() {
 
     const check = await api.verify(newest.id);
 
-    setHashState(
-      check.ok && check.sha256_ok !== false ? "verified" : "mismatch",
+    const ok = check.ok && check.sha256_ok !== false;
+    setHashState(ok ? "verified" : "mismatch");
+    setHashMismatch(
+      ok
+        ? null
+        : {
+            expected_sha256: check.expected_sha256,
+            actual_sha256: check.actual_sha256,
+            expected_md5: check.expected_md5,
+            actual_md5: check.actual_md5,
+          },
     );
   }
 
@@ -644,6 +659,30 @@ export function CaseAcquirePage() {
           ) : latest ? (
             <div className="space-y-4">
               <HashVerifyBadge state={hashState} />
+
+              {hashState === "mismatch" && hashMismatch ? (
+                <div className="rounded-lg border border-[var(--status-danger)] bg-[var(--surface-2)] p-3 font-mono text-[11px]">
+                  <p className="mb-2 font-sans text-[12px] font-semibold text-[var(--status-danger)]">
+                    Hash mismatch — do not treat this evidence as verified
+                  </p>
+                  {hashMismatch.expected_sha256 ? (
+                    <>
+                      <p className="text-[var(--text-tertiary)]">
+                        Expected SHA-256
+                      </p>
+                      <p className="mb-1 break-all text-[var(--text-secondary)]">
+                        {hashMismatch.expected_sha256}
+                      </p>
+                      <p className="text-[var(--text-tertiary)]">
+                        Actual SHA-256
+                      </p>
+                      <p className="break-all text-[var(--status-danger)]">
+                        {hashMismatch.actual_sha256}
+                      </p>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-2)] p-4">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">

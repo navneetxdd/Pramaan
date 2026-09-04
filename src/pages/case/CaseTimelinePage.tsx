@@ -144,6 +144,7 @@ export function CaseTimelinePage() {
       setDriftOffset(result.drift_offset_seconds);
       toast.success(
         `Drift offset ${result.drift_offset_seconds.toFixed(1)}s stored`,
+        { description: result.note },
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Calibration failed", {
@@ -200,17 +201,22 @@ export function CaseTimelinePage() {
             Clock drift calibration
           </p>
           {normalization ? (
-            <p
-              className={`text-[12px] font-medium ${
-                normalization.rtc_parsed
-                  ? "text-[var(--status-success)]"
-                  : "text-[var(--status-warning)]"
-              }`}
-            >
-              {normalization.rtc_parsed
-                ? "Recorder clock found — timeline is time-ordered."
-                : "No recorder clock found — timeline is byte-offset order only, not wall-clock time."}
-            </p>
+            <div className="space-y-0.5">
+              <p
+                className={`text-[12px] font-medium ${
+                  normalization.rtc_parsed
+                    ? "text-[var(--status-success)]"
+                    : "text-[var(--status-warning)]"
+                }`}
+              >
+                {normalization.rtc_parsed
+                  ? "Recorder clock found — timeline is time-ordered."
+                  : "No recorder clock found — timeline is byte-offset order only, not wall-clock time."}
+              </p>
+              <p className="mono text-[10px] text-[var(--text-tertiary)]">
+                {normalization.note}
+              </p>
+            </div>
           ) : null}
           <p className="text-[12px] text-[var(--text-tertiary)]">
             Supply one known event: wall-clock Unix time and the same moment on
