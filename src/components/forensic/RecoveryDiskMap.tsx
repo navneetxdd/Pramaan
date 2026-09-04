@@ -41,6 +41,8 @@ type DiskMapProps = {
   imageSize: number;
   selectedSegmentId: string | null;
   onSelect: (segmentId: string) => void;
+  /** True while the engine is actually scanning — drives the read-head sweep. */
+  scanning?: boolean;
 };
 
 export function RecoveryDiskMap({
@@ -48,6 +50,7 @@ export function RecoveryDiskMap({
   imageSize,
   selectedSegmentId,
   onSelect,
+  scanning = false,
 }: DiskMapProps) {
   const lanes = useMemo(() => {
     const byChannel = new Map<number, Segment[]>();
@@ -147,7 +150,12 @@ export function RecoveryDiskMap({
               {laneSegments.length} rec · {formatBytes(bytes)}
               {gaps > 0 ? ` · ${gaps} gap${gaps > 1 ? "s" : ""}` : ""}
             </span>
-            <div className="relative h-7 min-w-0 flex-1 overflow-hidden rounded-[3px] border border-[var(--border-subtle)] bg-[var(--surface-4)]">
+            <div
+              className={cn(
+                "rec-lane rec-platter relative h-7 min-w-0 flex-1 overflow-hidden rounded-[3px] border border-[var(--border-subtle)]",
+                scanning ? "is-scanning" : "",
+              )}
+            >
               {laneSegments.map((segment) => {
                 const start = segment.offset_start ?? 0;
                 const length =
@@ -162,7 +170,7 @@ export function RecoveryDiskMap({
                     title={`${allocationLabel(state)} · ${formatBytes(length)} @ 0x${start.toString(16)}\n${allocationDetail(segment)}`}
                     aria-label={`Channel ${channel}, ${allocationLabel(state)} recording of ${formatBytes(length)} at offset ${start}`}
                     className={cn(
-                      "absolute top-0 h-full rounded-[1px] transition-opacity hover:opacity-80",
+                      "rec-extent absolute top-0 h-full rounded-[1px] transition-opacity hover:opacity-80",
                       selected
                         ? "ring-2 ring-inset ring-[var(--accent-500)]"
                         : "",
@@ -185,7 +193,7 @@ export function RecoveryDiskMap({
       <div className="flex items-center gap-2">
         {/* Must match the lane label width or the axis lies about position. */}
         <span className="w-28 shrink-0" />
-        <div className="relative h-4 min-w-0 flex-1">
+        <div className="rec-ruler relative h-4 min-w-0 flex-1">
           {[0, 0.25, 0.5, 0.75, 1].map((fraction) => (
             <span
               key={fraction}

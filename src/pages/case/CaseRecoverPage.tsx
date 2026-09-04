@@ -24,6 +24,7 @@ import {
   type AllocationState,
 } from "@/lib/allocation";
 import { timestampTier } from "@/lib/checks";
+import "@/styles/recovery.css";
 
 /**
  * Allocation state cell. Colour is a reinforcement, never the only signal:
@@ -512,7 +513,7 @@ export function CaseRecoverPage() {
   return (
     // On a short viewport the page scrolls rather than compressing panels to
     // zero height — a collapsed segments table is worse than a scrollbar.
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
+    <div className="recovery-shell flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
       {/* shrink-0 + overflow-visible: .visily-card clips, and as a flex child this
           card was compressing, so the expanded Advanced panel was cut in half. */}
       <section className="visily-card flex shrink-0 flex-wrap items-end gap-3 overflow-visible p-4">
@@ -575,7 +576,7 @@ export function CaseRecoverPage() {
           </button>
 
           {advancedOpen ? (
-            <div className="mt-2 flex flex-wrap items-end gap-3 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] p-3">
+            <div className="rec-well mt-2 flex flex-wrap items-end gap-3 rounded border border-[var(--border-subtle)] p-3">
               <div className="min-w-[200px]">
                 <label className="label">Override parser</label>
                 <select
@@ -672,6 +673,7 @@ export function CaseRecoverPage() {
         </div>
         <RecoveryDiskMap
           segments={segments}
+          scanning={isRecovering}
           imageSize={selectedEvidence?.size_bytes ?? 0}
           selectedSegmentId={selectedSegmentId}
           onSelect={(id) => {
@@ -737,10 +739,10 @@ export function CaseRecoverPage() {
           // shift every marked row out of alignment with the header.
           getRowClassName={(seg) =>
             allocationByRow.get(seg.id) === "deleted"
-              ? "shadow-[inset_4px_0_0_0_var(--status-danger)] bg-[rgba(220,38,38,0.06)]"
+              ? "rec-row rec-row-deleted shadow-[inset_4px_0_0_0_var(--status-danger)] bg-[rgba(220,38,38,0.06)]"
               : allocationByRow.get(seg.id) === "recording"
-                ? "shadow-[inset_4px_0_0_0_var(--status-info)]"
-                : undefined
+                ? "rec-row shadow-[inset_4px_0_0_0_var(--status-info)]"
+                : "rec-row"
           }
           columns={[
             {

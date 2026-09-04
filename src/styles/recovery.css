@@ -1,0 +1,288 @@
+/**
+ * Recovery workspace — visual language.
+ *
+ * Every selector is scoped under `.recovery-shell`, which exists only on the
+ * Recovery page, so nothing here can reach another teammate's menu.
+ *
+ * The idea is "instrument, not dashboard": this screen is a bench readout for
+ * an examiner reading bytes off a platter, so it borrows from oscilloscopes and
+ * engineering drawings — a faint graticule, ticked micro-labels, tabular
+ * numerals that let offsets line up in a column — rather than the soft cards and
+ * gradients of a generic analytics page. It stays inside the existing blue/white
+ * token palette; it does not introduce a single new colour.
+ *
+ * Rules honoured here:
+ *   - presentation only, no layout maths that the disk map or table depend on
+ *   - motion only while something is genuinely happening, and never for decoration
+ *   - prefers-reduced-motion fully respected
+ */
+
+.recovery-shell {
+  --rec-graticule: rgba(37, 99, 235, 0.1);
+  --rec-hairline: rgba(37, 99, 235, 0.22);
+  --rec-ink: rgba(15, 23, 42, 0.04);
+}
+
+/* ------------------------------------------------------------------ *
+ * Numerals
+ *
+ * Byte offsets, sizes and counts are read down a column and compared.
+ * Tabular figures make them line up; proportional ones do not.
+ * ------------------------------------------------------------------ */
+.recovery-shell .mono,
+.recovery-shell [role="cell"],
+.recovery-shell [role="columnheader"] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ------------------------------------------------------------------ *
+ * Cards — a hairline of accent along the top edge instead of a shadow.
+ * Reads as an instrument bezel rather than a floating surface.
+ * ------------------------------------------------------------------ */
+.recovery-shell .visily-card {
+  position: relative;
+  border-color: var(--border-subtle);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px -18px rgba(37, 99, 235, 0.35);
+}
+
+.recovery-shell .visily-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--rec-hairline) 18%,
+    var(--rec-hairline) 82%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * Section labels — a 2px accent tick, the way a panel legend is ruled.
+ * ------------------------------------------------------------------ */
+.recovery-shell .visily-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  letter-spacing: 0.085em;
+}
+
+.recovery-shell .visily-card-title::before {
+  content: "";
+  width: 2px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--accent-500);
+  flex: none;
+}
+
+.recovery-shell .visily-card-header {
+  background: linear-gradient(
+    180deg,
+    var(--surface-3),
+    color-mix(in srgb, var(--surface-3) 88%, var(--surface-4))
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Disk map — the graticule.
+ *
+ * A faint engineering grid behind the channel lanes. Vertical rules echo the
+ * byte ruler beneath; the horizontal rule seats each lane on a baseline.
+ * Purely a backdrop: the lane's own geometry is unchanged.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-platter {
+  background-color: var(--surface-4);
+  /* Minor divisions every 1/16 of the image, major every 1/4 — the majors line
+     up with the byte ruler underneath, so the two read as one instrument. */
+  background-image:
+    linear-gradient(90deg, rgba(37, 99, 235, 0.17) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rec-graticule) 1px, transparent 1px),
+    linear-gradient(180deg, var(--rec-ink) 1px, transparent 1px);
+  background-size:
+    25% 100%,
+    6.25% 100%,
+    100% 100%;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* Recovered extents sit above the graticule with a faint inner lift. */
+.recovery-shell .rec-extent {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 1px 2px rgba(15, 23, 42, 0.18);
+}
+
+.recovery-shell .rec-extent:hover {
+  filter: brightness(1.06) saturate(1.05);
+}
+
+/* ------------------------------------------------------------------ *
+ * The read head.
+ *
+ * While a scan is actually running, a light sweeps the platter left to right.
+ * This is the one piece of motion on the page and it is tied to real state:
+ * it appears when the engine is working and stops the moment it settles.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-lane {
+  position: relative;
+  overflow: hidden;
+}
+
+.recovery-shell .rec-lane.is-scanning::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(37, 99, 235, 0.1),
+    rgba(37, 99, 235, 0.42),
+    rgba(37, 99, 235, 0.1),
+    transparent
+  );
+  animation: rec-sweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* Stagger the lanes so the head reads as one pass across the device. */
+.recovery-shell .rec-lane:nth-child(2n).is-scanning::after {
+  animation-delay: 0.18s;
+}
+.recovery-shell .rec-lane:nth-child(3n).is-scanning::after {
+  animation-delay: 0.36s;
+}
+
+@keyframes rec-sweep {
+  0% {
+    left: -20%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Progress — a lit filament rather than a flat fill.
+ * ------------------------------------------------------------------ */
+.recovery-shell [role="progressbar"] > div {
+  background: linear-gradient(
+    90deg,
+    var(--accent-600),
+    var(--accent-400) 60%,
+    var(--accent-500)
+  );
+  box-shadow: 0 0 8px -1px var(--accent-glow);
+  position: relative;
+  overflow: hidden;
+}
+
+.recovery-shell [role="progressbar"] > div::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.55),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: rec-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes rec-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Evidence table.
+ * ------------------------------------------------------------------ */
+.recovery-shell [role="columnheader"] {
+  letter-spacing: 0.07em;
+}
+
+/* The selected row is the one being inspected — mark it on the rail. */
+.recovery-shell .rec-row {
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+/* Deleted rows read as flagged specimens: a solid rail, not just a tint. */
+.recovery-shell .rec-row-deleted {
+  background-image: linear-gradient(
+    90deg,
+    rgba(220, 38, 38, 0.07),
+    transparent 42%
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Advanced disclosure — a recessed well, so an override is visibly a
+ * deliberate departure from the automatic path.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-well {
+  background:
+    linear-gradient(180deg, var(--surface-3), var(--surface-2)),
+    var(--surface-3);
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+/* ------------------------------------------------------------------ *
+ * Accessibility: nothing above is load-bearing, so drop all of it when
+ * the operating system asks for reduced motion.
+ * ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .recovery-shell .rec-lane.is-scanning::after,
+  .recovery-shell [role="progressbar"] > div::after {
+    animation: none;
+  }
+  .recovery-shell .rec-lane.is-scanning::after {
+    display: none;
+  }
+  .recovery-shell .rec-row {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Byte ruler — real tick marks rising to each label, the way a scale is
+ * engraved. Drawn off the existing label nodes, so no extra DOM.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-ruler > span::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 0;
+  width: 1px;
+  height: 4px;
+  background: var(--border-strong);
+}
+
+.recovery-shell .rec-ruler > span:first-child::before {
+  left: 0;
+}
+
+.recovery-shell .rec-ruler > span:last-child::before {
+  left: auto;
+  right: 0;
+}
