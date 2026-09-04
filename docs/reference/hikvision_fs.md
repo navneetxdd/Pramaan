@@ -277,6 +277,17 @@ carries `timestamp_confidence_basis` naming which rung applies and why.
 | `0.9` | `hikbtree_entry` | `allocated` | Flag and timestamps were written together by the recorder in the same transaction and agree with each other. |
 | `0.5` | `hikbtree_residual` | `deleted (index entry cleared)` with plausible residual timestamps | The flag was cleared *after* the timestamps were written. The times may describe a recording that has since been partly or wholly overwritten, so they bound the footage but do not confirm it. |
 | `0.3` | `idr_table_scan` | `deleted` whose index timestamps are the `0x7FFFFFFF` sentinel, recovered from the IDR table instead | [HAN2015] §3.3: overwriting resets start/end to the sentinel, so the only surviving time is inside the data block itself, and it may belong to either the old or the new recording. |
+
+Both deletion modes are exercised by the emulated image and asserted by the test suite:
+`test_initialised_entry_keeps_residual_timestamps` (§3.2) and
+`test_overwritten_recording_recovers_its_time_from_the_idr_table` (§3.3).
+`test_confidence_ladder_is_ordered` pins the three rungs and asserts no other
+confidence value is emitted.
+
+> **Which mode matters more.** On a disk that has been recording long enough to wrap,
+> §3.3 overwriting is the *common* case and §3.2 initialization is the rare one. An
+> engine validated only against the initialization case would look correct in the lab
+> and lose the recording time on real evidence.
 | `None` | `unavailable` | no usable time from either source | — |
 
 These are the **only** numeric confidences the Hikvision engine emits. There is no

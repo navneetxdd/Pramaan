@@ -11,6 +11,89 @@ import { formatBytes, formatOffset } from "@/lib/utils";
 import { formatTimestampSource } from "@/lib/integrity";
 import { allocationLabel, allocationOf } from "@/lib/allocation";
 import { HexViewer } from "@/components/forensic/HexViewer";
+import { Button } from "@/components/ui/button";
+import { getApiBase } from "@/lib/apiBase";
+
+type ExportResult = { filename: string; download_url: string };
+
+/**
+ * Export affordance for a recovered recording.
+ *
+ * Calls POST /devices/{id}/sequences/{segment_id}/export, which unwraps the
+ * carved bytes and remuxes to MP4 when FFmpeg is present, falling back to raw
+ * H.264 when it is not. The pipeline behind it is still being completed
+ * (Hikvision picture-index stripping and playable_frame_count) — see
+ * docs/reference/hikvision_playback_handoff.md — so this reports exactly what
+ * came back rather than promising a playable MP4.
+ */
+function ExportSegmentButton({
+  deviceId,
+  segmentId,
+}: {
+  deviceId: string;
+  segmentId: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ExportResult | null>(null);
+
+  useEffect(() => {
+    setResult(null);
+  }, [segmentId]);
+
+  async function run() {
+    setBusy(true);
+    try {
+      const response = (await api.exportSegment(deviceId, segmentId, {
+        full: true,
+      })) as ExportResult;
+      setResult(response);
+      toast.success(`Exported ${response.filename}`);
+    } catch (err) {
+      // 409 here means the artifact failed its byte-length/identity check —
+      // surface it verbatim rather than as a generic failure.
+      toast.error(err instanceof Error ? err.message : "Export failed", {
+        duration: Infinity,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const isMp4 = result?.filename.toLowerCase().endsWith(".mp4");
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] font-semibold uppercase text-[var(--text-tertiary)]">
+        Export
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={busy}
+          onClick={() => void run()}
+        >
+          {busy ? "Exporting…" : "Export segment"}
+        </Button>
+        {result ? (
+          <a
+            href={`${getApiBase()}${result.download_url}`}
+            download={result.filename}
+            className="mono text-[11px] text-[var(--accent-500)] underline underline-offset-2"
+          >
+            {result.filename}
+          </a>
+        ) : null}
+      </div>
+      {result && !isMp4 ? (
+        <p className="text-[10px] text-[var(--status-warning)]">
+          Exported as raw H.264 — FFmpeg was not available, so this is not a
+          container-wrapped, directly playable file.
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 /** Read one key out of a parser's validation_evidence bag. */
 function evidenceValue(
@@ -320,6 +403,7 @@ export function SegmentInspector({
                 ) : null}
               </div>
             ) : null}
+            <ExportSegmentButton deviceId={deviceId} segmentId={segment.id} />
           </div>
         ) : null}
         {tab === "hex" ? (

@@ -94,6 +94,12 @@ class PlannedRecording:
     event_type: str  # "continuous" | "event"
     allocation_state: str
     idr_count: int = 6
+    # How the recorder left this entry's start/end fields.
+    #   "intact"   — the times survive in the index (initialization / index clear)
+    #   "sentinel" — the times were reset to 0x7FFFFFFF when the block was
+    #                overwritten ([HAN2015] §3.3), so only the IDR table still
+    #                knows when this footage was recorded
+    index_timestamps: str = "intact"
 
     @property
     def end_unix(self) -> int:
@@ -113,10 +119,31 @@ class PlannedRecording:
         base = self.start_unix + (10 if self.event_type == "event" else 0)
         return [base + int(round(index * step)) for index in range(self.idr_count)]
 
+    @property
+    def recovers_time_from_idr_table(self) -> bool:
+        """True when the index timestamps are gone and the IDR table is the only clock."""
+        return self.index_timestamps == "sentinel"
 
-# Ground-truth plan. Six recordings across two channels: continuous + event on each,
-# one deleted (index entry cleared), one still recording. Plus an unused index slot
+    @property
+    def expected_recovered_window(self) -> tuple[int, int]:
+        """Start/end the parser should report, given where the surviving time lives."""
+        if self.recovers_time_from_idr_table:
+            stamps = self.idr_timestamps()
+            return stamps[0], stamps[-1]
+        return self.start_unix, self.end_unix
+
+
+# Ground-truth plan. Seven recordings across two channels: continuous + event on each,
+# both documented deletion modes, and one still recording. Plus an unused index slot
 # that must NOT be reported as a recording.
+#
+# [HAN2015] describes two ways footage stops being indexed, and they leave different
+# evidence behind. Both must be exercised, because on a disk that has been recording
+# for months the overwrite case is the common one:
+#
+#   §3.2 initialization — index flag cleared, start/end survive  -> residual times
+#   §3.3 overwriting    — index flag cleared, start/end reset to  -> IDR table is the
+#                         the 0x7FFFFFFF sentinel                    only surviving clock
 PLAN: tuple[PlannedRecording, ...] = (
     PlannedRecording(channel=1, block_index=0, start_unix=INIT_TIME + 3600, duration_s=300,
                      event_type="continuous", allocation_state="allocated"),
@@ -130,10 +157,16 @@ PLAN: tuple[PlannedRecording, ...] = (
                      event_type="continuous", allocation_state="deleted (index entry cleared)"),
     PlannedRecording(channel=2, block_index=5, start_unix=INIT_TIME + 10800, duration_s=300,
                      event_type="continuous", allocation_state="recording"),
+    # Overwritten: flag cleared AND index times wiped to the sentinel. The parser must
+    # fall back to the IDR table and report the lowest confidence rung for doing so.
+    PlannedRecording(channel=1, block_index=6, start_unix=INIT_TIME + 900, duration_s=300,
+                     event_type="continuous", allocation_state="deleted (index entry cleared)",
+                     index_timestamps="sentinel"),
 )
 
 EXPECTED_RECORDING_COUNT = len(PLAN)
 EXPECTED_DELETED_COUNT = sum(1 for item in PLAN if item.allocation_state.startswith("deleted"))
+EXPECTED_IDR_RECOVERED_COUNT = sum(1 for item in PLAN if item.recovers_time_from_idr_table)
 
 
 @dataclass
@@ -259,9 +292,15 @@ def _entry_bytes(recording: PlannedRecording) -> bytes:
         # §6.5: an in-progress recording keeps the allocated flag and the sentinel time.
         flag, start, end = ALLOC_ALLOCATED, TIME_SENTINEL, 0
     elif state.startswith("deleted"):
-        # §7: initialization clears the index flag; the timestamps and the data pointer are
-        # left behind, and the footage is still on the platter.
-        flag, start, end = ALLOC_CLEARED, recording.start_unix, recording.end_unix
+        # §7: clearing the index leaves the data pointer behind and the footage on the
+        # platter. What happens to the timestamps depends on how it was cleared.
+        flag = ALLOC_CLEARED
+        if recording.recovers_time_from_idr_table:
+            # §3.3 overwriting: start/end reset to FF FF FF 7F 00 00 00 00.
+            start, end = TIME_SENTINEL, 0
+        else:
+            # §3.2 initialization: the times written before the clear survive.
+            start, end = recording.start_unix, recording.end_unix
     else:
         raise ValueError(f"unsupported planned allocation state: {state}")
 

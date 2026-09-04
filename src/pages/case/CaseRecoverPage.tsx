@@ -49,13 +49,155 @@ function AllocationCell({ state }: { state: AllocationState }) {
   );
 }
 
+/**
+ * Determinate recovery progress.
+ *
+ * The engine emits `progress` on every job event (recovery.py: 1 -> 10 -> 12 ->
+ * per-segment -> 100). The page previously discarded it and showed only a
+ * scrolling log, which on a multi-terabyte image told the examiner nothing about
+ * how far along the run was. Falls back to an indeterminate bar only while the
+ * first event is still in flight.
+ */
+function RecoveryProgress({
+  percent,
+  phase,
+}: {
+  percent: number | null;
+  phase: string | null;
+}) {
+  const known = typeof percent === "number" && Number.isFinite(percent);
+  const clamped = known ? Math.max(0, Math.min(100, percent)) : 0;
+  return (
+    <div className="border-b border-[var(--border-subtle)] px-4 py-3">
+      <div className="mb-1.5 flex items-baseline justify-between gap-3">
+        <span className="truncate text-[12px] text-[var(--text-secondary)]">
+          {phase ?? "Waiting for the engine…"}
+        </span>
+        <span className="mono shrink-0 text-[12px] font-medium text-[var(--text-primary)]">
+          {known ? `${clamped.toFixed(0)}%` : "—"}
+        </span>
+      </div>
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={known ? Math.round(clamped) : undefined}
+        aria-label="Recovery progress"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-4)]"
+      >
+        <div
+          className={cn(
+            "h-full rounded-full bg-[var(--accent-500)] transition-[width] duration-300 ease-out",
+            known ? "" : "w-1/3 animate-pulse",
+          )}
+          style={known ? { width: `${clamped}%` } : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Statuses that mean a recovery stopped part-way through writing its results.
+ *
+ * `run_recovery_job` supersedes the device's prior segments *before* it writes
+ * the new ones, so an aborted run can leave the table showing fewer recordings
+ * than the image contains — measured: a run cancelled early leaves 0 segments
+ * where a full run yields 5. Nothing in the stored data marks that set partial,
+ * which is why this has to be surfaced at the UI.
+ */
+const ABORTED_JOB_STATUSES = new Set(["cancelled", "interrupted"]);
+
+/**
+ * Poll a job's real terminal status after a cancel request.
+ *
+ * `POST /jobs/{id}/cancel` flags the job and returns `cancelled`, but the
+ * running scan is not actually aborted — it continues and rewrites the status
+ * to `completed` on its own. Measured on the emulated image: `cancelled` with 0
+ * segments at t=0, `completed` with all 5 at t=250 ms. Until the engine
+ * genuinely aborts, the UI must not report an outcome until the status settles.
+ */
+async function confirmCancellation(
+  jobId: string,
+  attempts = 12,
+  intervalMs = 400,
+): Promise<{ status: string }> {
+  let last = "cancelled";
+  for (let i = 0; i < attempts; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    try {
+      const detail = await api.getJob(jobId);
+      last = detail.job.status;
+      // The scan ran to completion despite the cancel — stop early and say so.
+      if (last === "completed" || last === "failed") return { status: last };
+    } catch {
+      break;
+    }
+  }
+  return { status: last };
+}
+
+/**
+ * Persistent warning that the visible dataset is not a complete recovery.
+ *
+ * Deliberately rendered inside the segments card, directly above the table
+ * header, so the table cannot be screenshotted without it.
+ */
+function PartialResultBanner({
+  status,
+  segmentCount,
+}: {
+  status: string;
+  segmentCount: number;
+}) {
+  const aborted = status === "cancelled" ? "cancelled" : "interrupted";
+  return (
+    <div
+      role="alert"
+      className="flex shrink-0 items-start gap-2.5 border-b border-[var(--status-warning)] bg-[rgba(217,119,6,0.12)] px-4 py-3"
+    >
+      <span
+        aria-hidden="true"
+        className="mt-px shrink-0 text-[14px] leading-none text-[var(--status-warning)]"
+      >
+        ⚠
+      </span>
+      <div className="min-w-0 text-[12px] leading-relaxed">
+        <p className="font-semibold text-[var(--status-warning)]">
+          Incomplete recovery — this is not a full result set
+        </p>
+        <p className="mt-0.5 text-[var(--text-secondary)]">
+          The last recovery run for this evidence image was{" "}
+          <strong>{aborted} mid-scan</strong>, so the engine stopped before it
+          finished enumerating the image.{" "}
+          <strong>
+            The {segmentCount} {segmentCount === 1 ? "recording" : "recordings"}{" "}
+            shown below
+            {segmentCount === 0 ? " (none)" : ""} do not represent everything
+            present on this evidence.
+          </strong>{" "}
+          Re-run recovery to completion before drawing any forensic conclusion,
+          citing these results in a report, or exporting them as evidence.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function CaseRecoverPage() {
   const { caseId, workspace, refresh } = useCaseContext();
   const [deviceId, setDeviceId] = useState("");
   const [actor, setActor] = useState(workspace?.case.examiner_name ?? "");
-  const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
+  // The recovery job this page is currently streaming. The SSE subscription is
+  // owned by an effect keyed on this, never by an async handler, so it is always
+  // torn down on unmount — see the effect below.
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [phase, setPhase] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
     null,
@@ -161,12 +303,156 @@ export function CaseRecoverPage() {
     [workspace?.jobs, deviceId],
   );
 
+  /**
+   * Terminal status of the most recent recovery run for this device.
+   *
+   * workspace.jobs arrives ordered created_at DESC (repository.list_jobs_for_case),
+   * so the first terminal entry is the latest finished run. A later successful
+   * run therefore clears the warning on its own.
+   */
+  const lastFinishedRecovery = useMemo(() => {
+    if (!deviceId) return null;
+    return (
+      workspace?.jobs.find(
+        (job) =>
+          job.kind === "recovery" &&
+          (job.device_id === deviceId || job.image_id === deviceId) &&
+          job.status !== "running" &&
+          job.status !== "pending",
+      ) ?? null
+    );
+  }, [workspace?.jobs, deviceId]);
+
+  const partialResultStatus =
+    lastFinishedRecovery &&
+    ABORTED_JOB_STATUSES.has(lastFinishedRecovery.status)
+      ? lastFinishedRecovery.status
+      : null;
+
+  // True while this page is streaming a job, or the workspace still reports one
+  // running for this device (covers the gap before the first SSE event lands).
+  const isRecovering = activeJobId !== null || recoveryRunning;
+
   useEffect(() => {
     logRef.current?.scrollTo({
       top: logRef.current.scrollHeight,
       behavior: "smooth",
     });
   }, [log]);
+
+  // Keep the effect below free of changing dependencies: re-running it would
+  // tear down and re-open a live SSE connection mid-recovery.
+  const finishRef = useRef({ refresh, setWorking, setIdle });
+  finishRef.current = { refresh, setWorking, setIdle };
+
+  /**
+   * Owns the job event stream for the lifetime of `activeJobId`.
+   *
+   * The subscription used to live inside the click handler, whose unsubscribe
+   * function was discarded — navigating away mid-recovery leaked the
+   * EventSource and kept setState running on an unmounted component. Here the
+   * cleanup is returned to React, so unmount, device change and job completion
+   * all close the connection exactly once.
+   */
+  useEffect(() => {
+    if (!activeJobId) return;
+    let cancelledByUnmount = false;
+    finishRef.current.setWorking("Recovery running…");
+
+    const settle = () => {
+      if (cancelledByUnmount) return;
+      setActiveJobId(null);
+      setCancelling(false);
+      setProgress(null);
+      setPhase(null);
+      finishRef.current.setIdle();
+    };
+
+    const unsubscribe = subscribeJobEvents(activeJobId, {
+      onEvent: (event) => {
+        if (cancelledByUnmount) return;
+        if (typeof event.progress === "number") setProgress(event.progress);
+        if (event.message) {
+          setPhase(event.message);
+          setLog((prev) => [...prev.slice(-200), event.message!]);
+        }
+        if (event.status === "completed") {
+          void api
+            .getJob(activeJobId)
+            .then(async (result) => {
+              if (cancelledByUnmount) return;
+              setSegments(result.segments);
+              toast.success(`${result.segments.length} sequences recovered`);
+              await finishRef.current.refresh();
+            })
+            .catch(() => undefined)
+            .finally(settle);
+          return;
+        }
+        if (event.status === "cancelled") {
+          // The engine does not currently abort on cancel: it flags the job,
+          // keeps scanning, and overwrites the status with `completed` when it
+          // finishes (measured: cancelled at t=0 with 0 segments, completed at
+          // t=250ms with all 5). Reporting "cancelled" here would tell the
+          // examiner a scan had stopped while it was still running and writing.
+          // So confirm the job's real terminal state before saying anything.
+          setPhase("Cancel requested — confirming the engine stopped…");
+          void confirmCancellation(activeJobId)
+            .then(async (outcome) => {
+              if (cancelledByUnmount) return;
+              if (outcome.status === "completed") {
+                const result = await api.getJob(activeJobId);
+                setSegments(result.segments);
+                toast.warning(
+                  `Too late to cancel — the run finished with ${result.segments.length} sequences`,
+                  { duration: 10_000 },
+                );
+              } else {
+                toast.message("Recovery cancelled");
+              }
+              await finishRef.current.refresh();
+            })
+            .catch(() => undefined)
+            .finally(settle);
+          return;
+        }
+        if (event.status === "failed" || event.status === "interrupted") {
+          toast.error(
+            event.error || event.message || `Recovery ${event.status}`,
+            { duration: Infinity },
+          );
+          settle();
+        }
+      },
+      onError: (err) => {
+        if (cancelledByUnmount) return;
+        toast.error(err.message || "Lost connection to the recovery job", {
+          duration: Infinity,
+        });
+        settle();
+      },
+    });
+
+    return () => {
+      // Unmount / job change: close the stream and stop touching state.
+      cancelledByUnmount = true;
+      unsubscribe();
+      finishRef.current.setIdle();
+    };
+  }, [activeJobId]);
+
+  // Reattach to a recovery already running for this device (page reload, or the
+  // examiner navigating back mid-run) so progress and cancel stay available.
+  useEffect(() => {
+    if (activeJobId || !deviceId) return;
+    const running = workspace?.jobs.find(
+      (job) =>
+        job.kind === "recovery" &&
+        (job.device_id === deviceId || job.image_id === deviceId) &&
+        (job.status === "running" || job.status === "pending"),
+    );
+    if (running) setActiveJobId(running.id);
+  }, [workspace?.jobs, deviceId, activeJobId]);
 
   async function handleRecover() {
     if (!deviceId || !actor.trim()) {
@@ -180,10 +466,10 @@ export function CaseRecoverPage() {
       setAdvancedOpen(true);
       return;
     }
-    setBusy(true);
+    setStarting(true);
     setLog([]);
-    setWorking("Recovery running…");
-
+    setProgress(0);
+    setPhase("Starting recovery…");
     try {
       const started = await api.recover(
         caseId,
@@ -191,38 +477,30 @@ export function CaseRecoverPage() {
         actor.trim(),
         effectiveAdapter,
       );
-      await new Promise<void>((resolve, reject) => {
-        subscribeJobEvents(started.job.id, {
-          onEvent: (event) => {
-            if (event.message)
-              setLog((prev) => [...prev.slice(-200), event.message!]);
-            if (event.status === "completed") resolve();
-            if (
-              event.status === "failed" ||
-              event.status === "cancelled" ||
-              event.status === "interrupted"
-            ) {
-              reject(
-                new Error(
-                  event.error || event.message || `Recovery ${event.status}`,
-                ),
-              );
-            }
-          },
-          onError: reject,
-        });
-      });
-      const result = await api.getJob(started.job.id);
-      setSegments(result.segments);
-      toast.success(`${result.segments.length} sequences recovered`);
-      await refresh();
+      setActiveJobId(started.job.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Recovery failed", {
         duration: Infinity,
       });
+      setProgress(null);
+      setPhase(null);
     } finally {
-      setBusy(false);
-      setIdle();
+      setStarting(false);
+    }
+  }
+
+  async function handleCancel() {
+    if (!activeJobId) return;
+    setCancelling(true);
+    try {
+      await api.cancelJob(activeJobId);
+      // The terminal `cancelled` event settles the UI; if the job finished in
+      // the race, the completion event settles it instead.
+    } catch (err) {
+      setCancelling(false);
+      toast.error(
+        err instanceof Error ? err.message : "Could not cancel the job",
+      );
     }
   }
 
@@ -276,10 +554,14 @@ export function CaseRecoverPage() {
           </div>
         </div>
         <Button
-          disabled={busy || !deviceId || recoveryRunning}
+          disabled={starting || !deviceId || isRecovering}
           onClick={() => void handleRecover()}
         >
-          {recoveryRunning ? "Recovery in progress…" : "Run recovery"}
+          {starting
+            ? "Starting…"
+            : isRecovering
+              ? "Recovery in progress…"
+              : "Run recovery"}
         </Button>
 
         <div className="w-full">
@@ -353,7 +635,21 @@ export function CaseRecoverPage() {
         <section className="visily-card flex min-h-[240px] flex-col overflow-hidden">
           <div className="visily-card-header">
             <span className="visily-card-title">Engine log</span>
+            {isRecovering ? (
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={cancelling || !activeJobId}
+                title="Asks the engine to stop. A scan already near completion may still finish — the result is confirmed before anything is reported."
+                onClick={() => void handleCancel()}
+              >
+                {cancelling ? "Requesting stop…" : "Request cancel"}
+              </Button>
+            ) : null}
           </div>
+          {isRecovering ? (
+            <RecoveryProgress percent={progress} phase={phase} />
+          ) : null}
           <div
             ref={logRef}
             className="flex min-h-[240px] flex-1 flex-col overflow-hidden"
@@ -386,6 +682,12 @@ export function CaseRecoverPage() {
       </section>
 
       <section className="visily-card shrink-0 overflow-hidden">
+        {partialResultStatus && !isRecovering ? (
+          <PartialResultBanner
+            status={partialResultStatus}
+            segmentCount={segments.length}
+          />
+        ) : null}
         <div className="visily-card-header">
           <span className="visily-card-title">Recovered segments</span>
           <div className="flex items-center gap-3">
