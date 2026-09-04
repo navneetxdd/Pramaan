@@ -23,9 +23,11 @@ import {
   allocationLabel,
   allocationOf,
   countAllocations,
+  indexTruncation,
   isPartial,
   partialReason,
   summariseAllocations,
+  truncationLabel,
   type AllocationState,
 } from "@/lib/allocation";
 import { timestampTier } from "@/lib/checks";
@@ -141,6 +143,61 @@ async function confirmCancellation(
     }
   }
   return { status: last };
+}
+
+/**
+ * Persistent warning that the recorder's own index could not be read to its end.
+ *
+ * Distinct from {@link PartialResultBanner}: that one means *our* scan stopped
+ * early, this one means the evidence's index is damaged, so the image itself may
+ * hold recordings this inventory can never list. Same placement — inside the
+ * segments card, above the table header — so the table cannot be screenshotted
+ * without it.
+ */
+function IncompleteIndexBanner({
+  status,
+  detail,
+  segmentCount,
+}: {
+  status: string;
+  detail: string;
+  segmentCount: number;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex shrink-0 items-start gap-2.5 border-b border-[var(--status-warning)] bg-[rgba(217,119,6,0.12)] px-4 py-3"
+    >
+      <span
+        aria-hidden="true"
+        className="mt-px shrink-0 text-[14px] leading-none text-[var(--status-warning)]"
+      >
+        ⚠
+      </span>
+      <div className="min-w-0 text-[12px] leading-relaxed">
+        <p className="font-semibold text-[var(--status-warning)]">
+          Damaged index — this inventory may be incomplete
+        </p>
+        <p className="mt-0.5 text-[var(--text-secondary)]">
+          The recorder&rsquo;s index could not be followed to its documented
+          end: <strong>{truncationLabel(status)}</strong>.{" "}
+          <strong>
+            The {segmentCount} {segmentCount === 1 ? "recording" : "recordings"}{" "}
+            listed below are everything reachable before that point, not
+            necessarily everything on the disk.
+          </strong>{" "}
+          Recordings found before the fault are still valid evidence and are
+          reported as recovered; nothing beyond it can be enumerated from the
+          index. Do not state a total recording count from this table.
+        </p>
+        {detail ? (
+          <p className="mt-1 font-mono text-[11px] text-[var(--text-secondary)]">
+            {detail}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -278,6 +335,10 @@ export function CaseRecoverPage() {
     () => countAllocations(segments),
     [segments],
   );
+
+  // Null for every vendor that does not report a traversal status, so the
+  // warning appears only on real evidence of a damaged index.
+  const truncatedIndex = useMemo(() => indexTruncation(segments), [segments]);
 
   const allocationByRow = useMemo(() => {
     const map = new Map<string, AllocationState>();
@@ -759,6 +820,13 @@ export function CaseRecoverPage() {
               {partialResultStatus && !isRecovering ? (
                 <PartialResultBanner
                   status={partialResultStatus}
+                  segmentCount={segments.length}
+                />
+              ) : null}
+              {truncatedIndex && !isRecovering ? (
+                <IncompleteIndexBanner
+                  status={truncatedIndex.status}
+                  detail={truncatedIndex.detail}
                   segmentCount={segments.length}
                 />
               ) : null}

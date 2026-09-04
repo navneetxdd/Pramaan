@@ -118,3 +118,48 @@ export function partialReason(segment: Segment): string {
   const reason = segment.validation_evidence?.["partial_reason"];
   return typeof reason === "string" ? reason : "";
 }
+
+/**
+ * Whether the recorder's index was read all the way to its documented end.
+ *
+ * The Hikvision engine emits `index_complete` / `index_traversal_status` (see
+ * docs/reference/hikvision_fs.md §7.6). "6 recordings" and "6 recordings found
+ * before the index broke" are different findings about the same disk, so the
+ * inventory must not be presented as whole when it isn't.
+ *
+ * Vendors that do not report a traversal status return `null` — absence of the
+ * field is not evidence of a truncated index, and must never render a warning.
+ */
+export function indexTruncation(
+  segments: Segment[],
+): { status: string; detail: string } | null {
+  for (const segment of segments) {
+    const evidence = segment.validation_evidence;
+    if (evidence?.["index_complete"] !== false) continue;
+    const status = evidence["index_traversal_status"];
+    const detail = evidence["index_traversal_detail"];
+    return {
+      status: typeof status === "string" ? status : "incomplete",
+      detail: typeof detail === "string" ? detail : "",
+    };
+  }
+  return null;
+}
+
+/** Human wording for a traversal status — reference doc §7.6. */
+export function truncationLabel(status: string): string {
+  switch (status) {
+    case "loop":
+      return "the index loops back on itself";
+    case "out_of_bounds":
+      return "an index pointer addresses bytes outside the image";
+    case "malformed_page":
+      return "an index page is truncated by the end of the image";
+    case "page_limit":
+      return "the index is longer than the engine will follow";
+    case "no_index":
+      return "the index could not be read at all";
+    default:
+      return "the index could not be read to its end";
+  }
+}

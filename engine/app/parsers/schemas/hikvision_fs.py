@@ -100,6 +100,28 @@ SOURCE_RESIDUAL = "hikbtree_residual"
 SOURCE_IDR_SCAN = "idr_table_scan"
 SOURCE_UNAVAILABLE = "unavailable"
 
+# §7.1 — an index entry that contradicts itself. The recorder writes the 48 bytes of an
+# entry as a unit, so a field that cannot be true (a window that ends before it starts, a
+# channel byte holding the erase pattern) is evidence that the entry was not written
+# coherently. The times are still reported exactly as found; only the claim that the
+# recorder wrote them consistently is withdrawn.
+CONFIDENCE_CONTRADICTORY = 0.1
+
+# --- Timestamp integrity --------------------------------------------------------------
+# A third axis, independent of allocation_state and recovery_status: whether the entry's
+# own time fields are internally coherent. Raw values are never swapped or repaired.
+TIMESTAMP_OK = "ok"
+TIMESTAMP_INVERTED = "inverted_window"
+
+# --- Channel plausibility -------------------------------------------------------------
+# The channel byte is a 1-based u8: reference doc §6.3, entry +0x11, "0x01 = camera #1".
+# Two values are therefore provably not a camera number, and no others can be ruled out
+# from the published format — this engine does not invent a maximum channel count.
+#   0x00  the format is 1-based, so zero addresses no camera
+#   0xFF  the format's erase pattern (the cleared allocation flag is 0xFF..FF, §6.3)
+CHANNEL_UNSET = 0x00
+CHANNEL_ERASED = 0xFF
+
 # --- Recovery status ------------------------------------------------------------------
 # docs/reference/hikvision_fs.md section 7.3
 #
@@ -113,6 +135,22 @@ RECOVERY_PARTIAL = "partial"
 EVENT_CONTINUOUS = "continuous"
 EVENT_EVENT = "event"
 EVENT_UNKNOWN = "unknown"
+
+# --- Index traversal outcome ----------------------------------------------------------
+# reference doc §6.2. The page chain can stop for five distinct reasons and an examiner
+# relying on the inventory has to know which one applied: "6 recordings" and "6 recordings
+# found before the index broke" are different statements about the same disk.
+TRAVERSAL_COMPLETE = "complete"
+TRAVERSAL_LOOP = "loop"
+TRAVERSAL_OUT_OF_BOUNDS = "out_of_bounds"
+TRAVERSAL_MALFORMED = "malformed_page"
+TRAVERSAL_PAGE_LIMIT = "page_limit"
+TRAVERSAL_NO_INDEX = "no_index"
+
+#: Traversal outcomes that mean the recording inventory may be incomplete.
+TRAVERSAL_INCOMPLETE = frozenset(
+    {TRAVERSAL_LOOP, TRAVERSAL_OUT_OF_BOUNDS, TRAVERSAL_MALFORMED, TRAVERSAL_PAGE_LIMIT}
+)
 
 # §7.2 — an entry whose IDR timestamps cover this fraction of its declared window was
 # recording continuously; anything less was trigger-driven.
@@ -278,6 +316,10 @@ class HikbtreeEntry:
     timestamp_source: str
     timestamp_confidence: float | None
     timestamp_confidence_basis: str
+    #: Whether the entry's own time fields are coherent. The raw values are kept either way.
+    timestamp_status: str = TIMESTAMP_OK
+    #: False when the channel byte cannot be a camera number (see CHANNEL_UNSET/CHANNEL_ERASED).
+    channel_valid: bool = True
 
     @property
     def is_deleted(self) -> bool:
@@ -364,6 +406,90 @@ def _classify_entry(
     )
 
 
+def channel_is_plausible(channel: int) -> bool:
+    """Whether a channel byte can be a camera number at all.
+
+    Only the two values the published format rules out are rejected — see CHANNEL_UNSET
+    and CHANNEL_ERASED. Nothing in [HAN2015] or [HIKEXT] gives a maximum channel count, so
+    no ceiling is imposed and no value in 1..254 is called implausible.
+    """
+    return channel not in (CHANNEL_UNSET, CHANNEL_ERASED)
+
+
+def qualify_entry_integrity(
+    *,
+    channel: int,
+    start: int | None,
+    end: int | None,
+    confidence: float | None,
+    basis: str,
+) -> tuple[float | None, str, str, bool]:
+    """Withdraw an over-stated confidence when the entry contradicts itself.
+
+    Returns ``(confidence, basis, timestamp_status, channel_valid)``.
+
+    This is the authoritative point where an entry's confidence and its stated
+    justification are settled, so it is the one place that can guarantee a self-
+    contradictory entry never carries the ordinary "mutually consistent" basis.
+
+    Nothing here alters the recovered evidence: timestamps are not swapped, clamped or
+    invented, and the channel byte is passed through exactly as read. Only the *claim*
+    the engine makes about that evidence is downgraded, and the reason is stated.
+    """
+    timestamp_status = TIMESTAMP_OK
+    channel_valid = channel_is_plausible(channel)
+    faults: list[str] = []
+
+    if start is not None and end is not None and end <= start:
+        timestamp_status = TIMESTAMP_INVERTED
+        faults.append(
+            f"the entry's end time ({unix_to_iso(end)}) does not follow its start time "
+            f"({unix_to_iso(start)}), so the recorder cannot have written the two "
+            "consistently; both values are reported exactly as found on the platter and "
+            "neither has been reordered or corrected"
+        )
+
+    if not channel_valid:
+        reason = "is the format's erase pattern" if channel == CHANNEL_ERASED else "is zero, but the format numbers cameras from 1"
+        faults.append(
+            f"the channel byte ({channel:#04x}) {reason}, so this entry does not name a "
+            "camera; the raw byte is preserved and has not been reassigned"
+        )
+
+    if not faults:
+        return confidence, basis, timestamp_status, channel_valid
+
+    # The 48 bytes of an entry are written as a unit, so a field that cannot be true is
+    # evidence the entry was not written coherently — which is precisely the claim the
+    # ordinary indexed basis makes. Withdraw it and say what is actually known.
+    return (
+        CONFIDENCE_CONTRADICTORY,
+        "index entry contradicts itself: " + "; ".join(faults),
+        timestamp_status,
+        channel_valid,
+    )
+
+
+@dataclass(frozen=True)
+class HikbtreeTraversal:
+    """The result of walking the page chain, and how the walk ended.
+
+    ``entries`` holds every entry read before the walk stopped; they stay usable because
+    partial recovery is the intended forensic design. ``status`` says whether the walk
+    reached a documented last page or gave up, so the caller can never mistake a truncated
+    inventory for a complete one.
+    """
+
+    entries: list[HikbtreeEntry]
+    status: str
+    detail: str = ""
+    pages_visited: int = 0
+
+    @property
+    def is_complete(self) -> bool:
+        return self.status == TRAVERSAL_COMPLETE
+
+
 def parse_hikbtree_entries(
     data,
     tree_offset: int,
@@ -371,6 +497,20 @@ def parse_hikbtree_entries(
     master: MasterBlock | None = None,
     include_unallocated: bool = False,
 ) -> list[HikbtreeEntry]:
+    """The entries alone. Use :func:`walk_hikbtree` when the caller must also know
+    whether the traversal actually completed."""
+    return walk_hikbtree(
+        data, tree_offset, master=master, include_unallocated=include_unallocated
+    ).entries
+
+
+def walk_hikbtree(
+    data,
+    tree_offset: int,
+    *,
+    master: MasterBlock | None = None,
+    include_unallocated: bool = False,
+) -> HikbtreeTraversal:
     """Walk the HIKBTREE page chain and return its data block entries.
 
     ``master`` is required to distinguish a *deleted* entry (flag cleared, data pointer still
@@ -378,29 +518,57 @@ def parse_hikbtree_entries(
     weaker ``data_offset > 0`` heuristic and says so via each entry's confidence basis.
     """
     if not _fits(data, tree_offset, TREE_FIRST_PAGE_OFF + 8):
-        return []
+        return HikbtreeTraversal(
+            [], TRAVERSAL_NO_INDEX, f"HIKBTREE header at {tree_offset:#x} is past the end of the image"
+        )
     sig_at = tree_offset + TREE_SIG_OFF
     if bytes(data[sig_at : sig_at + len(HIKBTREE_SIG)]) != HIKBTREE_SIG:
-        return []
+        return HikbtreeTraversal(
+            [], TRAVERSAL_NO_INDEX, f"no HIKBTREE signature at {tree_offset + TREE_SIG_OFF:#x}"
+        )
 
     page_offset = _u64(data, tree_offset + TREE_FIRST_PAGE_OFF)
+    if page_offset <= MASTER_BLOCK_OFFSET:
+        # §6.1 gives no "empty tree" encoding for this field, and no page can live inside
+        # the master sector. Reporting a completed walk of nothing would state that the
+        # disk holds no recordings, which this pointer is not evidence of.
+        return HikbtreeTraversal(
+            [],
+            TRAVERSAL_OUT_OF_BOUNDS,
+            f"first-page pointer {page_offset:#x} cannot address an index page; the index "
+            "could not be entered, which is not the same as an index holding no recordings",
+        )
     entries: list[HikbtreeEntry] = []
     visited: set[int] = set()
+    status = TRAVERSAL_COMPLETE
+    detail = ""
 
     while page_offset not in PAGE_TERMINATORS and len(visited) < MAX_PAGES:
         if page_offset in visited:
-            break  # corrupt index looping back on itself
+            status = TRAVERSAL_LOOP
+            detail = (
+                f"page at {page_offset:#x} is already in the chain: the index loops back on "
+                f"itself after {len(visited)} page(s), so any pages beyond it are unreachable"
+            )
+            break
         visited.add(page_offset)
         if not _fits(data, page_offset, PAGE_ENTRY_BASE):
+            status = TRAVERSAL_OUT_OF_BOUNDS
+            detail = (
+                f"next-page pointer {page_offset:#x} addresses bytes outside the image "
+                f"(length {len(data):#x}); the chain cannot be followed further"
+            )
             break
 
         count = _u32(data, page_offset + PAGE_ENTRY_COUNT_OFF)
         next_page = _u64(data, page_offset + PAGE_NEXT_PAGE_OFF)
         entry_base = page_offset + PAGE_ENTRY_BASE
 
+        truncated_at: int | None = None
         for index in range(min(count, MAX_ENTRIES_PER_PAGE)):
             base = entry_base + index * ENTRY_SIZE
             if not _fits(data, base, ENTRY_SIZE):
+                truncated_at = index
                 break
             alloc_flag = _u64(data, base + ENTRY_ALLOC_FLAG_OFF)
             channel = _u8(data, base + ENTRY_CHANNEL_OFF)
@@ -417,6 +585,11 @@ def parse_hikbtree_entries(
             )
             if state == STATE_UNALLOCATED and not include_unallocated:
                 continue
+            # Authoritative point for confidence and its justification: an entry that
+            # contradicts itself never leaves here carrying the ordinary indexed basis.
+            confidence, basis, timestamp_status, channel_valid = qualify_entry_integrity(
+                channel=channel, start=start, end=end, confidence=confidence, basis=basis
+            )
             entries.append(
                 HikbtreeEntry(
                     channel=channel,
@@ -430,12 +603,30 @@ def parse_hikbtree_entries(
                     timestamp_source=source,
                     timestamp_confidence=confidence,
                     timestamp_confidence_basis=basis,
+                    timestamp_status=timestamp_status,
+                    channel_valid=channel_valid,
                 )
             )
 
-        page_offset = next_page
+        if truncated_at is not None:
+            status = TRAVERSAL_MALFORMED
+            detail = (
+                f"page at {page_offset:#x} declares {count} entries but entry {truncated_at} "
+                "runs past the end of the image; the rest of that page and any pages after "
+                "it were not read"
+            )
+            break
 
-    return entries
+        page_offset = next_page
+    else:
+        if len(visited) >= MAX_PAGES:
+            status = TRAVERSAL_PAGE_LIMIT
+            detail = (
+                f"stopped after the {MAX_PAGES} page safety limit with the chain still "
+                "continuing; the index is longer than this engine will follow"
+            )
+
+    return HikbtreeTraversal(entries, status, detail, len(visited))
 
 
 # --------------------------------------------------------------------------------------
@@ -848,6 +1039,10 @@ class RecordingEntry:
     timestamp_confidence: float | None = None
     timestamp_confidence_basis: str = ""
     partial_reason: str = ""
+    #: Coherence of the entry's own time fields; raw values are reported either way.
+    timestamp_status: str = TIMESTAMP_OK
+    #: False when the channel byte cannot name a camera. The raw byte is still in ``channel``.
+    channel_valid: bool = True
 
     def as_dict(self) -> dict:
         return {
@@ -925,29 +1120,59 @@ def build_recording(data, entry: HikbtreeEntry, master: MasterBlock) -> Recordin
         timestamp_confidence=confidence,
         timestamp_confidence_basis=basis,
         partial_reason=partial_reason,
+        timestamp_status=entry.timestamp_status,
+        channel_valid=entry.channel_valid,
     )
 
 
-def list_recordings(data) -> list[RecordingEntry]:
-    """Parse a mapped Hikvision image into recordings.
+@dataclass(frozen=True)
+class RecoveryResult:
+    """Recordings plus how completely the index they came from could be read."""
+
+    recordings: list[RecordingEntry]
+    traversal_status: str
+    traversal_detail: str = ""
+    pages_visited: int = 0
+
+    @property
+    def index_complete(self) -> bool:
+        return self.traversal_status == TRAVERSAL_COMPLETE
+
+
+def recover_recordings(data) -> RecoveryResult:
+    """Parse a mapped Hikvision image into recordings *and* the index traversal outcome.
+
+    Prefer this over :func:`list_recordings` anywhere the inventory is shown to an
+    examiner: a short list because the disk holds few recordings and a short list because
+    the index broke half way are different findings, and only this carries the difference.
 
     ``data`` may be an ``mmap``, ``bytes`` or ``memoryview``. The whole mapping is never
     materialized — see docs/reference/hikvision_fs.md §10.
     """
     master_offset = find_master_block(data)
     if master_offset is None:
-        return []
+        return RecoveryResult([], TRAVERSAL_NO_INDEX, "no HIKVISION master sector found")
     master = parse_master_block(data, master_offset)
-    if master is None or validate_master_block(master):
-        return []
+    if master is None:
+        return RecoveryResult([], TRAVERSAL_NO_INDEX, "master sector could not be parsed")
+    problems = validate_master_block(master)
+    if problems:
+        return RecoveryResult([], TRAVERSAL_NO_INDEX, "; ".join(problems))
 
+    walk = walk_hikbtree(data, master.hikbtree_offset, master=master)
     recordings: list[RecordingEntry] = []
-    for entry in parse_hikbtree_entries(data, master.hikbtree_offset, master=master):
+    for entry in walk.entries:
         recording = build_recording(data, entry, master)
         if recording is not None:
             recordings.append(recording)
     recordings.sort(key=lambda item: (item.channel, item.byte_offset))
-    return recordings
+    return RecoveryResult(recordings, walk.status, walk.detail, walk.pages_visited)
+
+
+def list_recordings(data) -> list[RecordingEntry]:
+    """The recordings alone. Use :func:`recover_recordings` when the caller must also
+    know whether the index was read to its end."""
+    return recover_recordings(data).recordings
 
 
 def summarize(recordings: Iterable[RecordingEntry]) -> dict[str, int]:

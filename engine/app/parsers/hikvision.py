@@ -21,10 +21,13 @@ from engine.app.parsers.schemas.hikvision_fs import (
     RECOVERY_PARTIAL,
     STATE_DELETED,
     STATE_RECORDING,
+    TIMESTAMP_OK,
+    TRAVERSAL_COMPLETE,
     RecordingEntry,
+    RecoveryResult,
     find_master_block,
-    list_recordings,
     parse_master_block,
+    recover_recordings,
     summarize,
 )
 
@@ -54,7 +57,7 @@ class HikvisionAdapter:
         with self._mapped(image_path, max_bytes) as data:
             if data is None:
                 return []
-            return [item.as_dict() for item in list_recordings(data)]
+            return [item.as_dict() for item in recover_recordings(data).recordings]
 
     # -- internals ---------------------------------------------------------------------
 
@@ -64,9 +67,9 @@ class HikvisionAdapter:
                 return []
             master_offset = find_master_block(data)
             master = parse_master_block(data, master_offset) if master_offset is not None else None
-            recordings = list_recordings(data)
-            counts = summarize(recordings)
-            return [self._to_segment(item, master, counts) for item in recordings]
+            result = recover_recordings(data)
+            counts = summarize(result.recordings)
+            return [self._to_segment(item, master, counts, result) for item in result.recordings]
 
     class _Mapping:
         """Context manager yielding a read-only mmap, or None for an unusable image."""
@@ -98,7 +101,13 @@ class HikvisionAdapter:
     def _mapped(self, image_path: Path, max_bytes: int | None) -> "HikvisionAdapter._Mapping":
         return self._Mapping(image_path, max_bytes)
 
-    def _to_segment(self, item: RecordingEntry, master, counts: dict[str, int]) -> RecoveredSegment:
+    def _to_segment(
+        self,
+        item: RecordingEntry,
+        master,
+        counts: dict[str, int],
+        result: RecoveryResult,
+    ) -> RecoveredSegment:
         validation = VALIDATION_BY_STATE.get(item.allocation_state, "hikbtree_entry")
         return RecoveredSegment(
             channel=item.channel,
@@ -139,6 +148,20 @@ class HikvisionAdapter:
                 "recovery_status": item.recovery_status,
                 "partial": item.recovery_status == RECOVERY_PARTIAL,
                 "partial_reason": item.partial_reason,
+                # Third axis, independent of the two above: whether the index entry's own
+                # time fields are coherent. Raw timestamps are reported either way — an
+                # inverted window is flagged, never silently reordered.
+                "timestamp_status": item.timestamp_status,
+                "timestamp_anomaly": item.timestamp_status != TIMESTAMP_OK,
+                # The channel byte as read. `channel_valid` is False when that byte cannot
+                # name a camera at all, so the UI never shows it as an ordinary source.
+                "channel_valid": item.channel_valid,
+                # Whether the recording inventory itself can be trusted to be whole:
+                # "6 recordings" and "6 recordings before the index broke" differ.
+                "index_traversal_status": result.traversal_status,
+                "index_complete": result.traversal_status == TRAVERSAL_COMPLETE,
+                "index_traversal_detail": result.traversal_detail,
+                "index_pages_read": result.pages_visited,
                 "event_type": item.event_type,
                 "resolution": item.resolution,
                 "fps": item.fps,

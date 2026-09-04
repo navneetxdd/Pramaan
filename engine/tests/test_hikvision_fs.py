@@ -571,5 +571,244 @@ class NoDemoTheatreTests(unittest.TestCase):
         self.assertEqual(hits, [], f"Python byte-scan loop in parser: {hits}")
 
 
+class EntryIntegrityTests(HikvisionFsTestBase):
+    """Audit findings F-1 and F-2: an entry that contradicts itself must not be able to
+    carry the ordinary high-confidence justification, and its raw bytes must survive."""
+
+    @staticmethod
+    def _entry_offset(plan_index: int) -> int:
+        page, slot = divmod(plan_index, builder.ENTRIES_PER_PAGE)
+        return (
+            builder.FIRST_PAGE_OFFSET
+            + page * fs.PAGE_SIZE
+            + fs.PAGE_ENTRY_BASE
+            + slot * fs.ENTRY_SIZE
+        )
+
+    def _first_allocated_index(self) -> int:
+        return next(
+            i for i, item in enumerate(builder.PLAN) if item.allocation_state == fs.STATE_ALLOCATED
+        )
+
+    def _entry_at(self, blob: bytes, plan_index: int) -> fs.HikbtreeEntry:
+        master = fs.parse_master_block(blob)
+        assert master is not None
+        entries = fs.parse_hikbtree_entries(blob, master.hikbtree_offset, master=master)
+        offset = builder.PLAN[plan_index].data_offset
+        return next(e for e in entries if e.data_offset == offset)
+
+    # -- F-1 -----------------------------------------------------------------------
+
+    def test_inverted_window_is_flagged_and_never_called_mutually_consistent(self) -> None:
+        """F-1: end_ts before start_ts must not be justified as a consistent recorder write."""
+        index = self._first_allocated_index()
+        plan = builder.PLAN[index]
+        blob = bytearray(self.blob)
+        inverted_end = plan.start_unix - 1
+        struct.pack_into(
+            "<I", blob, self._entry_offset(index) + fs.ENTRY_END_TS_OFF, inverted_end
+        )
+
+        entry = self._entry_at(bytes(blob), index)
+
+        # Raw evidence preserved exactly — no swap, no clamp, no repair.
+        self.assertEqual(entry.start_unix, plan.start_unix)
+        self.assertEqual(entry.end_unix, inverted_end)
+        self.assertLess(entry.end_unix, entry.start_unix)
+
+        # Anomaly detected and stated.
+        self.assertEqual(entry.timestamp_status, fs.TIMESTAMP_INVERTED)
+
+        # The false justification is gone and the confidence is degraded.
+        self.assertNotIn("mutually consistent", entry.timestamp_confidence_basis)
+        self.assertEqual(entry.timestamp_confidence, fs.CONFIDENCE_CONTRADICTORY)
+        self.assertLess(entry.timestamp_confidence, fs.CONFIDENCE_INDEXED)
+        self.assertIn("does not follow", entry.timestamp_confidence_basis)
+
+    def test_inverted_window_survives_into_the_recording_and_its_evidence(self) -> None:
+        index = self._first_allocated_index()
+        plan = builder.PLAN[index]
+        blob = bytearray(self.blob)
+        struct.pack_into(
+            "<I", blob, self._entry_offset(index) + fs.ENTRY_END_TS_OFF, plan.start_unix - 1
+        )
+
+        recording = next(
+            r for r in fs.list_recordings(bytes(blob)) if r.byte_offset >= plan.data_offset
+        )
+        self.assertEqual(recording.timestamp_status, fs.TIMESTAMP_INVERTED)
+        self.assertEqual(recording.timestamp_confidence, fs.CONFIDENCE_CONTRADICTORY)
+        self.assertNotIn("mutually consistent", recording.timestamp_confidence_basis)
+        # Both raw times still reported; neither reordered into a plausible-looking window.
+        self.assertEqual(recording.start_ts, fs.unix_to_iso(plan.start_unix))
+        self.assertEqual(recording.end_ts, fs.unix_to_iso(plan.start_unix - 1))
+        self.assertLess(recording.end_ts, recording.start_ts)
+
+    def test_a_sound_window_keeps_the_ordinary_indexed_confidence(self) -> None:
+        """The fix must not degrade honest entries — the acceptance baseline is unchanged."""
+        index = self._first_allocated_index()
+        entry = self._entry_at(self.blob, index)
+        self.assertEqual(entry.timestamp_status, fs.TIMESTAMP_OK)
+        self.assertTrue(entry.channel_valid)
+        self.assertEqual(entry.timestamp_confidence, fs.CONFIDENCE_INDEXED)
+        self.assertIn("mutually consistent", entry.timestamp_confidence_basis)
+
+    # -- F-2 -----------------------------------------------------------------------
+
+    def test_erased_channel_byte_is_preserved_and_marked_invalid(self) -> None:
+        """F-2: 0xFF is the format's erase pattern, not camera 255."""
+        index = self._first_allocated_index()
+        blob = bytearray(self.blob)
+        blob[self._entry_offset(index) + fs.ENTRY_CHANNEL_OFF] = 0xFF
+
+        entry = self._entry_at(bytes(blob), index)
+
+        # Raw byte survives and is not silently reinterpreted as 0, 1 or "unknown".
+        self.assertEqual(entry.channel, 0xFF)
+        self.assertFalse(entry.channel_valid)
+        self.assertNotEqual(entry.timestamp_confidence, fs.CONFIDENCE_INDEXED)
+        self.assertNotIn("mutually consistent", entry.timestamp_confidence_basis)
+        self.assertIn("erase pattern", entry.timestamp_confidence_basis)
+
+    def test_zero_channel_is_invalid_because_the_format_counts_from_one(self) -> None:
+        index = self._first_allocated_index()
+        blob = bytearray(self.blob)
+        blob[self._entry_offset(index) + fs.ENTRY_CHANNEL_OFF] = 0x00
+
+        entry = self._entry_at(bytes(blob), index)
+        self.assertEqual(entry.channel, 0)
+        self.assertFalse(entry.channel_valid)
+
+    def test_no_invented_channel_ceiling(self) -> None:
+        """Only the two values the format rules out are rejected; 1..254 stay valid."""
+        for channel in (1, 2, 16, 32, 64, 200, 254):
+            self.assertTrue(fs.channel_is_plausible(channel), channel)
+        self.assertFalse(fs.channel_is_plausible(fs.CHANNEL_UNSET))
+        self.assertFalse(fs.channel_is_plausible(fs.CHANNEL_ERASED))
+
+    def test_invalid_channel_reaches_the_segment_evidence(self) -> None:
+        """The UI/report must not present an erased channel as an ordinary camera."""
+        index = self._first_allocated_index()
+        blob = bytearray(self.blob)
+        blob[self._entry_offset(index) + fs.ENTRY_CHANNEL_OFF] = 0xFF
+        with tempfile.TemporaryDirectory(prefix="pramaan-f2-") as tmp:
+            path = Path(tmp) / "channel.img"
+            path.write_bytes(bytes(blob))
+            segments = HikvisionAdapter().scan(path)
+        flagged = [s for s in segments if s.validation_evidence.get("channel_valid") is False]
+        self.assertEqual(len(flagged), 1)
+        self.assertEqual(flagged[0].channel, 0xFF)
+
+
+class IndexTraversalStatusTests(HikvisionFsTestBase):
+    """Audit finding F-3: normal and abnormal ends of the page walk must differ."""
+
+    def _walk(self, blob: bytes) -> fs.HikbtreeTraversal:
+        master = fs.parse_master_block(blob)
+        assert master is not None
+        return fs.walk_hikbtree(blob, master.hikbtree_offset, master=master)
+
+    def test_a_normal_final_page_reports_complete(self) -> None:
+        walk = self._walk(self.blob)
+        self.assertEqual(walk.status, fs.TRAVERSAL_COMPLETE)
+        self.assertTrue(walk.is_complete)
+        self.assertEqual(walk.detail, "")
+        self.assertEqual(len(walk.entries), builder.EXPECTED_RECORDING_COUNT)
+        self.assertEqual(fs.recover_recordings(self.blob).traversal_status, fs.TRAVERSAL_COMPLETE)
+
+    def test_next_pointer_past_eof_is_out_of_bounds_and_keeps_what_was_found(self) -> None:
+        blob = bytearray(self.blob)
+        struct.pack_into(
+            "<Q", blob, builder.FIRST_PAGE_OFFSET + fs.PAGE_NEXT_PAGE_OFF, len(self.blob) * 8
+        )
+        walk = self._walk(bytes(blob))
+        self.assertEqual(walk.status, fs.TRAVERSAL_OUT_OF_BOUNDS)
+        self.assertFalse(walk.is_complete)
+        self.assertIn(walk.status, fs.TRAVERSAL_INCOMPLETE)
+        # Safe partial recovery is the intended design: page-1 entries are retained.
+        self.assertEqual(len(walk.entries), builder.ENTRIES_PER_PAGE)
+
+    def test_self_looping_page_reports_loop_without_hanging(self) -> None:
+        blob = bytearray(self.blob)
+        struct.pack_into(
+            "<Q",
+            blob,
+            builder.FIRST_PAGE_OFFSET + fs.PAGE_NEXT_PAGE_OFF,
+            builder.FIRST_PAGE_OFFSET,
+        )
+        walk = self._walk(bytes(blob))
+        self.assertEqual(walk.status, fs.TRAVERSAL_LOOP)
+        self.assertIn(walk.status, fs.TRAVERSAL_INCOMPLETE)
+        self.assertEqual(len(walk.entries), builder.ENTRIES_PER_PAGE)
+
+    def test_malformed_page_truncated_by_the_end_of_the_image_reports_malformed(self) -> None:
+        """A page whose declared entries run past EOF must say so, not stop quietly."""
+        blob = bytearray(self.blob)
+        # Point page 1 at a page near the very end, then declare a full page of entries there.
+        stub = len(blob) - fs.PAGE_ENTRY_BASE - fs.ENTRY_SIZE
+        struct.pack_into("<Q", blob, builder.FIRST_PAGE_OFFSET + fs.PAGE_NEXT_PAGE_OFF, stub)
+        struct.pack_into("<I", blob, stub + fs.PAGE_ENTRY_COUNT_OFF, 8)
+        struct.pack_into("<Q", blob, stub + fs.PAGE_NEXT_PAGE_OFF, 0xFFFFFFFFFFFFFFFF)
+        walk = self._walk(bytes(blob))
+        self.assertEqual(walk.status, fs.TRAVERSAL_MALFORMED)
+        self.assertIn(walk.status, fs.TRAVERSAL_INCOMPLETE)
+
+    def test_missing_index_is_distinct_from_a_completed_empty_walk(self) -> None:
+        blob = bytearray(self.blob)
+        at = builder.HIKBTREE_OFFSET + fs.TREE_SIG_OFF
+        blob[at : at + len(fs.HIKBTREE_SIG)] = b"\x00" * len(fs.HIKBTREE_SIG)
+        walk = self._walk(bytes(blob))
+        self.assertEqual(walk.status, fs.TRAVERSAL_NO_INDEX)
+        self.assertFalse(walk.is_complete)
+        self.assertEqual(walk.entries, [])
+
+    def test_severed_pointer_to_the_documented_terminator_is_indistinguishable(self) -> None:
+        """Honest negative result.
+
+        docs/reference/hikvision_fs.md §6.2 defines 0xFFFFFFFFFFFFFFFF as the last-page
+        marker, so a pointer overwritten with that exact value *is* a valid last page as
+        far as the format can tell. The engine reports COMPLETE, and this test exists to
+        record that limitation rather than let a later reader assume it is detected.
+        """
+        blob = bytearray(self.blob)
+        struct.pack_into(
+            "<Q", blob, builder.FIRST_PAGE_OFFSET + fs.PAGE_NEXT_PAGE_OFF, 0xFFFFFFFFFFFFFFFF
+        )
+        walk = self._walk(bytes(blob))
+        self.assertEqual(walk.status, fs.TRAVERSAL_COMPLETE)
+        self.assertEqual(len(walk.entries), builder.ENTRIES_PER_PAGE)
+
+    def test_traversal_status_reaches_the_segment_evidence(self) -> None:
+        """Requirement F-3.9: the API layer must not silently discard the diagnostic."""
+        blob = bytearray(self.blob)
+        struct.pack_into(
+            "<Q",
+            blob,
+            builder.FIRST_PAGE_OFFSET + fs.PAGE_NEXT_PAGE_OFF,
+            builder.FIRST_PAGE_OFFSET,
+        )
+        with tempfile.TemporaryDirectory(prefix="pramaan-f3-") as tmp:
+            path = Path(tmp) / "loop.img"
+            path.write_bytes(bytes(blob))
+            segments = HikvisionAdapter().scan(path)
+        self.assertTrue(segments)
+        for segment in segments:
+            self.assertEqual(
+                segment.validation_evidence["index_traversal_status"], fs.TRAVERSAL_LOOP
+            )
+            self.assertFalse(segment.validation_evidence["index_complete"])
+            self.assertIn("loops back", segment.validation_evidence["index_traversal_detail"])
+
+    def test_a_healthy_image_reports_a_complete_index_to_the_caller(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pramaan-f3ok-") as tmp:
+            path = Path(tmp) / "ok.img"
+            path.write_bytes(self.blob)
+            segments = HikvisionAdapter().scan(path)
+        self.assertTrue(segments)
+        for segment in segments:
+            self.assertTrue(segment.validation_evidence["index_complete"])
+            self.assertEqual(segment.validation_evidence["index_traversal_detail"], "")
+
+
 if __name__ == "__main__":
     unittest.main()
