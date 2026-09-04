@@ -805,7 +805,7 @@ export function CaseRecoverPage() {
                 rows={visibleSegments}
                 rowHeight={48}
                 maxHeight={288}
-                minWidth={940}
+                minWidth={880}
                 emptyMessage={
                   query.trim()
                     ? `No recovered segment matches "${query.trim()}".`
@@ -852,7 +852,7 @@ export function CaseRecoverPage() {
                     key: "range",
                     sortable: true,
                     header: "Byte range",
-                    width: "minmax(150px, 1.2fr)",
+                    width: "minmax(132px, 1.2fr)",
                     className: "mono",
                     cell: (seg) =>
                       seg.offset_start != null && seg.offset_end != null ? (
@@ -898,7 +898,7 @@ export function CaseRecoverPage() {
                     key: "ts",
                     sortable: true,
                     header: "Timestamp",
-                    width: "minmax(170px, 1.4fr)",
+                    width: "minmax(150px, 1.4fr)",
                     cell: (seg) => (
                       <div className="text-[11px]">
                         <div>
@@ -923,7 +923,7 @@ export function CaseRecoverPage() {
                     key: "validation",
                     sortable: true,
                     header: "Validation",
-                    width: "minmax(180px, 1.3fr)",
+                    width: "minmax(158px, 1.3fr)",
                     cell: (seg) => (
                       <div className="flex flex-col gap-0.5">
                         <ConfidenceBadge
