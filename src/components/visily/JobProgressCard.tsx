@@ -49,7 +49,7 @@ export function JobProgressCard({
               : status}
         </span>
       </div>
-      {status === "running" || status === "completed" ? (
+      {status === "running" ? (
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-4)]">
           <div
             className="h-full rounded-full bg-[var(--accent-400)] transition-all duration-500"

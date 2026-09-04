@@ -140,7 +140,7 @@ export function CaseJobsPage() {
         />
         <DashboardStat
           label="Failed jobs"
-          value={String(failedCount).padStart(2, "0")}
+          value={String(failedCount)}
           icon={AlertTriangle}
           tone={failedCount > 0 ? "danger" : "success"}
         />
@@ -225,11 +225,20 @@ export function CaseJobsPage() {
                 className: "min-w-[120px]",
                 cell: (job) => {
                   const liveJob = live[job.id];
+                  const status = liveJob?.status ?? job.status;
+                  // Redundant once a job is done — the Status column already says
+                  // "completed", and a permanently-full bar next to it adds nothing.
+                  if (status === "completed") {
+                    return (
+                      <span className="text-[10px] text-[var(--text-tertiary)]">
+                        —
+                      </span>
+                    );
+                  }
                   const progress =
                     liveJob?.progress ??
-                    (job.status === "completed"
-                      ? 100
-                      : (parseJobStats(job.stats_json).progress ?? 0));
+                    parseJobStats(job.stats_json).progress ??
+                    0;
                   return (
                     <div>
                       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-4)]">

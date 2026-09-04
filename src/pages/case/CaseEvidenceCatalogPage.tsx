@@ -263,18 +263,6 @@ export function CaseEvidenceCatalogPage() {
         </Button>
       </div>
 
-      <p className="visily-breadcrumb-trail px-1">
-        <span>Forensic_root</span>
-        <span>›</span>
-        <span>Cases</span>
-        <span>›</span>
-        <span>{caseId?.slice(0, 8)}</span>
-        <span>›</span>
-        <span className="text-[var(--accent-500)]">
-          Catalog · {filtered.length} item{filtered.length === 1 ? "" : "s"}
-        </span>
-      </p>
-
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         <FacetedFilters
           groups={filterGroups}

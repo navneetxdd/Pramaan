@@ -715,7 +715,9 @@ export function CaseAcquirePage() {
                   <div className="flex justify-between gap-4">
                     <dt>Status</dt>
 
-                    <dd>{latest.acquisition_status ?? "—"}</dd>
+                    <dd>
+                      {latest.acquisition_status?.replace(/_/g, " ") ?? "—"}
+                    </dd>
                   </div>
                 </dl>
               </div>

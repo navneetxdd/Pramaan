@@ -18,7 +18,11 @@ import {
   totalRecoveredSegments,
 } from "@/lib/caseStats";
 import { formatBytes } from "@/lib/utils";
-import { integrityLabel, resolveIntegrityState } from "@/lib/integrity";
+import {
+  custodyActionLabel,
+  integrityLabel,
+  resolveIntegrityState,
+} from "@/lib/integrity";
 
 export function CaseOverviewPage() {
   const { caseId, workspace } = useCaseContext();
@@ -120,7 +124,7 @@ export function CaseOverviewPage() {
         />
         <DashboardStat
           label="Failed jobs"
-          value={String(flagged).padStart(2, "0")}
+          value={String(flagged)}
           icon={Shield}
           tone={flagged > 0 ? "danger" : "success"}
         />
@@ -200,7 +204,9 @@ export function CaseOverviewPage() {
               id: e.id,
               time: e.created_at.replace("T", " ").replace("Z", " UTC"),
               actor: e.actor,
-              action: e.detail ? `${e.action} (${e.detail})` : e.action,
+              action: e.detail
+                ? `${custodyActionLabel(e.action)} (${e.detail})`
+                : custodyActionLabel(e.action),
             }))}
           />
         </div>

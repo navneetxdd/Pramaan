@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useCaseContext } from "@/context/CaseContext";
 import { api, type CustodyEvent } from "@/lib/api";
+import { custodyActionLabel } from "@/lib/integrity";
 import { Badge } from "@/components/ui/badge";
 import { VirtualTable } from "@/components/ui/virtual-table";
 import { DashboardStat } from "@/components/visily/DashboardStat";
@@ -116,7 +117,7 @@ export function CaseCustodyPage() {
                 {
                   key: "action",
                   header: "Action",
-                  cell: (e) => <span className="mono">{e.action}</span>,
+                  cell: (e) => <span>{custodyActionLabel(e.action)}</span>,
                 },
               ]}
             />

@@ -8,7 +8,7 @@ import {
   type SegmentDetail,
 } from "@/lib/api";
 import { formatBytes, formatOffset } from "@/lib/utils";
-import { formatTimestampSource } from "@/lib/integrity";
+import { custodyActionLabel, formatTimestampSource } from "@/lib/integrity";
 import { allocationLabel, allocationOf } from "@/lib/allocation";
 import { HexViewer } from "@/components/forensic/HexViewer";
 import { Button } from "@/components/ui/button";
@@ -465,7 +465,7 @@ export function SegmentInspector({
                     >
                       <p>
                         <span className="mono">{row.timestamp_utc}</span> ·{" "}
-                        {row.action} · {row.actor}
+                        {custodyActionLabel(row.action)} · {row.actor}
                       </p>
                       <p className="mono break-all text-[10px] text-[var(--text-tertiary)]">
                         prev {row.prev_row_hash.slice(0, 12)}… → this{" "}

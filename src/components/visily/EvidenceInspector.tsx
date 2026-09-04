@@ -1,6 +1,7 @@
 import { HardDrive, Clock, MapPin } from "lucide-react";
 import type { CustodyEvent, EvidenceRecord } from "@/lib/api";
 import { formatBytes, shortHash } from "@/lib/utils";
+import { custodyActionLabel } from "@/lib/integrity";
 
 type EvidenceInspectorProps = {
   item: EvidenceRecord | null;
@@ -73,7 +74,7 @@ export function EvidenceInspector({
           >
             <dt className="text-[var(--text-tertiary)]">Media type</dt>
             <dd className="font-medium capitalize text-[var(--text-primary)]">
-              {item.media_type || "disk image"}
+              {(item.media_type || "disk image").replace(/_/g, " ")}
             </dd>
           </div>
           {oem ? (
@@ -150,7 +151,7 @@ export function EvidenceInspector({
                   style={{ borderColor: "var(--accent-400)" }}
                 >
                   <p className="text-[12px] font-medium text-[var(--text-primary)]">
-                    {ev.action}
+                    {custodyActionLabel(ev.action)}
                   </p>
                   <p className="mono mt-0.5 text-[10px] text-[var(--text-tertiary)]">
                     {ev.created_at.replace("T", " ").slice(0, 16)} · {ev.actor}
