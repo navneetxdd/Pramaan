@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import platform
 import shutil
 import stat
 import uuid
@@ -37,6 +38,27 @@ BUNDLE_VERSION = 2
 MAX_ARCHIVE_ENTRIES = 250_000
 MAX_MANIFEST_BYTES = 32 * 1024 * 1024
 DISK_RESERVE_BYTES = 100 * 1024 * 1024
+
+
+_IS_WINDOWS = platform.system() == "Windows"
+
+
+def _long_path(path: Path) -> Path:
+    """Bypass Windows' legacy 260-character MAX_PATH limit for one file operation.
+
+    A bundle nests real evidence filenames under generated case/device/sequence ids
+    (files/devices/<32 hex chars>/<original filename>), so an ordinary-length install
+    directory plus an ordinary-length original filename can still push a staging path
+    over 260 characters — confirmed by reproducing it against a real acquired file.
+    The `\\\\?\\` extended-length prefix is the standard fix; it's a no-op on other
+    platforms and on paths that don't need it.
+    """
+    if not _IS_WINDOWS:
+        return path
+    resolved = str(path.resolve())
+    if resolved.startswith("\\\\?\\"):
+        return path
+    return Path("\\\\?\\" + resolved)
 
 
 def _sha256_file(path: Path) -> str:
@@ -113,7 +135,9 @@ def export_case_bundle(case_id: str, actor: str) -> Path:
     payload = _collect_case_payload(case_id)
     bundle_id = uuid.uuid4().hex
     bundle_path = BUNDLES_DIR / f"{case_id}_{bundle_id}.pramaan.zip"
-    staging = BUNDLES_DIR / f".staging_{bundle_id}"
+    # Wrapped once here: every path derived from `staging` below (mkdir, copy2,
+    # rglob, zf.write, rmtree) inherits the long-path prefix automatically.
+    staging = _long_path(BUNDLES_DIR / f".staging_{bundle_id}")
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
@@ -125,7 +149,7 @@ def export_case_bundle(case_id: str, actor: str) -> Path:
             raise FileNotFoundError(f"Missing bundle file: {source}")
         dest = staging / archive_name
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, dest)
+        shutil.copy2(_long_path(source), dest)
         file_entries.append(
             {
                 "archive_path": archive_name.replace("\\", "/"),
@@ -173,7 +197,7 @@ def export_case_bundle(case_id: str, actor: str) -> Path:
     manifest_path = staging / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(_long_path(bundle_path), "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for path in staging.rglob("*"):
             if path.is_file():
                 zf.write(path, path.relative_to(staging).as_posix())
@@ -198,7 +222,9 @@ def import_case_bundle(bundle_path: Path, actor: str, *, verify_only: bool = Fal
     if not bundle_path.exists():
         raise ValueError("Bundle file not found")
 
-    extract_dir = BUNDLES_DIR / f".import_{uuid.uuid4().hex}"
+    # Wrapped once, same reasoning as export_case_bundle's staging dir: every path
+    # derived from extract_dir below inherits the long-path prefix automatically.
+    extract_dir = _long_path(BUNDLES_DIR / f".import_{uuid.uuid4().hex}")
     extract_dir.mkdir(parents=True)
 
     try:
@@ -269,9 +295,10 @@ def import_case_bundle(bundle_path: Path, actor: str, *, verify_only: bool = Fal
                 raise ValueError(f"Device payload is not declared in the signed file list: {bundle_image}")
             src = _safe_member_path(extract_dir, bundle_image)
             dest = storage / PurePosixPath(bundle_image).name
-            shutil.copy2(src, dest)
+            long_dest = _long_path(dest)
+            shutil.copy2(src, long_dest)
             device["image_path"] = str(dest)
-            md5, sha256 = hash_file(dest)
+            md5, sha256 = hash_file(long_dest)
             device["image_md5"] = md5
             device["image_sha256"] = sha256
 
@@ -286,9 +313,10 @@ def import_case_bundle(bundle_path: Path, actor: str, *, verify_only: bool = Fal
                 raise ValueError(f"Sequence payload is not declared in the signed file list: {bundle_output}")
             src = _safe_member_path(extract_dir, bundle_output)
             dest = seq_dir / f"{seq['id']}_{PurePosixPath(bundle_output).name}"
-            shutil.copy2(src, dest)
+            long_dest = _long_path(dest)
+            shutil.copy2(src, long_dest)
             seq["output_path"] = str(dest)
-            md5, sha256 = hash_file(dest)
+            md5, sha256 = hash_file(long_dest)
             seq["output_md5"] = md5
             seq["output_sha256"] = sha256
 
