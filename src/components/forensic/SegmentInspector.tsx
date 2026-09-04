@@ -9,7 +9,12 @@ import {
 } from "@/lib/api";
 import { formatBytes, formatOffset } from "@/lib/utils";
 import { formatTimestampSource } from "@/lib/integrity";
-import { allocationLabel, allocationOf } from "@/lib/allocation";
+import {
+  allocationLabel,
+  allocationOf,
+  isPartial,
+  partialReason,
+} from "@/lib/allocation";
 import { HexViewer } from "@/components/forensic/HexViewer";
 import { Button } from "@/components/ui/button";
 import { getApiBase } from "@/lib/apiBase";
@@ -301,6 +306,10 @@ export function SegmentInspector({
           ["Channel", displayOrDash(segment.channel ?? detail?.channel)],
           ["State", allocationLabel(allocationOf(segment))],
           [
+            "Data",
+            isPartial(segment) ? "Partial — bytes overwritten" : "Intact",
+          ],
+          [
             "Event type",
             displayOrDash(evidenceValue(segment, detail, "event_type")),
           ],
@@ -453,6 +462,17 @@ export function SegmentInspector({
             </div>
 
             <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+              {isPartial(segment) && partialReason(segment) ? (
+                <div className="rounded border border-[var(--status-warning)] bg-[rgba(217,119,6,0.1)] p-2.5">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--status-warning)]">
+                    Partially overwritten
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-[var(--text-secondary)]">
+                    {partialReason(segment)}
+                  </p>
+                </div>
+              ) : null}
+
               {typeof confidenceBasis === "string" && confidenceBasis ? (
                 <div className="rounded border border-[var(--border-subtle)] bg-[var(--surface-3)] p-2.5">
                   <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">

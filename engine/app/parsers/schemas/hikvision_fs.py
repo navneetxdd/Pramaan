@@ -100,6 +100,16 @@ SOURCE_RESIDUAL = "hikbtree_residual"
 SOURCE_IDR_SCAN = "idr_table_scan"
 SOURCE_UNAVAILABLE = "unavailable"
 
+# --- Recovery status ------------------------------------------------------------------
+# docs/reference/hikvision_fs.md section 7.3
+#
+# Separate axis from allocation_state: allocation_state describes what the *index*
+# says, recovery_status describes what the *data* is. A recording can be
+# allocated+partial (still indexed, but its block has been partly overwritten) or
+# deleted+partial. Bytes that are gone are reported gone, never reconstructed.
+RECOVERY_INTACT = "intact"
+RECOVERY_PARTIAL = "partial"
+
 EVENT_CONTINUOUS = "continuous"
 EVENT_EVENT = "event"
 EVENT_UNKNOWN = "unknown"
@@ -763,6 +773,46 @@ def find_stream_info(data, start: int, end: int, *, scan_bytes: int = 1 << 20) -
 # --------------------------------------------------------------------------------------
 
 
+def detect_partial_overwrite(
+    stamps: Sequence[int],
+    start_unix: int | None,
+    end_unix: int | None,
+) -> tuple[bool, str]:
+    """Decide whether this data block holds footage from more than one recording.
+
+    [HAN2015] section 3.3 gives the test directly: when the disk wraps, new video is
+    written over an old data block, and "if any recording time from the IDR tables in
+    the video data predates the Start/End time of record of data block entries, it can
+    be understood that the hard disk had been full at least one time and has previously
+    been overwritten."
+
+    So an IDR timestamp lying outside the entry's own declared window means part of
+    this block belongs to a different recording. Only the portion inside the window is
+    genuinely this recording; the rest is reported as lost, never reconstructed.
+
+    Returns (is_partial, reason). Requires a usable window and at least one IDR record;
+    with neither there is nothing to compare and the block is not claimed partial.
+    """
+    if start_unix is None or end_unix is None or not stamps:
+        return False, ""
+    outside = [ts for ts in stamps if ts < start_unix or ts > end_unix]
+    if not outside:
+        return False, ""
+    older = sum(1 for ts in outside if ts < start_unix)
+    newer = len(outside) - older
+    parts = []
+    if older:
+        parts.append(f"{older} IDR record(s) predate the entry's start time")
+    if newer:
+        parts.append(f"{newer} IDR record(s) postdate the entry's end time")
+    return True, (
+        ", ".join(parts)
+        + " — the data block holds footage from more than one recording "
+        "([HAN2015] section 3.3). Only the bytes inside the entry's own window are "
+        "reported as recovered; the remainder is overwritten and is not reconstructed."
+    )
+
+
 def classify_event_type(timestamps: Sequence[int], start_unix: int | None, end_unix: int | None) -> str:
     """Infer continuous vs trigger-driven recording from IDR cadence."""
     if len(timestamps) < 2:
@@ -792,10 +842,12 @@ class RecordingEntry:
     resolution: str | None
     fps: float | None
     allocation_state: str
+    recovery_status: str = RECOVERY_INTACT
     # Provenance — not part of the contract, carried for the report and custody trail.
     timestamp_source: str = SOURCE_UNAVAILABLE
     timestamp_confidence: float | None = None
     timestamp_confidence_basis: str = ""
+    partial_reason: str = ""
 
     def as_dict(self) -> dict:
         return {
@@ -808,6 +860,7 @@ class RecordingEntry:
             "resolution": self.resolution,
             "fps": self.fps,
             "allocation_state": self.allocation_state,
+            "recovery_status": self.recovery_status,
         }
 
 
@@ -844,6 +897,18 @@ def build_recording(data, entry: HikbtreeEntry, master: MasterBlock) -> Recordin
             "table and may belong to either the original or an overwriting recording"
         )
 
+    # A block holding IDR records from outside this entry's window carries footage
+    # from more than one recording ([HAN2015] section 3.3). Report what is genuinely
+    # this recording and say plainly that the rest is gone.
+    #
+    # This has to read the IDR table *unfiltered*: `stamps` above was constrained to
+    # the entry's own window for event classification, which by construction discards
+    # exactly the out-of-window records that prove an overwrite.
+    all_stamps = idr_timestamps(data, block_start, block_end)
+    is_partial, partial_reason = detect_partial_overwrite(
+        all_stamps, start_unix, end_unix
+    )
+
     info = find_stream_info(data, payload_start, payload_end)
     return RecordingEntry(
         channel=entry.channel,
@@ -855,9 +920,11 @@ def build_recording(data, entry: HikbtreeEntry, master: MasterBlock) -> Recordin
         resolution=info.resolution if info else None,
         fps=info.fps if info else None,
         allocation_state=entry.allocation_state,
+        recovery_status=RECOVERY_PARTIAL if is_partial else RECOVERY_INTACT,
         timestamp_source=source,
         timestamp_confidence=confidence,
         timestamp_confidence_basis=basis,
+        partial_reason=partial_reason,
     )
 
 
@@ -889,3 +956,8 @@ def summarize(recordings: Iterable[RecordingEntry]) -> dict[str, int]:
     for recording in recordings:
         counts[recording.allocation_state] = counts.get(recording.allocation_state, 0) + 1
     return counts
+
+
+def count_partial(recordings: Iterable[RecordingEntry]) -> int:
+    """How many recovered recordings are only partially present on the platter."""
+    return sum(1 for r in recordings if r.recovery_status == RECOVERY_PARTIAL)

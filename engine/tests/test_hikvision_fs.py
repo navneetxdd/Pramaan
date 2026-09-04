@@ -31,6 +31,7 @@ OUTPUT_CONTRACT = {
     "resolution",
     "fps",
     "allocation_state",
+    "recovery_status",
 }
 
 
@@ -180,11 +181,21 @@ class HikbtreeEntryTests(HikvisionFsTestBase):
         # The sentinel means "no end time written yet" — it must not become a bogus 2038 date.
         self.assertIsNone(recording[0].start_unix)
 
+    @staticmethod
+    def _entry_offset(plan_index: int) -> int:
+        """Byte offset of a planned entry, following the multi-page chain."""
+        page, slot = divmod(plan_index, builder.ENTRIES_PER_PAGE)
+        return (
+            builder.FIRST_PAGE_OFFSET
+            + page * fs.PAGE_SIZE
+            + fs.PAGE_ENTRY_BASE
+            + slot * fs.ENTRY_SIZE
+        )
+
     def test_cleared_flag_outside_the_video_area_is_unallocated_not_deleted(self) -> None:
         blob = bytearray(self.blob)
         deleted_plan = next(item for item in builder.PLAN if item.allocation_state.startswith("deleted"))
-        slot = builder.PLAN.index(deleted_plan)
-        entry_at = builder.FIRST_PAGE_OFFSET + fs.PAGE_ENTRY_BASE + slot * fs.ENTRY_SIZE
+        entry_at = self._entry_offset(builder.PLAN.index(deleted_plan))
         struct.pack_into("<Q", blob, entry_at + fs.ENTRY_DATA_OFFSET_OFF, 0)
 
         master = fs.parse_master_block(bytes(blob))
@@ -201,22 +212,36 @@ class HikbtreeEntryTests(HikvisionFsTestBase):
         )
 
     def test_cyclic_page_chain_terminates(self) -> None:
+        """A page pointing at itself must not loop — it stops after that page."""
         blob = bytearray(self.blob)
-        struct.pack_into("<Q", blob, builder.FIRST_PAGE_OFFSET + fs.PAGE_NEXT_PAGE_OFF, builder.FIRST_PAGE_OFFSET)
-        master = fs.parse_master_block(bytes(blob))
-        assert master is not None
-        entries = fs.parse_hikbtree_entries(bytes(blob), master.hikbtree_offset, master=master)
-        self.assertEqual(len(entries), builder.EXPECTED_RECORDING_COUNT)
-
-    def test_entry_count_is_clamped_to_what_a_page_can_hold(self) -> None:
-        blob = bytearray(self.blob)
-        struct.pack_into("<I", blob, builder.FIRST_PAGE_OFFSET + fs.PAGE_ENTRY_COUNT_OFF, 0xFFFFFFFF)
+        struct.pack_into(
+            "<Q",
+            blob,
+            builder.FIRST_PAGE_OFFSET + fs.PAGE_NEXT_PAGE_OFF,
+            builder.FIRST_PAGE_OFFSET,
+        )
         master = fs.parse_master_block(bytes(blob))
         assert master is not None
         entries = fs.parse_hikbtree_entries(
             bytes(blob), master.hikbtree_offset, master=master, include_unallocated=True
         )
-        self.assertLessEqual(len(entries), fs.MAX_ENTRIES_PER_PAGE)
+        # Only the first page is reachable once its own pointer loops back.
+        self.assertEqual(len(entries), builder.ENTRIES_PER_PAGE)
+        self.assertEqual({e.page_offset for e in entries}, {builder.FIRST_PAGE_OFFSET})
+
+    def test_entry_count_is_clamped_to_what_a_page_can_hold(self) -> None:
+        """A corrupt count must not read past the end of its own 4 KB page."""
+        blob = bytearray(self.blob)
+        struct.pack_into(
+            "<I", blob, builder.FIRST_PAGE_OFFSET + fs.PAGE_ENTRY_COUNT_OFF, 0xFFFFFFFF
+        )
+        master = fs.parse_master_block(bytes(blob))
+        assert master is not None
+        entries = fs.parse_hikbtree_entries(
+            bytes(blob), master.hikbtree_offset, master=master, include_unallocated=True
+        )
+        first_page = [e for e in entries if e.page_offset == builder.FIRST_PAGE_OFFSET]
+        self.assertLessEqual(len(first_page), fs.MAX_ENTRIES_PER_PAGE)
 
     def test_missing_hikbtree_signature_yields_nothing(self) -> None:
         blob = bytearray(self.blob)
@@ -315,7 +340,10 @@ class OutputContractTests(HikvisionFsTestBase):
         entries = fs.list_recordings(self.blob)
         counts = fs.summarize(entries)
         self.assertEqual(counts[fs.STATE_DELETED], builder.EXPECTED_DELETED_COUNT)
-        self.assertEqual(counts[fs.STATE_ALLOCATED], 4)
+        self.assertEqual(
+            counts[fs.STATE_ALLOCATED],
+            sum(1 for p in builder.PLAN if p.allocation_state == "allocated"),
+        )
         self.assertEqual(counts[fs.STATE_RECORDING], 1)
 
     def test_overwritten_recording_recovers_its_time_from_the_idr_table(self) -> None:
@@ -400,6 +428,125 @@ class AdapterSegmentTests(HikvisionFsTestBase):
             self.assertTrue(evidence["sps_decoded"])
             self.assertEqual(evidence["master_block_signature"], "HIKVISION@HANGZHOU")
             self.assertEqual(evidence["firmware"], "V4.30.005")
+
+
+class MultiPageIndexTests(HikvisionFsTestBase):
+    """The page-walk loop, exercised rather than trusted.
+
+    A fixture that fits every entry on one 4 KB page never follows a next-page
+    pointer, so the whole chain-walking path — and any bug in it — stays invisible.
+    """
+
+    def _entries(self, **kwargs) -> list[fs.HikbtreeEntry]:
+        master = fs.parse_master_block(self.blob)
+        assert master is not None
+        return fs.parse_hikbtree_entries(
+            self.blob, master.hikbtree_offset, master=master, **kwargs
+        )
+
+    def test_entries_really_do_span_multiple_pages(self) -> None:
+        pages = {item.page_offset for item in self._entries(include_unallocated=True)}
+        self.assertEqual(len(pages), builder.EXPECTED_INDEX_PAGES)
+        self.assertGreater(len(pages), 1, "fixture no longer exercises the page walk")
+
+    def test_every_page_in_the_chain_is_read(self) -> None:
+        entries = self._entries(include_unallocated=True)
+        self.assertEqual(len(entries), builder.EXPECTED_RECORDING_COUNT + 1)
+        expected = {
+            builder.FIRST_PAGE_OFFSET + i * fs.PAGE_SIZE
+            for i in range(builder.EXPECTED_INDEX_PAGES)
+        }
+        self.assertEqual({item.page_offset for item in entries}, expected)
+
+    def test_recordings_from_later_pages_are_not_lost(self) -> None:
+        """The truncation bug this fixture guards against dropped tail entries."""
+        entries = self._entries()
+        last_page = builder.FIRST_PAGE_OFFSET + (
+            builder.EXPECTED_INDEX_PAGES - 1
+        ) * fs.PAGE_SIZE
+        self.assertTrue(
+            any(item.page_offset == last_page for item in entries),
+            "no recording came from the final index page",
+        )
+
+    def test_a_broken_next_pointer_stops_the_walk_cleanly(self) -> None:
+        blob = bytearray(self.blob)
+        struct.pack_into(
+            "<Q",
+            blob,
+            builder.FIRST_PAGE_OFFSET + fs.PAGE_NEXT_PAGE_OFF,
+            len(blob) * 4,  # points far outside the image
+        )
+        master = fs.parse_master_block(bytes(blob))
+        assert master is not None
+        entries = fs.parse_hikbtree_entries(
+            bytes(blob), master.hikbtree_offset, master=master, include_unallocated=True
+        )
+        # First page still read; the walk stops rather than reading out of bounds.
+        self.assertEqual(len(entries), builder.ENTRIES_PER_PAGE)
+
+
+class PartialOverwriteTests(HikvisionFsTestBase):
+    """Partially overwritten blocks must be reported PARTIAL, never as complete.
+
+    Detection follows [HAN2015] section 3.3: an IDR record timestamped outside the
+    entry's own window proves the block carries footage from another recording.
+    """
+
+    def test_detector_needs_evidence_before_it_claims_an_overwrite(self) -> None:
+        self.assertFalse(fs.detect_partial_overwrite([], 100, 200)[0])
+        self.assertFalse(fs.detect_partial_overwrite([120, 150], None, None)[0])
+        self.assertFalse(fs.detect_partial_overwrite([120, 150, 180], 100, 200)[0])
+
+    def test_detector_flags_records_outside_the_declared_window(self) -> None:
+        older, reason = fs.detect_partial_overwrite([50, 120, 150], 100, 200)
+        self.assertTrue(older)
+        self.assertIn("predate", reason)
+        newer, reason = fs.detect_partial_overwrite([120, 150, 900], 100, 200)
+        self.assertTrue(newer)
+        self.assertIn("postdate", reason)
+
+    def test_exactly_the_planned_block_comes_back_partial(self) -> None:
+        recordings = fs.list_recordings(self.blob)
+        partial = [r for r in recordings if r.recovery_status == fs.RECOVERY_PARTIAL]
+        self.assertEqual(len(partial), builder.EXPECTED_PARTIAL_COUNT)
+        self.assertEqual(fs.count_partial(recordings), builder.EXPECTED_PARTIAL_COUNT)
+
+        planned = next(p for p in builder.PLAN if p.is_partially_overwritten)
+        self.assertEqual(partial[0].channel, planned.channel)
+        self.assertEqual(partial[0].byte_offset, planned.data_offset)
+
+    def test_partial_recording_is_still_recovered_not_dropped(self) -> None:
+        """Partial means "some of it is gone", not "throw it away"."""
+        partial = next(
+            r
+            for r in fs.list_recordings(self.blob)
+            if r.recovery_status == fs.RECOVERY_PARTIAL
+        )
+        self.assertGreater(partial.byte_length, 0)
+        self.assertIsNotNone(partial.start_ts)
+        # Still indexed by the recorder — allocation and recovery are separate axes.
+        self.assertEqual(partial.allocation_state, fs.STATE_ALLOCATED)
+
+    def test_partial_reason_states_the_evidence(self) -> None:
+        partial = next(
+            r
+            for r in fs.list_recordings(self.blob)
+            if r.recovery_status == fs.RECOVERY_PARTIAL
+        )
+        self.assertIn("IDR record", partial.partial_reason)
+        self.assertIn("more than one recording", partial.partial_reason)
+        # It must say plainly that the missing part is not reconstructed.
+        self.assertIn("not reconstructed", partial.partial_reason)
+
+    def test_intact_recordings_are_not_flagged(self) -> None:
+        recordings = fs.list_recordings(self.blob)
+        intact = [r for r in recordings if r.recovery_status == fs.RECOVERY_INTACT]
+        self.assertEqual(
+            len(intact), builder.EXPECTED_RECORDING_COUNT - builder.EXPECTED_PARTIAL_COUNT
+        )
+        for record in intact:
+            self.assertEqual(record.partial_reason, "")
 
 
 class NoDemoTheatreTests(unittest.TestCase):

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from engine.app.parsers.base import RecoveredSegment
 from engine.app.parsers.schemas.hikvision_fs import (
+    RECOVERY_PARTIAL,
     STATE_DELETED,
     STATE_RECORDING,
     RecordingEntry,
@@ -133,6 +134,11 @@ class HikvisionAdapter:
                 # The §9 output contract, carried through to the Recovery page and report
                 # without needing a change to the shared RecoveredSegment shape.
                 "allocation_state": item.allocation_state,
+                # Separate axis from allocation_state: what the *data* is, not what
+                # the index says. Overwritten bytes are reported gone, never guessed.
+                "recovery_status": item.recovery_status,
+                "partial": item.recovery_status == RECOVERY_PARTIAL,
+                "partial_reason": item.partial_reason,
                 "event_type": item.event_type,
                 "resolution": item.resolution,
                 "fps": item.fps,

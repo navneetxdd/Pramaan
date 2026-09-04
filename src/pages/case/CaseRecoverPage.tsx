@@ -23,6 +23,8 @@ import {
   allocationLabel,
   allocationOf,
   countAllocations,
+  isPartial,
+  partialReason,
   summariseAllocations,
   type AllocationState,
 } from "@/lib/allocation";

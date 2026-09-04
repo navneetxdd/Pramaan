@@ -99,3 +99,22 @@ export function summariseAllocations(
   if (counts.unknown > 0) extras.push(`${counts.unknown} unclassified`);
   return [`${total} ${noun}`, ...extras].join(" · ");
 }
+
+/**
+ * Whether the recovered bytes are all there.
+ *
+ * Independent of {@link AllocationState}: allocation state says what the recorder's
+ * index claims, recovery status says what is physically on the platter. A recording
+ * can be allocated and partial at once — still indexed, but its data block was partly
+ * reused. Missing bytes are reported missing; nothing is reconstructed.
+ */
+export function isPartial(segment: Segment): boolean {
+  const evidence = segment.validation_evidence;
+  if (evidence?.["partial"] === true) return true;
+  return evidence?.["recovery_status"] === "partial";
+}
+
+export function partialReason(segment: Segment): string {
+  const reason = segment.validation_evidence?.["partial_reason"];
+  return typeof reason === "string" ? reason : "";
+}

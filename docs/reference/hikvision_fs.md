@@ -293,6 +293,32 @@ confidence value is emitted.
 These are the **only** numeric confidences the Hikvision engine emits. There is no
 `0.42 + count * 0.01` anywhere in this module.
 
+### 7.3 `recovery_status` — is all of it still there?
+
+`allocation_state` describes what the **index** claims. `recovery_status` describes what the
+**data** is. They are independent: a recording can be `allocated` *and* `partial` — still
+indexed by the recorder, but its data block has been partly reused.
+
+| `recovery_status` | Rule | Grounding |
+|---|---|---|
+| `intact` | Every IDR record in the block falls inside the entry's own start→end window | — |
+| `partial` | At least one IDR record lies **outside** that window | [HAN2015] §3.3 |
+
+[HAN2015] §3.3 gives this test directly: *"If any recording time from the IDR tables in the
+video data predates the 'Start/End time of record' of data block entries, it can be understood
+that the hard disk had been full at least one time and has previously been overwritten."* A
+block carrying records from outside the entry's window therefore holds footage from more than
+one recording.
+
+**What `partial` does and does not mean.** It means part of this data block belongs to a
+different recording, so only the bytes inside the entry's own window are this recording. The
+overwritten remainder is **reported gone and never reconstructed** — no interpolation, no
+padding, no guessed frames. The recording is still recovered and still exported; the examiner
+is simply told it is incomplete and why, in `partial_reason`.
+
+The check is deliberately conservative: with no usable window, or no IDR records to compare,
+nothing is claimed. An absent IDR table yields `intact`, not a false `partial`.
+
 ### 7.2 `event_type` derivation
 
 `event_type` is **not** a field in the data block entry, and the system-log type byte offset is not
@@ -345,6 +371,7 @@ these keys (consumed by the Recovery menu playback pipeline):
 | `resolution` | `str \| None` | `"WIDTHxHEIGHT"` from SPS (§8) |
 | `fps` | `float \| None` | from VUI (§8) |
 | `allocation_state` | `str` | §7 |
+| `recovery_status` | `str` | `intact` \| `partial` (§7.3) |
 
 `unallocated` entries are excluded — they describe no footage.
 
@@ -372,6 +399,7 @@ The engine runs in a desktop shell, against images that can be multi-terabyte.
 
 | Gap | Blocked on |
 |---|---|
+| Real-hardware validation. The parser has never run against a genuine Hikvision drive; the synthetic path has instead been hardened to cover the structural cases a real drive is most likely to hit — entries spread across a chain of index pages, and a data block partly overwritten by a later recording. | A physical device. |
 | No real acquired Hikvision drive. All validation runs against the emulated image built by `engine/tests/support/hikvision_builder.py`, which is stamped `emulated` in every artifact and report it produces. | Obtaining a genuine Hikvision HDD acquisition. |
 | System-log (`RATS`) record field offsets — needed to promote `event_type` from `event` to a specific alarm class such as `motion`. | Full text of [DRAG2023]. |
 | HIKBTREE header created-time, page-list pointer and footer pointer offsets. | Not published in [HAN2015]; would need reverse engineering against a real drive. |
