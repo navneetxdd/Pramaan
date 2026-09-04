@@ -46,6 +46,22 @@ DOWNLOADS: list[dict] = [
         "purpose": "YOLOX Nano COCO object-candidate detector for offline analytics",
         "license": "Apache-2.0",
     },
+    {
+        "id": "person_reid_youtu_onnx",
+        "url": "https://huggingface.co/opencv/person_reid_youtureid/resolve/main/person_reid_youtu_2021nov.onnx",
+        "dest": "models/person_reid_youtu.onnx",
+        "sha256": None,
+        "purpose": "Person re-identification embeddings for cross-camera trace (OpenCV Zoo / Tencent Youtu)",
+        "license": "OpenCV Zoo (Apache-2.0 tooling; model weights per upstream)",
+    },
+    {
+        "id": "sface_face_recognition_onnx",
+        "url": "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+        "dest": "models/face_recognition_sface.onnx",
+        "sha256": None,
+        "purpose": "Face-match mode for cross-camera trace, alongside YuNet detection (OpenCV Zoo)",
+        "license": "OpenCV Zoo (Apache-2.0 tooling; model weights per upstream)",
+    },
 ]
 
 SURVEILLANCE_OPTIONAL = [

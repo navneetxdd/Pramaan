@@ -896,4 +896,154 @@ export const api = {
     resolveApiUrl(
       `/api/v1/live-devices/${deviceId}/stream.mp4?channel=${channel}&quality=main`,
     ),
+
+  // --- cross-camera trace ---------------------------------------------------
+  crossCameraSources: (caseId: string) =>
+    request<{
+      sources: CrossCameraSource[];
+      models: { detector: boolean; reid: boolean; face: boolean };
+    }>(`/api/v1/cases/${caseId}/cross-camera/sources`),
+
+  crossCameraRuns: (caseId: string) =>
+    request<{ runs: CrossCameraRun[] }>(
+      `/api/v1/cases/${caseId}/cross-camera/runs`,
+    ),
+
+  startCrossCameraRun: (
+    caseId: string,
+    body: {
+      actor: string;
+      source_keys: string[];
+      fps?: number;
+      match_sensitivity?: number;
+      max_frames_per_source?: number;
+    },
+  ) =>
+    request<{ run_id: string; job_id: string; events_url: string }>(
+      `/api/v1/cases/${caseId}/cross-camera/runs`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ),
+
+  crossCameraRun: (runId: string) =>
+    request<CrossCameraRunDetail>(`/api/v1/cross-camera/runs/${runId}`),
+
+  crossCameraIdentity: (identityId: string) =>
+    request<CrossCameraIdentityDetail>(
+      `/api/v1/cross-camera/identities/${identityId}`,
+    ),
+
+  crossCameraIdentityThumbUrl: (identityId: string) =>
+    resolveApiUrl(`/api/v1/cross-camera/identities/${identityId}/thumb`),
+
+  crossCameraCropUrl: (appearanceId: string, full = false) =>
+    resolveApiUrl(
+      `/api/v1/cross-camera/appearances/${appearanceId}/crop${full ? "?full=true" : ""}`,
+    ),
+
+  crossCameraSearch: (
+    runId: string,
+    image: File | Blob,
+    mode: "appearance" | "face" = "appearance",
+  ) => {
+    const form = new FormData();
+    form.append("image", image);
+    form.append("mode", mode);
+    return request<CrossCameraSearchResult>(
+      `/api/v1/cross-camera/runs/${runId}/search`,
+      { method: "POST", body: form },
+    );
+  },
+
+  crossCameraSaveStill: (appearanceId: string, actor: string) =>
+    request<{
+      filename: string;
+      sha256: string;
+      source_label: string;
+      offset_ms: number;
+    }>(`/api/v1/cross-camera/appearances/${appearanceId}/save-still`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor }),
+    }),
+};
+
+export type CrossCameraSource = {
+  key: string;
+  label: string;
+  kind: "recovered_channel" | "video_evidence";
+  clip_count: number;
+};
+
+export type CrossCameraRun = {
+  id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  actor: string | null;
+  created_at: string;
+  completed_at: string | null;
+  error: string | null;
+  params: Record<string, unknown>;
+  summary: {
+    identities?: number;
+    cross_camera_identities?: number;
+    detections?: number;
+    appearances_with_face?: number;
+    cosine_threshold?: number;
+    sources?: { key: string; label: string }[];
+  };
+};
+
+export type CrossCameraCamera = {
+  key: string;
+  count: number;
+  first_ms: number;
+  last_ms: number;
+};
+
+export type CrossCameraIdentitySummary = {
+  id: string;
+  label: string;
+  camera_count: number;
+  appearance_count: number;
+  first_seen_ms: number;
+  last_seen_ms: number;
+  cameras: Record<string, CrossCameraCamera>;
+};
+
+export type CrossCameraRunDetail = CrossCameraRun & {
+  case_id: string;
+  identities: CrossCameraIdentitySummary[];
+};
+
+export type CrossCameraAppearance = {
+  id: string;
+  source_key: string;
+  source_label: string;
+  offset_ms: number;
+  bbox: { x: number; y: number; w: number; h: number };
+  confidence: number;
+};
+
+export type CrossCameraIdentityDetail = CrossCameraIdentitySummary & {
+  run_id: string;
+  appearances: CrossCameraAppearance[];
+};
+
+export type CrossCameraMatch = {
+  appearance_id: string;
+  identity_id: string;
+  identity_label: string;
+  source_label: string;
+  offset_ms: number;
+  similarity: number;
+};
+
+export type CrossCameraSearchResult = {
+  mode: "appearance" | "face";
+  matches: CrossCameraMatch[];
+  appearances_total: number;
+  appearances_comparable: number;
 };

@@ -29,6 +29,8 @@ REPO_ROOT = ROOT
 VALIDATION_DATA_DIR = REPO_ROOT / "validation_data"
 YUNET_MODEL_PATH = Path(_env("PRAMAAN_YUNET_MODEL", str(VALIDATION_DATA_DIR / "models" / "face_detection_yunet_2023mar.onnx")))
 YOLOX_MODEL_PATH = Path(_env("PRAMAAN_YOLOX_MODEL", str(VALIDATION_DATA_DIR / "models" / "yolox_nano.onnx")))
+REID_MODEL_PATH = Path(_env("PRAMAAN_REID_MODEL", str(VALIDATION_DATA_DIR / "models" / "person_reid_youtu.onnx")))
+SFACE_MODEL_PATH = Path(_env("PRAMAAN_SFACE_MODEL", str(VALIDATION_DATA_DIR / "models" / "face_recognition_sface.onnx")))
 OEM_IMAGE_DIR = Path(_env("PRAMAAN_OEM_IMAGE_DIR", str(VALIDATION_DATA_DIR / "oem")))
 
 
