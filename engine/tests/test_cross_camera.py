@@ -4,13 +4,16 @@ import os
 import tempfile
 import time
 import unittest
+from pathlib import Path
 
 os.environ["FORENSIC_WORKSTATION_DATA"] = tempfile.mkdtemp(prefix="forensic-ccam-")
 
-from engine.app.core.config import REID_MODEL_PATH  # noqa: E402
+from engine.app.core.config import OEM_IMAGE_DIR, REID_MODEL_PATH  # noqa: E402
 from engine.app.core.db import init_db  # noqa: E402
 from engine.app.main import app  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+
+DEMO_CAM_A = OEM_IMAGE_DIR / "demo_camA.mp4"
 
 
 def _poll_job(client: TestClient, job_id: str, *, timeout_s: float = 60.0) -> dict:
@@ -59,6 +62,10 @@ class CrossCameraSourcesTests(unittest.TestCase):
         self.assertIn("reid", body["models"])
         self.assertIn("face", body["models"])
 
+    @unittest.skipUnless(
+        DEMO_CAM_A.exists(),
+        "validation_data/oem/demo_camA.mp4 not present — operator sample, gitignored, not fetched in CI",
+    )
     def test_registered_video_appears_as_a_source(self) -> None:
         case_id = self._new_case("Cross-camera: video evidence")
         acquired = self.client.post(
@@ -78,8 +85,9 @@ class CrossCameraSourcesTests(unittest.TestCase):
 
 
 @unittest.skipUnless(
-    REID_MODEL_PATH.exists(),
-    "Re-identification model not fetched — run scripts/validation/fetch_validation_assets.py",
+    REID_MODEL_PATH.exists() and DEMO_CAM_A.exists(),
+    "Re-identification model and/or demo_camA.mp4/demo_camB.mp4 not present locally — "
+    "run scripts/validation/fetch_validation_assets.py",
 )
 class CrossCameraCorrelationTests(unittest.TestCase):
     """Exercises the real ONNX pipeline end-to-end. Skipped where the model isn't present
