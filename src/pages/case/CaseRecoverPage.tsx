@@ -9,6 +9,7 @@ import { ConfidenceBadge } from "@/components/forensic/ConfidenceBadge";
 import { RecoveryLogPanel } from "@/components/forensic/RecoveryLogPanel";
 import { RecoveryChecksPanel } from "@/components/forensic/RecoveryChecksPanel";
 import { RecoveryDiskMap } from "@/components/forensic/RecoveryDiskMap";
+import { RecoveryTelemetryRibbon } from "@/components/forensic/RecoveryTelemetryRibbon";
 import { SegmentInspector } from "@/components/forensic/SegmentInspector";
 import { VirtualTable } from "@/components/ui/virtual-table";
 import { subscribeJobEvents } from "@/lib/sse";
@@ -41,7 +42,7 @@ function AllocationCell({ state }: { state: AllocationState }) {
   const { glyph, color } = style[state];
   return (
     <span
-      className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase"
+      className="rec-pill text-[10.5px] font-semibold uppercase tracking-wide"
       style={{ color }}
     >
       <span aria-hidden="true">{glyph}</span>
@@ -630,6 +631,14 @@ export function CaseRecoverPage() {
             </div>
           ) : null}
         </div>
+
+        <div className="-mx-4 -mb-4 mt-1 w-[calc(100%+2rem)]">
+          <RecoveryTelemetryRibbon
+            segments={segments}
+            evidence={selectedEvidence}
+            adapter={effectiveAdapter}
+          />
+        </div>
       </section>
 
       <div className="grid min-h-0 shrink-0 gap-3 lg:grid-cols-[1fr_200px]">
@@ -738,11 +747,12 @@ export function CaseRecoverPage() {
           // Inset shadow, not a border: a border would consume 4px of layout and
           // shift every marked row out of alignment with the header.
           getRowClassName={(seg) =>
-            allocationByRow.get(seg.id) === "deleted"
+            (seg.id === selectedSegmentId ? "rec-row-selected " : "") +
+            (allocationByRow.get(seg.id) === "deleted"
               ? "rec-row rec-row-deleted shadow-[inset_4px_0_0_0_var(--status-danger)] bg-[rgba(220,38,38,0.06)]"
               : allocationByRow.get(seg.id) === "recording"
                 ? "rec-row shadow-[inset_4px_0_0_0_var(--status-info)]"
-                : "rec-row"
+                : "rec-row")
           }
           columns={[
             {
@@ -766,9 +776,13 @@ export function CaseRecoverPage() {
               width: "minmax(150px, 1.2fr)",
               className: "mono",
               cell: (seg) =>
-                seg.offset_start != null && seg.offset_end != null
-                  ? `${seg.offset_start}–${seg.offset_end}`
-                  : (seg.offset_time_label ?? "—"),
+                seg.offset_start != null && seg.offset_end != null ? (
+                  <span className="rec-offset">
+                    {seg.offset_start}–{seg.offset_end}
+                  </span>
+                ) : (
+                  (seg.offset_time_label ?? "—")
+                ),
             },
             {
               key: "size",

@@ -407,11 +407,15 @@ export function SegmentInspector({
           </div>
         ) : null}
         {tab === "hex" ? (
-          <HexViewer
-            deviceId={deviceId}
-            baseOffset={byteStart}
-            pageSize={512}
-          />
+          // rec-hex scopes the dark buffer treatment to the Recovery inspector;
+          // the Identification page uses the same viewer and is untouched.
+          <div className={variant === "recover" ? "rec-hex" : undefined}>
+            <HexViewer
+              deviceId={deviceId}
+              baseOffset={byteStart}
+              pageSize={512}
+            />
+          </div>
         ) : null}
         {tab === "meta" || tab === "provenance" ? (
           <div className="space-y-3">
