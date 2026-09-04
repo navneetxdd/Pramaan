@@ -70,8 +70,8 @@ function SetupSection({
         </p>
         {sources.length === 0 ? (
           <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-            No footage in this case yet. Recover channels from a device image, or
-            add captured / imported clips, then return here.
+            No footage in this case yet. Recover channels from a device image,
+            or add captured / imported clips, then return here.
           </p>
         ) : (
           <ul className="mt-1.5 divide-y divide-[var(--border-subtle)] rounded-md border border-[var(--border-subtle)]">
@@ -435,8 +435,8 @@ function FindPanel({
                 : "Drop a reference photo here, or click to choose"}
           </p>
           <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
-            One clear photo of a single person. Ranked appearances come back with
-            camera and timestamp.
+            One clear photo of a single person. Ranked appearances come back
+            with camera and timestamp.
           </p>
         </div>
       </div>
@@ -781,8 +781,8 @@ export function CaseCrossCameraPage() {
                   !selectedId ? (
                     <div className="grid h-full place-items-center text-center">
                       <p className="max-w-sm text-[13px] text-[var(--text-secondary)]">
-                        Select a person on the left to see which cameras saw them
-                        and when.
+                        Select a person on the left to see which cameras saw
+                        them and when.
                       </p>
                     </div>
                   ) : !detail ? (
