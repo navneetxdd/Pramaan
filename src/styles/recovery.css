@@ -396,3 +396,116 @@
 .recovery-shell .rec-hex .visily-card-title {
   color: var(--text-secondary);
 }
+
+/* ================================================================== *
+ * Depth pass — the page was cards on white with a large empty log
+ * panel. This gives the workspace a ground to sit on and turns the
+ * idle log into a readout.
+ * ================================================================== */
+
+/* --- Blueprint ground ----------------------------------------------
+ * A faint blue graticule behind the cards, same family as the disk
+ * map's platter, so the white cards read as instruments laid on a
+ * drafting surface rather than floating in nothing.
+ * ------------------------------------------------------------------ */
+.recovery-shell {
+  background-color: var(--surface-1);
+  background-image:
+    radial-gradient(
+      circle at 1px 1px,
+      rgba(37, 99, 235, 0.09) 1px,
+      transparent 0
+    ),
+    radial-gradient(
+      110% 60% at 50% -10%,
+      rgba(37, 99, 235, 0.06),
+      transparent 70%
+    );
+  background-size:
+    22px 22px,
+    100% 100%;
+  background-attachment: local, local;
+  padding: 2px;
+}
+
+/* --- Control card reads as the command deck ------------------------ */
+.recovery-shell > section:first-of-type {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(37, 99, 235, 0.05),
+      rgba(255, 255, 255, 0) 74px
+    ),
+    var(--surface-2);
+}
+
+/* --- Idle log panel ------------------------------------------------ */
+.recovery-shell .rec-idle {
+  background:
+    radial-gradient(
+      80% 100% at 50% 0%,
+      rgba(37, 99, 235, 0.05),
+      transparent 70%
+    ),
+    var(--surface-2);
+}
+
+/* Big legible figures for the last-run readout. */
+.recovery-shell .rec-metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+}
+
+.recovery-shell .rec-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.recovery-shell .rec-metric-value {
+  font-family: var(--font-mono, ui-monospace, "JetBrains Mono", monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.recovery-shell .rec-metric-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* Concentric rings — a platter at rest, for the never-run state. */
+.recovery-shell .rec-idle-glyph {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  box-shadow:
+    inset 0 0 0 6px rgba(37, 99, 235, 0.05),
+    inset 0 0 0 7px rgba(37, 99, 235, 0.22),
+    inset 0 0 0 15px rgba(37, 99, 235, 0.04),
+    inset 0 0 0 16px rgba(37, 99, 235, 0.14);
+  position: relative;
+}
+
+.recovery-shell .rec-idle-glyph::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent-500);
+  transform: translate(-50%, -50%);
+}

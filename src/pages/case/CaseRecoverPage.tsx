@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ConfidenceBadge } from "@/components/forensic/ConfidenceBadge";
 import { RecoveryLogPanel } from "@/components/forensic/RecoveryLogPanel";
+import { RecoveryLastRun } from "@/components/forensic/RecoveryLastRun";
 import { RecoveryChecksPanel } from "@/components/forensic/RecoveryChecksPanel";
 import { RecoveryDiskMap } from "@/components/forensic/RecoveryDiskMap";
 import { RecoveryTelemetryRibbon } from "@/components/forensic/RecoveryTelemetryRibbon";
@@ -664,7 +665,11 @@ export function CaseRecoverPage() {
             ref={logRef}
             className="flex min-h-[240px] flex-1 flex-col overflow-hidden"
           >
-            <RecoveryLogPanel lines={log} />
+            {log.length > 0 || isRecovering ? (
+              <RecoveryLogPanel lines={log} />
+            ) : (
+              <RecoveryLastRun job={lastFinishedRecovery} segments={segments} />
+            )}
           </div>
         </section>
         <section className="visily-card overflow-auto p-4">
