@@ -82,6 +82,8 @@ That's the whole pipeline. Everything else in the app — cross-camera trace, fi
 | Blockchain & Cybersecurity theme fit | **Already true, not said out loud** | The custody log is an append-only, hash-chained record — that already is the "tamper-evident ledger" the theme is asking for. Nothing in the report or pitch currently says this. |
 | BSA Section 63 certificate format | **Missing** | `reporting.py` has no wording tied to Section 63 or a named responsible official — the report isn't shaped like the specific legal certificate format Indian courts look for. |
 | Clock-drift warning | **Missing** | `drift_offset_seconds` silently defaults to 0 when nobody's calibrated it. No warning is shown when a device's clock was never checked. |
+| Overview page's "Recovery jobs" card | **Fixed today** | Listed every job for the case, not just recovery ones — a cross-camera or analytics job with no vendor/adapter showed up there as "Unknown OEM // pending adapter," exactly the phantom-job bug an earlier audit round had already flagged once. Confirmed live on a real case, fixed by filtering the card to `kind === "recovery"`, verified live afterward: the card is correctly empty for a case that only has cross-camera jobs. |
+| Identification page's validation-scope text | **Depends on Aravind's real-hardware validation** | The Identification page already shows a real disclosure line (`capability_tier` / `coverage_note`) — currently "synthetic fixtures only" for Hikvision. This isn't a UI bug, it updates automatically once the underlying data changes, but the on-screen wording will read differently after real-hardware validation lands. |
 
 ---
 

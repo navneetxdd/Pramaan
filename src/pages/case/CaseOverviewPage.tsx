@@ -80,9 +80,9 @@ export function CaseOverviewPage() {
     evidence.length === 0
       ? "—"
       : `${Math.round((identified / evidence.length) * 100)}%`;
-  const sortedJobs = [...jobs].sort((a, b) =>
-    (b.started_at ?? "").localeCompare(a.started_at ?? ""),
-  );
+  const sortedJobs = jobs
+    .filter((j) => j.kind === "recovery")
+    .sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""));
 
   return (
     <div className="mx-auto flex max-w-[1440px] flex-col gap-4">
