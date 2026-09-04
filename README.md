@@ -67,10 +67,11 @@ npm run dev            # terminal 2 → http://localhost:5173
 3. **Identify** — Review vendor hits, confidence, filesystem hints, and selected adapter. Token matches are routing hints, not proof.
 4. **Recover** — Run recovery job; monitor SSE progress. Review parser validation labels and offsets.
 5. **Timeline & playback** — Multi-channel timeline, MP4 export when FFmpeg is available, optional drift calibration.
-6. **Findings** — Optional scene/face analytics (investigative aids only; human review required).
-7. **Custody** — Append-only SHA-256 hash chain with evidence digest binding.
-8. **Report** — JSON / HTML / PAdES-signed PDF. Standard report blocked if custody chain is broken.
-9. **Transfer** — Export signed case bundle; import on another workstation verifies manifest signature and per-file hashes.
+6. **Findings** — Optional motion/scene/face/object analytics plus bounding-box proximity flags (investigative aids only; human review required, never asserted as fact).
+7. **Cross-camera trace** — Correlate the same person's appearance (clothing/body, and face when one is large enough in frame) across every recovered channel and imported clip in the case; upload a reference photo to search a completed run.
+8. **Custody** — Append-only SHA-256 hash chain with evidence digest binding.
+9. **Report** — JSON / HTML / PAdES-signed PDF. Standard report blocked if custody chain is broken.
+10. **Transfer** — Export signed case bundle; import on another workstation verifies manifest signature and per-file hashes.
 
 ### Failure handling
 
@@ -130,7 +131,7 @@ flowchart TB
 | Uniview | Generic / lineage route | `hikvision` if HIKBTREE signatures | Hypothesis only |
 | TP-Link, Godrej, Matrix | Acquisition + generic | `generic_tier2` | pytsk3 undelete or H.264 carve; E01 via pyewf |
 
-**Known limitations:** No encryption/RAID/chip-off support. Self-signed PDF/bundle certificates (use org PKI for production). Client-supplied custody actor (bind to examiner session in hardened deploy). Analytics findings are not identification evidence.
+**Known limitations:** No encryption/RAID/chip-off support. Self-signed PDF/bundle certificates (use org PKI for production). Client-supplied custody actor (bind to examiner session in hardened deploy). Analytics findings and cross-camera matches are investigative leads, not identification evidence — appearance matching needs roughly 480p+ source footage, and face matching only works on frames where a face is large enough to resolve.
 
 ---
 
@@ -221,7 +222,7 @@ All clients use **`/api/v1/*`**. Health: `GET /api/v1/version`.
 
 ## Third-party licenses (summary)
 
-Direct dependencies include FastAPI, Uvicorn, Pydantic, construct, cryptography, pyHanko, ReportLab, pytsk3, React, Tauri, Vite, Tailwind, and bundled ONNX models (YOLOX Apache-2.0, optional YuNet). Full license texts live in each package's repository and installed metadata. Redistribute only after completing your own license review.
+Direct dependencies include FastAPI, Uvicorn, Pydantic, construct, cryptography, pyHanko, ReportLab, pytsk3, React, Tauri, Vite, Tailwind, and bundled ONNX models (YOLOX, YuNet, person_reid_youtu, SFace — all OpenCV Zoo / Apache-2.0 tooling; fetched on demand, not committed). Full license texts live in each package's repository and installed metadata. Redistribute only after completing your own license review.
 
 ---
 

@@ -66,3 +66,5 @@ validation_data/external/**/*.E01
 validation_data/external/**/*.dd
 validation_data/external/**/*.part
 validation_data/external/**/*.zip
+validation_data/models/person_reid_youtu.onnx
+validation_data/models/face_recognition_sface.onnx

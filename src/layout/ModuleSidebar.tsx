@@ -15,6 +15,7 @@ import {
   Fingerprint,
   GanttChartSquare,
   Radio,
+  Waypoints,
 } from "lucide-react";
 
 import { useEffect, useState } from "react";
@@ -52,8 +53,6 @@ const globalNav: NavItem[] = [
 const caseWorkflow: NavItem[] = [
   { to: "", label: "Overview", icon: LayoutDashboard, end: true },
 
-  { to: "live", label: "Live devices", icon: Radio },
-
   { to: "acquire", label: "Acquisition", icon: HardDriveDownload, step: 1 },
 
   {
@@ -87,6 +86,8 @@ const caseWorkflow: NavItem[] = [
     step: 5,
     requiresRecovery: true,
   },
+
+  { to: "cross-camera", label: "Cross-camera trace", icon: Waypoints },
 
   { to: "custody", label: "Custody", icon: ShieldCheck },
 
@@ -297,7 +298,7 @@ export function useBreadcrumb(): { section: string; page: string } {
     const labels: Record<string, string> = {
       dashboard: "Case overview",
 
-      live: "Live devices",
+      "cross-camera": "Cross-camera trace",
 
       evidence: "Evidence catalog",
 

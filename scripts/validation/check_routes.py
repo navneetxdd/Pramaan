@@ -65,14 +65,15 @@ EXPECTED = {
     "POST /api/v1/tool-verification/run",
     "GET /api/v1/datasets",
     "POST /api/v1/datasets/{dataset_id}/fetch",
-    "POST /api/v1/cases/{case_id}/live-devices",
-    "GET /api/v1/cases/{case_id}/live-devices",
-    "POST /api/v1/live-devices/{device_id}/reconnect",
-    "DELETE /api/v1/live-devices/{device_id}",
-    "GET /api/v1/live-devices/{device_id}/stream.mjpeg",
-    "GET /api/v1/live-devices/{device_id}/stream.mp4",
-    "POST /api/v1/live-devices/{device_id}/snapshot",
-    "POST /api/v1/live-devices/{device_id}/capture",
+    "GET /api/v1/cases/{case_id}/cross-camera/sources",
+    "GET /api/v1/cases/{case_id}/cross-camera/runs",
+    "POST /api/v1/cases/{case_id}/cross-camera/runs",
+    "GET /api/v1/cross-camera/runs/{run_id}",
+    "GET /api/v1/cross-camera/identities/{identity_id}",
+    "GET /api/v1/cross-camera/identities/{identity_id}/thumb",
+    "GET /api/v1/cross-camera/appearances/{appearance_id}/crop",
+    "POST /api/v1/cross-camera/runs/{run_id}/search",
+    "POST /api/v1/cross-camera/appearances/{appearance_id}/save-still",
 }
 
 

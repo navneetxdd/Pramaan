@@ -53,7 +53,7 @@ class RecoveryMetadataTests(unittest.TestCase):
 
     def test_schema_v5_persists_byte_and_parser_evidence(self) -> None:
         row = self._insert(None)
-        self.assertEqual(db.SCHEMA_VERSION, 8)
+        self.assertEqual(db.SCHEMA_VERSION, 10)
         self.assertEqual(row["byte_start"], 128)
         self.assertEqual(row["byte_end"], 256)
         self.assertEqual(row["byte_length"], 128)

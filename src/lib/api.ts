@@ -145,32 +145,6 @@ export type Segment = {
   recovery_job_id?: string | null;
 };
 
-export type LiveDeviceRecord = {
-  id: string;
-  case_id: string;
-  display_name: string;
-  host: string;
-  port: number;
-  scheme: string;
-  vendor: "hikvision" | "dahua" | "onvif" | "generic_rtsp";
-  channel_count: number;
-  channels: Array<{
-    channel: number;
-    label: string;
-    main_uri: string;
-    sub_uri: string;
-    snapshot_uri: string | null;
-  }>;
-  device_info: {
-    model?: string | null;
-    serial?: string | null;
-    firmware?: string | null;
-  };
-  added_by: string;
-  added_at: string;
-  credentialed: boolean;
-};
-
 export type SegmentDetail = {
   id: string;
   device_id: string;
@@ -255,6 +229,7 @@ export type AiFinding = {
     sample_fps?: number;
     model?: string;
     model_version?: string;
+    note?: string;
   } | null;
 };
 
@@ -815,71 +790,30 @@ export const api = {
       { method: "POST" },
     ),
 
-  listLiveDevices: (caseId: string) =>
-    request<{ devices: LiveDeviceRecord[] }>(
-      `/api/v1/cases/${caseId}/live-devices`,
+  // --- cross-camera trace ---------------------------------------------------
+  crossCameraSources: (caseId: string) =>
+    request<{
+      sources: CrossCameraSource[];
+      models: { detector: boolean; reid: boolean; face: boolean };
+    }>(`/api/v1/cases/${caseId}/cross-camera/sources`),
+
+  crossCameraRuns: (caseId: string) =>
+    request<{ runs: CrossCameraRun[] }>(
+      `/api/v1/cases/${caseId}/cross-camera/runs`,
     ),
 
-  addLiveDevice: (
+  startCrossCameraRun: (
     caseId: string,
     body: {
       actor: string;
-      display_name: string;
-      vendor: LiveDeviceRecord["vendor"];
-      host: string;
-      port: number;
-      scheme?: string;
-      user?: string;
-      password?: string;
-      rtsp_url_override?: string;
+      source_keys: string[];
+      fps?: number;
+      match_sensitivity?: number;
+      max_frames_per_source?: number;
     },
   ) =>
-    request<LiveDeviceRecord>(`/api/v1/cases/${caseId}/live-devices`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-
-  liveSnapshot: (deviceId: string, body: { actor: string; channel: number }) =>
-    request<{
-      filename: string;
-      sha256: string;
-      taken_at_utc: string;
-      channel: number;
-      source_uri: string;
-    }>(`/api/v1/live-devices/${deviceId}/snapshot`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-
-  liveCapture: (
-    deviceId: string,
-    body: { actor: string; channel: number; duration_s?: number },
-  ) =>
-    request<{
-      evidence: EvidenceRecord;
-      channel: number;
-      duration_s: number;
-      source_uri: string;
-    }>(`/api/v1/live-devices/${deviceId}/capture`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-
-  livePullRecordings: (
-    deviceId: string,
-    body: {
-      actor: string;
-      channel: number;
-      start_time?: string;
-      end_time?: string;
-      max_clips?: number;
-    },
-  ) =>
-    request<{ clips_acquired: number; devices: unknown[] }>(
-      `/api/v1/live-devices/${deviceId}/pull-recordings`,
+    request<{ run_id: string; job_id: string; events_url: string }>(
+      `/api/v1/cases/${caseId}/cross-camera/runs`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -887,13 +821,122 @@ export const api = {
       },
     ),
 
-  liveMjpegUrl: (deviceId: string, channel: number, fps = 6) =>
-    resolveApiUrl(
-      `/api/v1/live-devices/${deviceId}/stream.mjpeg?channel=${channel}&fps=${fps}`,
+  crossCameraRun: (runId: string) =>
+    request<CrossCameraRunDetail>(`/api/v1/cross-camera/runs/${runId}`),
+
+  crossCameraIdentity: (identityId: string) =>
+    request<CrossCameraIdentityDetail>(
+      `/api/v1/cross-camera/identities/${identityId}`,
     ),
 
-  liveMp4Url: (deviceId: string, channel: number) =>
+  crossCameraIdentityThumbUrl: (identityId: string) =>
+    resolveApiUrl(`/api/v1/cross-camera/identities/${identityId}/thumb`),
+
+  crossCameraCropUrl: (appearanceId: string, full = false) =>
     resolveApiUrl(
-      `/api/v1/live-devices/${deviceId}/stream.mp4?channel=${channel}&quality=main`,
+      `/api/v1/cross-camera/appearances/${appearanceId}/crop${full ? "?full=true" : ""}`,
     ),
+
+  crossCameraSearch: (
+    runId: string,
+    image: File | Blob,
+    mode: "appearance" | "face" = "appearance",
+  ) => {
+    const form = new FormData();
+    form.append("image", image);
+    form.append("mode", mode);
+    return request<CrossCameraSearchResult>(
+      `/api/v1/cross-camera/runs/${runId}/search`,
+      { method: "POST", body: form },
+    );
+  },
+
+  crossCameraSaveStill: (appearanceId: string, actor: string) =>
+    request<{
+      filename: string;
+      sha256: string;
+      source_label: string;
+      offset_ms: number;
+    }>(`/api/v1/cross-camera/appearances/${appearanceId}/save-still`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor }),
+    }),
+};
+
+export type CrossCameraSource = {
+  key: string;
+  label: string;
+  kind: "recovered_channel" | "video_evidence";
+  clip_count: number;
+};
+
+export type CrossCameraRun = {
+  id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  actor: string | null;
+  created_at: string;
+  completed_at: string | null;
+  error: string | null;
+  params: Record<string, unknown>;
+  summary: {
+    identities?: number;
+    cross_camera_identities?: number;
+    detections?: number;
+    appearances_with_face?: number;
+    cosine_threshold?: number;
+    sources?: { key: string; label: string }[];
+  };
+};
+
+export type CrossCameraCamera = {
+  key: string;
+  count: number;
+  first_ms: number;
+  last_ms: number;
+};
+
+export type CrossCameraIdentitySummary = {
+  id: string;
+  label: string;
+  camera_count: number;
+  appearance_count: number;
+  first_seen_ms: number;
+  last_seen_ms: number;
+  cameras: Record<string, CrossCameraCamera>;
+};
+
+export type CrossCameraRunDetail = CrossCameraRun & {
+  case_id: string;
+  identities: CrossCameraIdentitySummary[];
+};
+
+export type CrossCameraAppearance = {
+  id: string;
+  source_key: string;
+  source_label: string;
+  offset_ms: number;
+  bbox: { x: number; y: number; w: number; h: number };
+  confidence: number;
+};
+
+export type CrossCameraIdentityDetail = CrossCameraIdentitySummary & {
+  run_id: string;
+  appearances: CrossCameraAppearance[];
+};
+
+export type CrossCameraMatch = {
+  appearance_id: string;
+  identity_id: string;
+  identity_label: string;
+  source_label: string;
+  offset_ms: number;
+  similarity: number;
+};
+
+export type CrossCameraSearchResult = {
+  mode: "appearance" | "face";
+  matches: CrossCameraMatch[];
+  appearances_total: number;
+  appearances_comparable: number;
 };
