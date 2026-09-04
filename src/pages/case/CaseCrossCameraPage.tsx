@@ -340,6 +340,13 @@ function FindPanel({
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Revoke the previous object URL whenever it's replaced or the panel unmounts —
+  // otherwise every search leaks a blob URL for the life of the tab.
+  useEffect(() => {
+    if (!queryUrl) return;
+    return () => URL.revokeObjectURL(queryUrl);
+  }, [queryUrl]);
+
   async function run(file: File) {
     setBusy(true);
     setResult(null);
@@ -590,14 +597,22 @@ export function CaseCrossCameraPage() {
         ...opts,
       });
       await new Promise<void>((resolve, reject) => {
-        subscribeJobEvents(job_id, {
+        const unsubscribe = subscribeJobEvents(job_id, {
           onEvent: (e) => {
             if (e.message) toast.message(e.message, { id: "ccam-progress" });
-            if (e.status === "completed") resolve();
-            if (e.status === "failed")
+            if (e.status === "completed") {
+              unsubscribe();
+              resolve();
+            }
+            if (e.status === "failed") {
+              unsubscribe();
               reject(new Error(e.error ?? "Correlation failed"));
+            }
           },
-          onError: reject,
+          onError: (err) => {
+            unsubscribe();
+            reject(err);
+          },
         });
       });
       toast.dismiss("ccam-progress");

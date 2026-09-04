@@ -5,7 +5,7 @@ from fpdf import FPDF
 from fpdf.fonts import FontFace
 from fpdf.enums import TableBordersLayout
 
-FDIR = r"C:\Windows\Fonts"
+FDIR = os.environ.get("PRAMAAN_PDF_FONT_DIR", r"C:\Windows\Fonts")
 ACCENT   = (22, 63, 128)
 ACCENT_L = (232, 238, 247)
 STRIPE   = (247, 249, 252)
@@ -87,9 +87,14 @@ class Doc(FPDF):
         self.title_txt = title
         self.set_auto_page_break(True, margin=15)
         self.set_margins(15, 15, 15)
-        for st, fn in [("", "segoeui.ttf"), ("B", "segoeuib.ttf"), ("I", "segoeuii.ttf"), ("BI", "segoeuiz.ttf")]:
-            self.add_font("seg", st, os.path.join(FDIR, fn))
-        self.set_font("seg", "", 9.5)
+        try:
+            for st, fn in [("", "segoeui.ttf"), ("B", "segoeuib.ttf"), ("I", "segoeuii.ttf"), ("BI", "segoeuiz.ttf")]:
+                self.add_font("seg", st, os.path.join(FDIR, fn))
+            self.set_font("seg", "", 9.5)
+        except (FileNotFoundError, RuntimeError):
+            # Segoe UI isn't available off Windows (or PRAMAAN_PDF_FONT_DIR wasn't set) —
+            # fall back to a core PDF font so the script still runs, just without Unicode glyphs.
+            self.set_font("helvetica", "", 9.5)
 
     def footer(self):
         self.set_y(-12)

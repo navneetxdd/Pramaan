@@ -44,8 +44,8 @@ MIN_BOX_PX = 28                  # ignore boxes shorter than this (far-field noi
 REID_INPUT = (128, 256)          # (w, h) fixed by the model
 REID_MEAN = (0.485, 0.456, 0.406)
 REID_STD = (0.229, 0.224, 0.225)
-# match_sensitivity in [0,1] maps to a cosine threshold; 0.5 -> ~0.62
-_SENS_TO_COS = {0.0: 0.72, 0.25: 0.68, 0.5: 0.62, 0.75: 0.55, 1.0: 0.48}
+# match_sensitivity in [0,1] -> average-linkage cosine floor; see cos_threshold in run_correlation
+# (0.40 + 0.35*s, so 0.40 loose .. 0.75 strict)
 MIN_APPEARANCES = 3             # drop clusters with fewer detections (transient noise)
 MIN_FACE_PX = 20               # SFace is unreliable below this face height on CCTV footage
 FACE_MATCH_COS = 0.28         # SFace same-person cosine floor (OpenCV Zoo reference)

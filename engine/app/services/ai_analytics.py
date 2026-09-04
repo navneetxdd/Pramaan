@@ -308,7 +308,7 @@ def _flag_proximity(hits: list[tuple[str, float, dict]], offset_ms: int) -> list
                     "frame_offset_ms": offset_ms,
                     "finding_type": "proximity",
                     "label": f"{label_a} and {label_b} overlap"
-                    + (" — possible contact" if contact else ""),
+                    + (" — high overlap" if contact else ""),
                     "confidence": round(min(conf_a, conf_b), 3),
                     "bbox": {
                         "x": int(ux), "y": int(uy), "w": int(uw), "h": int(uh),
