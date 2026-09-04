@@ -120,27 +120,59 @@ class HikbtreeEntryTests(HikvisionFsTestBase):
             self.assertEqual(entry.allocation_state, planned.allocation_state)
             self.assertEqual(entry.channel, planned.channel)
 
-    def test_exactly_one_entry_is_classified_deleted(self) -> None:
+    def test_both_documented_deletion_modes_are_classified_deleted(self) -> None:
         deleted = [item for item in self._entries() if item.is_deleted]
         self.assertEqual(len(deleted), builder.EXPECTED_DELETED_COUNT)
-        self.assertEqual(len(deleted), 1)
-        entry = deleted[0]
-        self.assertNotEqual(entry.alloc_flag, fs.ALLOC_FLAG_ALLOCATED)
-        # The defining forensic condition: flag cleared, pointer still inside the video area.
+        self.assertEqual(len(deleted), 2)
         master = fs.parse_master_block(self.blob)
         assert master is not None
-        self.assertTrue(master.contains_video(entry.data_offset))
+        for entry in deleted:
+            self.assertNotEqual(entry.alloc_flag, fs.ALLOC_FLAG_ALLOCATED)
+            # The defining condition: flag cleared, pointer still in the video area.
+            self.assertTrue(master.contains_video(entry.data_offset))
 
-    def test_deleted_entry_carries_lower_timestamp_confidence_than_allocated(self) -> None:
+    def test_initialised_entry_keeps_residual_timestamps(self) -> None:
+        """[HAN2015] section 3.2 — index cleared, the times written before it survive."""
+        residual = [
+            item
+            for item in self._entries()
+            if item.is_deleted and item.timestamp_source == fs.SOURCE_RESIDUAL
+        ]
+        self.assertEqual(len(residual), 1)
+        self.assertEqual(residual[0].timestamp_confidence, fs.CONFIDENCE_RESIDUAL)
+        self.assertIsNotNone(residual[0].start_unix)
+        self.assertTrue(residual[0].timestamp_confidence_basis)
+
+    def test_overwritten_entry_has_no_usable_index_timestamps(self) -> None:
+        """[HAN2015] section 3.3 — overwriting resets start/end to the sentinel.
+
+        This is the common case on a disk that has been recording long enough to
+        wrap, so the parser must not report a time it does not have.
+        """
+        overwritten = [
+            item
+            for item in self._entries()
+            if item.is_deleted and item.timestamp_source != fs.SOURCE_RESIDUAL
+        ]
+        self.assertEqual(len(overwritten), builder.EXPECTED_IDR_RECOVERED_COUNT)
+        entry = overwritten[0]
+        self.assertIsNone(entry.start_unix)
+        self.assertIsNone(entry.end_unix)
+        self.assertEqual(entry.timestamp_source, fs.SOURCE_UNAVAILABLE)
+        self.assertIsNone(entry.timestamp_confidence)
+        self.assertIn("sentinel", entry.timestamp_confidence_basis)
+
+    def test_deleted_entries_carry_lower_confidence_than_allocated(self) -> None:
         entries = self._entries()
         allocated = [item for item in entries if item.allocation_state == fs.STATE_ALLOCATED]
         deleted = [item for item in entries if item.is_deleted]
         self.assertTrue(allocated and deleted)
         self.assertEqual(allocated[0].timestamp_confidence, fs.CONFIDENCE_INDEXED)
-        self.assertEqual(deleted[0].timestamp_confidence, fs.CONFIDENCE_RESIDUAL)
-        self.assertLess(deleted[0].timestamp_confidence, allocated[0].timestamp_confidence)
-        self.assertEqual(deleted[0].timestamp_source, fs.SOURCE_RESIDUAL)
-        self.assertTrue(deleted[0].timestamp_confidence_basis)
+        for entry in deleted:
+            confidence = entry.timestamp_confidence
+            # Either a residual time (lower) or none at all until the IDR table is read.
+            if confidence is not None:
+                self.assertLess(confidence, allocated[0].timestamp_confidence)
 
     def test_in_progress_recording_is_surfaced_not_discarded(self) -> None:
         recording = [item for item in self._entries() if item.allocation_state == fs.STATE_RECORDING]
@@ -159,7 +191,14 @@ class HikbtreeEntryTests(HikvisionFsTestBase):
         assert master is not None
         entries = fs.parse_hikbtree_entries(bytes(blob), master.hikbtree_offset, master=master)
         self.assertEqual(len(entries), builder.EXPECTED_RECORDING_COUNT - 1)
-        self.assertFalse(any(item.is_deleted for item in entries))
+        # That one slot is now unallocated, not deleted; the other deletion mode stays.
+        self.assertEqual(
+            sum(1 for item in entries if item.is_deleted),
+            builder.EXPECTED_DELETED_COUNT - 1,
+        )
+        self.assertFalse(
+            any(item.data_offset == deleted_plan.data_offset for item in entries)
+        )
 
     def test_cyclic_page_chain_terminates(self) -> None:
         blob = bytearray(self.blob)
@@ -278,6 +317,52 @@ class OutputContractTests(HikvisionFsTestBase):
         self.assertEqual(counts[fs.STATE_DELETED], builder.EXPECTED_DELETED_COUNT)
         self.assertEqual(counts[fs.STATE_ALLOCATED], 4)
         self.assertEqual(counts[fs.STATE_RECORDING], 1)
+
+    def test_overwritten_recording_recovers_its_time_from_the_idr_table(self) -> None:
+        """The lowest rung of the confidence ladder, end to end.
+
+        The index timestamps are gone, so the only surviving clock is inside the
+        data block. The recording must still be reported, with its time sourced
+        from the IDR table and flagged at the weakest confidence.
+        """
+        entries = fs.list_recordings(self.blob)
+        recovered = [
+            item
+            for item in entries
+            if item.allocation_state == fs.STATE_DELETED
+            and item.timestamp_source == fs.SOURCE_IDR_SCAN
+        ]
+        self.assertEqual(len(recovered), builder.EXPECTED_IDR_RECOVERED_COUNT)
+        entry = recovered[0]
+        planned = next(
+            item for item in builder.PLAN if item.recovers_time_from_idr_table
+        )
+        expected_start, expected_end = planned.expected_recovered_window
+
+        self.assertEqual(entry.timestamp_confidence, fs.CONFIDENCE_IDR_SCAN)
+        self.assertEqual(entry.start_ts, fs.unix_to_iso(expected_start))
+        self.assertEqual(entry.end_ts, fs.unix_to_iso(expected_end))
+        self.assertEqual(entry.channel, planned.channel)
+        self.assertEqual(entry.byte_offset, planned.data_offset)
+        # The basis must say the time may belong to either recording — that is the
+        # whole point of the weaker rung.
+        self.assertIn("overwriting", entry.timestamp_confidence_basis)
+
+    def test_confidence_ladder_is_ordered(self) -> None:
+        """Indexed > residual > IDR-recovered, with no other values in play."""
+        entries = fs.list_recordings(self.blob)
+        by_source = {
+            item.timestamp_source: item.timestamp_confidence for item in entries
+        }
+        self.assertEqual(by_source[fs.SOURCE_INDEXED], fs.CONFIDENCE_INDEXED)
+        self.assertEqual(by_source[fs.SOURCE_RESIDUAL], fs.CONFIDENCE_RESIDUAL)
+        self.assertEqual(by_source[fs.SOURCE_IDR_SCAN], fs.CONFIDENCE_IDR_SCAN)
+        self.assertGreater(fs.CONFIDENCE_INDEXED, fs.CONFIDENCE_RESIDUAL)
+        self.assertGreater(fs.CONFIDENCE_RESIDUAL, fs.CONFIDENCE_IDR_SCAN)
+        self.assertEqual(
+            {item.timestamp_confidence for item in entries},
+            {fs.CONFIDENCE_INDEXED, fs.CONFIDENCE_RESIDUAL, fs.CONFIDENCE_IDR_SCAN},
+        )
 
 
 class AdapterSegmentTests(HikvisionFsTestBase):
