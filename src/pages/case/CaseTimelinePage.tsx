@@ -40,6 +40,11 @@ export function CaseTimelinePage() {
   const [wallUnix, setWallUnix] = useState("");
   const [deviceUnix, setDeviceUnix] = useState("");
   const [driftOffset, setDriftOffset] = useState<number | null>(null);
+  const [normalization, setNormalization] = useState<{
+    method: string;
+    rtc_parsed: boolean;
+    note: string;
+  } | null>(null);
 
   const evidenceList = workspace?.evidence ?? [];
   const deviceDrift = driftOffset ?? 0;
@@ -72,6 +77,7 @@ export function CaseTimelinePage() {
       .getTimeline(caseId, deviceId)
       .then((d) => {
         setChannels(d.channels);
+        setNormalization(d.normalization ?? null);
         const first = d.channels.flatMap((channel) => channel.segments)[0];
         if (first) {
           const timeMode = d.channels.some((channel) =>
@@ -88,7 +94,10 @@ export function CaseTimelinePage() {
           setSelectedSegmentId(first.id);
         }
       })
-      .catch(() => setChannels([]));
+      .catch(() => {
+        setChannels([]);
+        setNormalization(null);
+      });
   }, [deviceId, caseId]);
 
   const seekToSegment = useCallback(
@@ -190,6 +199,19 @@ export function CaseTimelinePage() {
           <p className="visily-card-title text-[11px]">
             Clock drift calibration
           </p>
+          {normalization ? (
+            <p
+              className={`text-[12px] font-medium ${
+                normalization.rtc_parsed
+                  ? "text-[var(--status-success)]"
+                  : "text-[var(--status-warning)]"
+              }`}
+            >
+              {normalization.rtc_parsed
+                ? "Recorder clock found — timeline is time-ordered."
+                : "No recorder clock found — timeline is byte-offset order only, not wall-clock time."}
+            </p>
+          ) : null}
           <p className="text-[12px] text-[var(--text-tertiary)]">
             Supply one known event: wall-clock Unix time and the same moment on
             the DVR clock.

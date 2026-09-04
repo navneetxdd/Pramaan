@@ -61,6 +61,23 @@ export function capabilityTierLabel(tier: string): string {
   }
 }
 
+export function validationScopeLabel(scope: string): string {
+  switch (scope) {
+    case "synthetic_and_known_fixtures":
+      return "Proven on synthetic + known fixtures only";
+    case "synthetic_fixture_only":
+      return "Proven on synthetic fixtures only";
+    case "signature_match_only":
+      return "Signature match only — parser not run for this family";
+    case "generic_signature_carving_only":
+      return "Generic carving only — no vendor-specific parser";
+    case "annex_b_signature_only":
+      return "Generic H.264 signature only — no vendor structure";
+    default:
+      return scope.replace(/_/g, " ");
+  }
+}
+
 export function formatTimestampSource(source?: string | null): string {
   if (!source) return "Unavailable";
   return source.replace(/_/g, " ");

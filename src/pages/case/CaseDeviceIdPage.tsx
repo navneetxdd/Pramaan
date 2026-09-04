@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useCaseContext } from "@/context/CaseContext";
 import { api, type IdentificationReport } from "@/lib/api";
-import { capabilityTierLabel } from "@/lib/integrity";
+import { capabilityTierLabel, validationScopeLabel } from "@/lib/integrity";
 import { ConfidenceBadge } from "@/components/forensic/ConfidenceBadge";
 import { HexViewer } from "@/components/forensic/HexViewer";
 import { Button } from "@/components/ui/button";
@@ -270,10 +270,59 @@ export function CaseDeviceIdPage() {
                           {capabilityTierLabel(hit.capability_tier)}
                         </p>
                       ) : null}
+
+                      {hit.validation_scope ? (
+                        <p className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">
+                          {validationScopeLabel(hit.validation_scope)}
+                        </p>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
               )}
+
+              {report?.oem_capabilities &&
+              report.oem_capabilities.length > 0 ? (
+                <div
+                  className="mt-4 border-t pt-3"
+                  style={{ borderColor: "var(--border-subtle)" }}
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
+                    Coverage across all {report.oem_capabilities.length} vendors
+                    named in the problem statement
+                  </p>
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="w-full text-[11px]">
+                      <thead>
+                        <tr className="text-left text-[10px] uppercase text-[var(--text-tertiary)]">
+                          <th className="pb-1 pr-3 font-medium">Vendor</th>
+                          <th className="pb-1 pr-3 font-medium">Tier</th>
+                          <th className="pb-1 font-medium">Scope</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.oem_capabilities.map((cap) => (
+                          <tr
+                            key={cap.vendor}
+                            className="border-t"
+                            style={{ borderColor: "var(--border-subtle)" }}
+                          >
+                            <td className="py-1 pr-3 font-medium text-[var(--text-primary)]">
+                              {cap.vendor}
+                            </td>
+                            <td className="py-1 pr-3 text-[var(--text-secondary)]">
+                              {capabilityTierLabel(cap.capability_tier)}
+                            </td>
+                            <td className="py-1 text-[var(--text-tertiary)]">
+                              {validationScopeLabel(cap.validation_scope)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
 
               {report && topHit ? (
                 <Button asChild className="mt-4" variant="secondary">

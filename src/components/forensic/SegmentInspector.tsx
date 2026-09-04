@@ -240,6 +240,13 @@ export function SegmentInspector({
       ],
       ["Validation", segment?.validation ?? detail?.validation_level ?? "—"],
       [
+        "Confidence tier",
+        segment?.confidence_tier
+          ? segment.confidence_tier[0].toUpperCase() +
+            segment.confidence_tier.slice(1)
+          : "—",
+      ],
+      [
         "Recorder start",
         segment?.recorder_start_ts ?? detail?.recorder_start_ts ?? "—",
       ],

@@ -631,7 +631,12 @@ export const api = {
       total_segments: number;
       channel_count: number;
       channels: TimelineChannel[];
-      normalization: { method: string; rtc_parsed: boolean; note: string };
+      normalization: {
+        method: string;
+        rtc_parsed: boolean;
+        drift_offset_seconds: number;
+        note: string;
+      };
     }>(`/api/v1/cases/${caseId}/timeline/${deviceId}`),
 
   custody: (caseId: string) =>
