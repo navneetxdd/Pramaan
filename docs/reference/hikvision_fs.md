@@ -288,10 +288,107 @@ confidence value is emitted.
 > §3.3 overwriting is the *common* case and §3.2 initialization is the rare one. An
 > engine validated only against the initialization case would look correct in the lab
 > and lose the recording time on real evidence.
+| `0.1` | unchanged | any entry that **contradicts itself** (§7.4, §7.5) | The recorder writes the 48 bytes of an entry as one unit, so a field that cannot be true is evidence the entry was not written coherently. That is exactly what the `0.9` basis asserts, so the assertion is withdrawn. |
 | `None` | `unavailable` | no usable time from either source | — |
 
 These are the **only** numeric confidences the Hikvision engine emits. There is no
-`0.42 + count * 0.01` anywhere in this module.
+`0.42 + count * 0.01` anywhere in this module. On an undamaged image only the top three
+rungs occur; `0.1` appears solely where the index itself is self-contradictory, which
+`test_confidence_ladder_is_ordered` (clean image) and `EntryIntegrityTests` (corrupt
+entries) pin from opposite directions.
+
+### 7.4 `timestamp_status` — are the entry's own times coherent?
+
+A third axis, independent of both `allocation_state` and `recovery_status`.
+
+| Value | Meaning |
+|---|---|
+| `ok` | Start and end are either absent or in order. |
+| `inverted_window` | `end <= start`. The recorder cannot have written the pair consistently. |
+
+**Raw timestamps are never repaired.** They are not swapped, clamped, or replaced with a
+plausible-looking window; both values are reported exactly as found and the anomaly is
+stated alongside them. Confidence drops to `0.1` and the basis names the contradiction.
+
+> Audit finding **F-1**: before this was added, an inverted window was emitted at `0.9`
+> with the basis "…written together by the recorder and mutually consistent" — a claim
+> that is false precisely when the window is inverted.
+
+### 7.5 `channel_valid` — can this byte name a camera?
+
+The channel byte (entry `+0x11`) is a **1-based u8** ([HAN2015] §2.4, [HIKEXT]). Two values
+are provably not camera numbers:
+
+| Value | Why it cannot be a camera |
+|---|---|
+| `0x00` | The format numbers cameras from 1, so zero addresses none. |
+| `0xFF` | The format's erase pattern — the same all-ones fill used by the cleared allocation flag (§6.4). |
+
+**No maximum channel count is imposed.** Neither [HAN2015] nor [HIKEXT] publishes one, so
+every value in `1..254` is treated as valid; inventing a ceiling would manufacture false
+negatives on large NVRs. The raw byte is always preserved in `channel` — it is never
+remapped to `0`, `1`, or `"unknown"` — and `channel_valid` carries the judgement.
+
+> Audit finding **F-2**: a corrupted channel byte previously surfaced as "channel 255" at
+> confidence `0.9`, indistinguishable in the UI from a real camera.
+
+### 7.6 Index traversal status — is the inventory complete?
+
+`walk_hikbtree()` returns a `HikbtreeTraversal` and `recover_recordings()` a
+`RecoveryResult`, both carrying how the page walk ended. "6 recordings" and "6 recordings
+found before the index broke" are different findings about the same disk, and an examiner
+relying on the inventory has to be able to tell them apart.
+
+| Status | Cause |
+|---|---|
+| `complete` | Reached a documented last page (`next = 0xFFFFFFFFFFFFFFFF` or `0`). |
+| `loop` | A page pointer re-entered a page already in the chain. |
+| `out_of_bounds` | A next-page pointer addressed bytes outside the image. |
+| `malformed_page` | A page declared entries that run past the end of the image. |
+| `page_limit` | The `MAX_PAGES` safety limit was hit with the chain still continuing. |
+| `no_index` | No HIKBTREE signature, or a master sector that failed validation. |
+
+Entries found before an abnormal stop **are retained** — safe partial recovery is the
+intended design — but the status travels with them into `validation_evidence` as
+`index_traversal_status`, `index_complete`, `index_traversal_detail` and
+`index_pages_read`, so neither the API, the report, nor the Recovery page can present a
+truncated inventory as a whole one.
+
+> **Known limitation, deliberately not papered over.** §6.2 defines
+> `0xFFFFFFFFFFFFFFFF` as the last-page marker. A next-page pointer *overwritten with that
+> exact value* is therefore a valid last page as far as the format can tell, and the walk
+> reports `complete`. No published field (page count, total entries) exists to cross-check
+> it. `test_severed_pointer_to_the_documented_terminator_is_indistinguishable` records this
+> rather than letting a later reader assume the case is detected.
+
+> Audit finding **F-3**: every page-walk exit was previously a bare `break`, so silent
+> truncation was indistinguishable from a complete read.
+
+### 7.3 `recovery_status` — is all of it still there?
+
+`allocation_state` describes what the **index** claims. `recovery_status` describes what the
+**data** is. They are independent: a recording can be `allocated` *and* `partial` — still
+indexed by the recorder, but its data block has been partly reused.
+
+| `recovery_status` | Rule | Grounding |
+|---|---|---|
+| `intact` | Every IDR record in the block falls inside the entry's own start→end window | — |
+| `partial` | At least one IDR record lies **outside** that window | [HAN2015] §3.3 |
+
+[HAN2015] §3.3 gives this test directly: *"If any recording time from the IDR tables in the
+video data predates the 'Start/End time of record' of data block entries, it can be understood
+that the hard disk had been full at least one time and has previously been overwritten."* A
+block carrying records from outside the entry's window therefore holds footage from more than
+one recording.
+
+**What `partial` does and does not mean.** It means part of this data block belongs to a
+different recording, so only the bytes inside the entry's own window are this recording. The
+overwritten remainder is **reported gone and never reconstructed** — no interpolation, no
+padding, no guessed frames. The recording is still recovered and still exported; the examiner
+is simply told it is incomplete and why, in `partial_reason`.
+
+The check is deliberately conservative: with no usable window, or no IDR records to compare,
+nothing is claimed. An absent IDR table yields `intact`, not a false `partial`.
 
 ### 7.2 `event_type` derivation
 
@@ -345,6 +442,7 @@ these keys (consumed by the Recovery menu playback pipeline):
 | `resolution` | `str \| None` | `"WIDTHxHEIGHT"` from SPS (§8) |
 | `fps` | `float \| None` | from VUI (§8) |
 | `allocation_state` | `str` | §7 |
+| `recovery_status` | `str` | `intact` \| `partial` (§7.3) |
 
 `unallocated` entries are excluded — they describe no footage.
 
@@ -372,6 +470,7 @@ The engine runs in a desktop shell, against images that can be multi-terabyte.
 
 | Gap | Blocked on |
 |---|---|
+| Real-hardware validation. The parser has never run against a genuine Hikvision drive; the synthetic path has instead been hardened to cover the structural cases a real drive is most likely to hit — entries spread across a chain of index pages, and a data block partly overwritten by a later recording. | A physical device. |
 | No real acquired Hikvision drive. All validation runs against the emulated image built by `engine/tests/support/hikvision_builder.py`, which is stamped `emulated` in every artifact and report it produces. | Obtaining a genuine Hikvision HDD acquisition. |
 | System-log (`RATS`) record field offsets — needed to promote `event_type` from `event` to a specific alarm class such as `motion`. | Full text of [DRAG2023]. |
 | HIKBTREE header created-time, page-list pointer and footer pointer offsets. | Not published in [HAN2015]; would need reverse engineering against a real drive. |

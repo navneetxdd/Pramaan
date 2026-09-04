@@ -71,7 +71,12 @@ BACKUP_MASTER_OFFSET = 0x2000
 HIKBTREE_OFFSET = VIDEO_AREA_OFFSET + DATA_BLOCK_SIZE * TOTAL_DATA_BLOCKS
 HIKBTREE_HEADER_SIZE = PAGE_SIZE
 FIRST_PAGE_OFFSET = HIKBTREE_OFFSET + HIKBTREE_HEADER_SIZE
-IMAGE_SIZE = FIRST_PAGE_OFFSET + PAGE_SIZE * 2
+# Deliberately small so the plan spills across several index pages: a real recorder
+# fits 84 entries per 4 KB page, which a fixture this size would never reach, leaving
+# the parser's page-walk loop completely unexercised.
+ENTRIES_PER_PAGE = 3
+MAX_INDEX_PAGES = 8
+IMAGE_SIZE = FIRST_PAGE_OFFSET + PAGE_SIZE * MAX_INDEX_PAGES
 
 ALLOC_ALLOCATED = 0x0000000000000000
 ALLOC_CLEARED = 0xFFFFFFFFFFFFFFFF  # docs/reference/hikvision_fs.md §6.4
@@ -100,6 +105,9 @@ class PlannedRecording:
     #                overwritten ([HAN2015] §3.3), so only the IDR table still
     #                knows when this footage was recorded
     index_timestamps: str = "intact"
+    # Seconds before this recording's start to plant a stray IDR record, simulating a
+    # block whose tail still holds the previous recording's footage. [HAN2015] §3.3.
+    overwritten_by_seconds: int = 0
 
     @property
     def end_unix(self) -> int:
@@ -117,7 +125,16 @@ class PlannedRecording:
             span = max(1, int(self.duration_s * 0.1))
         step = span / max(1, self.idr_count - 1)
         base = self.start_unix + (10 if self.event_type == "event" else 0)
-        return [base + int(round(index * step)) for index in range(self.idr_count)]
+        stamps = [base + int(round(index * step)) for index in range(self.idr_count)]
+        if self.is_partially_overwritten:
+            # A surviving record from the recording this block partly overwrote.
+            stamps.insert(0, self.start_unix - self.overwritten_by_seconds)
+        return stamps
+
+    @property
+    def is_partially_overwritten(self) -> bool:
+        """True when this block deliberately carries a foreign IDR record."""
+        return self.overwritten_by_seconds > 0
 
     @property
     def recovers_time_from_idr_table(self) -> bool:
@@ -162,11 +179,19 @@ PLAN: tuple[PlannedRecording, ...] = (
     PlannedRecording(channel=1, block_index=6, start_unix=INIT_TIME + 900, duration_s=300,
                      event_type="continuous", allocation_state="deleted (index entry cleared)",
                      index_timestamps="sentinel"),
+    # Still indexed, but its data block was partly reused: the IDR table retains a
+    # record from an hour earlier, which is the published tell for an overwrite.
+    # Must come back PARTIAL — never silently treated as a complete recording.
+    PlannedRecording(channel=2, block_index=7, start_unix=INIT_TIME + 14400, duration_s=300,
+                     event_type="continuous", allocation_state="allocated",
+                     overwritten_by_seconds=3600),
 )
 
 EXPECTED_RECORDING_COUNT = len(PLAN)
 EXPECTED_DELETED_COUNT = sum(1 for item in PLAN if item.allocation_state.startswith("deleted"))
 EXPECTED_IDR_RECOVERED_COUNT = sum(1 for item in PLAN if item.recovers_time_from_idr_table)
+EXPECTED_PARTIAL_COUNT = sum(1 for item in PLAN if item.is_partially_overwritten)
+EXPECTED_INDEX_PAGES = -(-(len(PLAN) + 1) // ENTRIES_PER_PAGE)  # ceil, +1 unused slot
 
 
 @dataclass
@@ -321,20 +346,41 @@ def _unused_entry_bytes() -> bytes:
 
 
 def _write_hikbtree(disk: bytearray) -> None:
-    """docs/reference/hikvision_fs.md §6."""
+    """docs/reference/hikvision_fs.md §6.
+
+    Entries are split across a chain of 4 KB pages rather than packed into one, so the
+    parser's page-walk — following each page's next-page pointer until the 0xFF..FF
+    terminator — is actually exercised. A single-page fixture leaves that loop, and any
+    bug in it, invisible.
+    """
     header = bytearray(HIKBTREE_HEADER_SIZE)
     header[TREE_SIG_OFF : TREE_SIG_OFF + len(HIKBTREE_SIG)] = HIKBTREE_SIG
     struct.pack_into("<Q", header, TREE_FIRST_PAGE_OFF, FIRST_PAGE_OFFSET)
     disk[HIKBTREE_OFFSET : HIKBTREE_OFFSET + len(header)] = header
 
-    page = bytearray(PAGE_SIZE)
     entries = [_entry_bytes(item) for item in PLAN] + [_unused_entry_bytes()]
-    struct.pack_into("<I", page, PAGE_ENTRY_COUNT_OFF, len(entries))
-    struct.pack_into("<Q", page, PAGE_NEXT_PAGE_OFF, 0xFFFFFFFFFFFFFFFF)
-    for index, entry in enumerate(entries):
-        at = PAGE_ENTRY_BASE + index * ENTRY_SIZE
-        page[at : at + ENTRY_SIZE] = entry
-    disk[FIRST_PAGE_OFFSET : FIRST_PAGE_OFFSET + PAGE_SIZE] = page
+    chunks = [
+        entries[i : i + ENTRIES_PER_PAGE]
+        for i in range(0, len(entries), ENTRIES_PER_PAGE)
+    ]
+    if len(chunks) > MAX_INDEX_PAGES:
+        raise ValueError(
+            f"{len(chunks)} index pages needed but only {MAX_INDEX_PAGES} reserved"
+        )
+
+    for page_index, chunk in enumerate(chunks):
+        page_offset = FIRST_PAGE_OFFSET + page_index * PAGE_SIZE
+        is_last = page_index == len(chunks) - 1
+        next_page = (
+            0xFFFFFFFFFFFFFFFF if is_last else page_offset + PAGE_SIZE
+        )
+        page = bytearray(PAGE_SIZE)
+        struct.pack_into("<I", page, PAGE_ENTRY_COUNT_OFF, len(chunk))
+        struct.pack_into("<Q", page, PAGE_NEXT_PAGE_OFF, next_page)
+        for slot, entry in enumerate(chunk):
+            at = PAGE_ENTRY_BASE + slot * ENTRY_SIZE
+            page[at : at + ENTRY_SIZE] = entry
+        disk[page_offset : page_offset + PAGE_SIZE] = page
 
 
 # --------------------------------------------------------------------------------------
