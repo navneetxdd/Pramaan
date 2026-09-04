@@ -52,17 +52,35 @@ SPECIMEN_LABEL = b"PRAMAAN-LAB-SPECIMEN-HIKVISION"
 
 _LAB_EPOCH = 1_700_000_000
 DATA_BLOCK_SIZE = 1 << 20
-TOTAL_DATA_BLOCKS = 5
+TOTAL_DATA_BLOCKS = 6
 VIDEO_AREA_OFFSET = 0x100000
 HIKBTREE_OFFSET = VIDEO_AREA_OFFSET + DATA_BLOCK_SIZE * TOTAL_DATA_BLOCKS
 FIRST_PAGE_OFFSET = HIKBTREE_OFFSET + PAGE_SIZE
-DISK_SIZE = FIRST_PAGE_OFFSET + PAGE_SIZE * 2
+
+# Deliberately small so the entries below span a chain of index pages rather than
+# fitting on one. A real 4 KB page holds 84 entries, which a fixture this size would
+# never reach — leaving the parser's page-walk, and any bug in it, unexercised on the
+# one image the app actually acquires.
+ENTRIES_PER_PAGE = 3
+INDEX_PAGE_COUNT = 4
+DISK_SIZE = FIRST_PAGE_OFFSET + PAGE_SIZE * INDEX_PAGE_COUNT
 
 _ALLOC_ALLOCATED = 0x0000000000000000
 _ALLOC_CLEARED = 0xFFFFFFFFFFFFFFFF
 
-# (channel, block index, allocated?)
-_LAYOUT = ((1, 0, True), (1, 1, True), (2, 2, True), (1, 3, True), (2, 4, False))
+# (channel, block index, allocated?, overwritten_by_seconds)
+#
+# The final entry is deliberately partially overwritten: its IDR table retains a record
+# from an hour before the entry's own start time, which is the published tell for a
+# block reused by a later recording ([HAN2015] §3.3). It must come back PARTIAL.
+_LAYOUT = (
+    (1, 0, True, 0),
+    (1, 1, True, 0),
+    (2, 2, True, 0),
+    (1, 3, True, 0),
+    (2, 4, False, 0),
+    (2, 5, True, 3600),
+)
 
 
 def _picture_indexed_payload(target_bytes: int) -> bytes:
@@ -103,22 +121,23 @@ def build_hikvision_lab_specimen() -> bytes:
     struct.pack_into("<Q", master, MASTER_DATA_BLOCK_SIZE_OFF, DATA_BLOCK_SIZE)
     struct.pack_into("<I", master, MASTER_TOTAL_BLOCKS_OFF, TOTAL_DATA_BLOCKS)
     struct.pack_into("<Q", master, MASTER_HIKBTREE_OFF, HIKBTREE_OFFSET)
-    struct.pack_into("<I", master, MASTER_HIKBTREE_SIZE_OFF, PAGE_SIZE * 2)
+    struct.pack_into("<I", master, MASTER_HIKBTREE_SIZE_OFF, PAGE_SIZE * INDEX_PAGE_COUNT)
     struct.pack_into("<I", master, MASTER_INIT_TIME_OFF, _LAB_EPOCH)
     disk[MASTER_BLOCK_OFFSET : MASTER_BLOCK_OFFSET + len(master)] = master
 
     payload = _picture_indexed_payload(64 * 1024)
-    page = bytearray(PAGE_SIZE)
-    struct.pack_into("<I", page, PAGE_ENTRY_COUNT_OFF, len(_LAYOUT))
-    struct.pack_into("<Q", page, PAGE_NEXT_PAGE_OFF, 0xFFFFFFFFFFFFFFFF)
+    entries: list[bytes] = []
 
-    for slot, (channel, block_index, allocated) in enumerate(_LAYOUT):
+    for slot, (channel, block_index, allocated, overwritten_by) in enumerate(_LAYOUT):
         block_start = VIDEO_AREA_OFFSET + block_index * DATA_BLOCK_SIZE
         disk[block_start : block_start + len(payload)] = payload
 
         start = _LAB_EPOCH + 3600 + slot * 600
         end = start + 300
         stamps = [start + step * 60 for step in range(5)]
+        if overwritten_by:
+            # A surviving record from the recording this block partly overwrote.
+            stamps.insert(0, start - overwritten_by)
         table_start = block_start + DATA_BLOCK_SIZE - len(stamps) * IDR_RECORD_SIZE
         for idr_index, stamp in enumerate(stamps):
             record = bytearray(IDR_RECORD_SIZE)
@@ -134,14 +153,33 @@ def build_hikvision_lab_specimen() -> bytes:
         struct.pack_into("<I", entry, ENTRY_START_TS_OFF, start)
         struct.pack_into("<I", entry, ENTRY_END_TS_OFF, end)
         struct.pack_into("<Q", entry, ENTRY_DATA_OFFSET_OFF, block_start)
-        at = PAGE_ENTRY_BASE + slot * ENTRY_SIZE
-        page[at : at + ENTRY_SIZE] = entry
+        entries.append(bytes(entry))
 
     header = bytearray(PAGE_SIZE)
     header[TREE_SIG_OFF : TREE_SIG_OFF + len(HIKBTREE_SIG)] = HIKBTREE_SIG
     struct.pack_into("<Q", header, TREE_FIRST_PAGE_OFF, FIRST_PAGE_OFFSET)
     disk[HIKBTREE_OFFSET : HIKBTREE_OFFSET + PAGE_SIZE] = header
-    disk[FIRST_PAGE_OFFSET : FIRST_PAGE_OFFSET + PAGE_SIZE] = page
+
+    # Chain the entries across a page list so the walk is genuinely exercised.
+    chunks = [
+        entries[i : i + ENTRIES_PER_PAGE]
+        for i in range(0, len(entries), ENTRIES_PER_PAGE)
+    ]
+    for page_index, chunk in enumerate(chunks):
+        page_offset = FIRST_PAGE_OFFSET + page_index * PAGE_SIZE
+        is_last = page_index == len(chunks) - 1
+        page = bytearray(PAGE_SIZE)
+        struct.pack_into("<I", page, PAGE_ENTRY_COUNT_OFF, len(chunk))
+        struct.pack_into(
+            "<Q",
+            page,
+            PAGE_NEXT_PAGE_OFF,
+            0xFFFFFFFFFFFFFFFF if is_last else page_offset + PAGE_SIZE,
+        )
+        for slot, entry in enumerate(chunk):
+            at = PAGE_ENTRY_BASE + slot * ENTRY_SIZE
+            page[at : at + ENTRY_SIZE] = entry
+        disk[page_offset : page_offset + PAGE_SIZE] = page
     return bytes(disk)
 
 
