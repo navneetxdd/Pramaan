@@ -29,13 +29,13 @@ export function CatalogStatStrip({
     },
     {
       label: "Processing jobs",
-      value: String(processingJobs).padStart(2, "0"),
+      value: String(processingJobs),
       icon: Clock,
       tone: "neutral" as const,
     },
     {
       label: "Failed jobs",
-      value: String(auditErrors).padStart(2, "0"),
+      value: String(auditErrors),
       icon: AlertTriangle,
       tone: auditErrors > 0 ? ("danger" as const) : ("success" as const),
     },

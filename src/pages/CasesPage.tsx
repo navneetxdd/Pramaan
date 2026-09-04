@@ -57,6 +57,7 @@ export function CasesPage() {
   const [importHandler, setImportHandler] = useState("");
   const [importCaseTitle, setImportCaseTitle] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [verifyOnly, setVerifyOnly] = useState(false);
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -134,6 +135,7 @@ export function CasesPage() {
     setImportHandler("");
     setImportCaseTitle("");
     setImportFile(null);
+    setVerifyOnly(false);
   }
 
   async function handleImportSubmit(e: React.FormEvent) {
@@ -177,14 +179,31 @@ export function CasesPage() {
         await load();
         navigate(`/cases/${created.id}/acquire`);
       } else {
-        const result = await api.importCase(importHandler.trim(), importFile);
-        toast.success(
-          `Case restored — ${result.files_verified} files verified`,
+        const result = await api.importCase(
+          importHandler.trim(),
+          importFile,
+          verifyOnly,
         );
-        setImportDialogOpen(false);
-        resetImportDialog();
-        await load();
-        navigate(`/cases/${result.case_id}`);
+        if (!result.imported) {
+          toast.success(
+            `Bundle verified — signature valid, ${result.files_verified} file` +
+              `${result.files_verified === 1 ? "" : "s"} match their recorded hashes.` +
+              (result.already_present_locally
+                ? " This case already exists on this workstation."
+                : " Nothing was imported."),
+            { duration: 10000 },
+          );
+          setImportDialogOpen(false);
+          resetImportDialog();
+        } else {
+          toast.success(
+            `Case restored — ${result.files_verified} files verified`,
+          );
+          setImportDialogOpen(false);
+          resetImportDialog();
+          await load();
+          navigate(`/cases/${result.case_id}`);
+        }
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Import failed");
@@ -448,6 +467,21 @@ export function CasesPage() {
                   }}
                 />
               </div>
+              {importKind === "case_export" ? (
+                <label className="flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={verifyOnly}
+                    onChange={(e) => setVerifyOnly(e.target.checked)}
+                  />
+                  <span>
+                    Verify only — check the signature and every file's hash
+                    without importing. Use this to confirm an export is intact,
+                    including on the workstation that made it.
+                  </span>
+                </label>
+              ) : null}
             </div>
             <DialogFooter className="mt-6">
               <Button
@@ -458,7 +492,13 @@ export function CasesPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={importing || !importFile}>
-                {importing ? "Importing…" : "Import"}
+                {importing
+                  ? verifyOnly
+                    ? "Verifying…"
+                    : "Importing…"
+                  : verifyOnly && importKind === "case_export"
+                    ? "Verify"
+                    : "Import"}
               </Button>
             </DialogFooter>
           </form>

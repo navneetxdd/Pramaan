@@ -1,6 +1,7 @@
 import { HardDrive, Clock, MapPin } from "lucide-react";
 import type { CustodyEvent, EvidenceRecord } from "@/lib/api";
 import { formatBytes, shortHash } from "@/lib/utils";
+import { custodyActionLabel } from "@/lib/integrity";
 
 type EvidenceInspectorProps = {
   item: EvidenceRecord | null;
@@ -73,7 +74,7 @@ export function EvidenceInspector({
           >
             <dt className="text-[var(--text-tertiary)]">Media type</dt>
             <dd className="font-medium capitalize text-[var(--text-primary)]">
-              {item.media_type || "disk image"}
+              {(item.media_type || "disk image").replace(/_/g, " ")}
             </dd>
           </div>
           {oem ? (
@@ -100,12 +101,34 @@ export function EvidenceInspector({
               </span>
             </dd>
           </div>
-          <div className="flex justify-between gap-2">
+          <div
+            className="flex justify-between gap-2 border-b pb-2"
+            style={{ borderColor: "var(--border-subtle)" }}
+          >
             <dt className="text-[var(--text-tertiary)]">SHA-256</dt>
             <dd className="mono text-[10px] text-[var(--text-secondary)]">
               {shortHash(item.sha256)}
             </dd>
           </div>
+          {item.write_blocker ? (
+            <div
+              className="flex justify-between gap-2 border-b pb-2"
+              style={{ borderColor: "var(--border-subtle)" }}
+            >
+              <dt className="text-[var(--text-tertiary)]">Write blocker</dt>
+              <dd className="text-right text-[11px] text-[var(--text-primary)]">
+                {item.write_blocker.replace(/_/g, " ")}
+              </dd>
+            </div>
+          ) : null}
+          {item.source_identifier ? (
+            <div className="flex justify-between gap-2">
+              <dt className="shrink-0 text-[var(--text-tertiary)]">Source</dt>
+              <dd className="mono truncate text-right text-[10px] text-[var(--text-secondary)]">
+                {item.source_identifier}
+              </dd>
+            </div>
+          ) : null}
         </dl>
 
         <div>
@@ -128,7 +151,7 @@ export function EvidenceInspector({
                   style={{ borderColor: "var(--accent-400)" }}
                 >
                   <p className="text-[12px] font-medium text-[var(--text-primary)]">
-                    {ev.action}
+                    {custodyActionLabel(ev.action)}
                   </p>
                   <p className="mono mt-0.5 text-[10px] text-[var(--text-tertiary)]">
                     {ev.created_at.replace("T", " ").slice(0, 16)} · {ev.actor}

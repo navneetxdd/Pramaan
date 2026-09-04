@@ -20,7 +20,7 @@ export function IntegrityPanel({
   witnessLabel = "Chain tip hash",
   onVerify,
 }: IntegrityPanelProps) {
-  const secure = state === "intact";
+  const intact = state === "intact";
 
   return (
     <div className="visily-card h-full">
@@ -33,17 +33,17 @@ export function IntegrityPanel({
           <div className="flex items-center gap-2">
             <ChainLinkIndicator state={state} />
             <span className="text-[12px] font-medium text-[var(--text-primary)]">
-              Chain of custody
+              Hash chain
             </span>
           </div>
           <span
             className={
-              secure
+              intact
                 ? "visily-badge visily-badge-success"
                 : "visily-badge visily-badge-danger"
             }
           >
-            {secure ? "Secure" : state === "checking" ? "Checking" : "Alert"}
+            {intact ? "Intact" : state === "checking" ? "Checking" : "Broken"}
           </span>
         </div>
         {lastAudit ? (

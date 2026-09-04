@@ -129,7 +129,7 @@ export function CaseReportPage() {
                 <dd className="mono truncate">
                   {String(
                     (summary as { generated_at?: string }).generated_at ?? "—",
-                  )}
+                  ).slice(0, 19)}
                 </dd>
               </div>
             </dl>

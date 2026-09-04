@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useCaseContext } from "@/context/CaseContext";
 import { api, type CustodyEvent } from "@/lib/api";
+import { custodyActionLabel } from "@/lib/integrity";
 import { Badge } from "@/components/ui/badge";
 import { VirtualTable } from "@/components/ui/virtual-table";
 import { DashboardStat } from "@/components/visily/DashboardStat";
@@ -11,13 +12,18 @@ export function CaseCustodyPage() {
   const { caseId } = useCaseContext();
   const [events, setEvents] = useState<CustodyEvent[]>([]);
   const [intact, setIntact] = useState<boolean | null>(null);
+  const [firstBrokenRowId, setFirstBrokenRowId] = useState<number | null>(null);
 
   useEffect(() => {
     void api.custody(caseId).then((d) => {
       setEvents(d.events);
       setIntact(d.chain.ok);
+      setFirstBrokenRowId(d.chain.first_broken_row_id);
     });
-    void api.custodyStatus(caseId).then((s) => setIntact(s.intact));
+    void api.custodyStatus(caseId).then((s) => {
+      setIntact(s.intact);
+      setFirstBrokenRowId(s.first_broken_row_id);
+    });
   }, [caseId]);
 
   const actors = new Set(events.map((e) => e.actor)).size;
@@ -59,6 +65,25 @@ export function CaseCustodyPage() {
         />
       </div>
 
+      {intact === false ? (
+        <section
+          className="visily-card border p-3"
+          style={{ borderColor: "var(--status-danger)" }}
+        >
+          <p className="text-[13px] font-semibold text-[var(--status-danger)]">
+            Chain broken
+            {firstBrokenRowId != null
+              ? ` at custody entry #${firstBrokenRowId}`
+              : ""}
+          </p>
+          <p className="mt-1 text-[12px] text-[var(--text-secondary)]">
+            {firstBrokenRowId != null
+              ? "This is the first row whose stored hash no longer matches its predecessor — everything from this row onward cannot be trusted as unaltered. Rows before it still verify."
+              : "The hash chain failed verification, but the exact break point could not be determined."}
+          </p>
+        </section>
+      ) : null}
+
       <section className="visily-card overflow-hidden">
         <div className="visily-card-header">
           <span className="visily-card-title">Event log</span>
@@ -72,6 +97,11 @@ export function CaseCustodyPage() {
             <VirtualTable
               rows={events}
               maxHeight={520}
+              getRowClassName={(e) =>
+                firstBrokenRowId != null && e.id >= firstBrokenRowId
+                  ? "custody-row-broken"
+                  : undefined
+              }
               columns={[
                 {
                   key: "n",
@@ -87,7 +117,7 @@ export function CaseCustodyPage() {
                 {
                   key: "action",
                   header: "Action",
-                  cell: (e) => <span className="mono">{e.action}</span>,
+                  cell: (e) => <span>{custodyActionLabel(e.action)}</span>,
                 },
               ]}
             />

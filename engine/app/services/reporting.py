@@ -20,6 +20,34 @@ from engine.app.core.repository import (
 )
 from engine.app.core.signing import sign_pdf_bytes
 
+_CUSTODY_ACTION_LABELS = {
+    "case_created": "Case created",
+    "case_exported": "Case exported",
+    "case_imported": "Case imported",
+    "evidence_acquired": "Evidence acquired",
+    "evidence_acquisition_verification_failed": "Evidence verification failed",
+    "ai_analytics_completed": "AI analytics completed",
+    "ai_analytics_completed_with_warnings": "AI analytics completed (with warnings)",
+    "ai_analytics_skipped_unavailable": "AI analytics skipped — unavailable",
+    "cross_camera_correlation_run": "Cross-camera correlation run",
+    "cross_camera_still_saved": "Cross-camera still saved as evidence",
+    "recovery_started": "Recovery started",
+    "recovery_adapter_manually_selected": "Recovery adapter selected manually",
+    "recovery_superseded_prior_results": "Recovery re-run, replacing prior results",
+    "sequence_artifact_created": "Recovered segment added",
+    "recovery_completed": "Recovery completed",
+    "recovery_failed": "Recovery failed",
+    "signed_report_generated": "Signed report generated",
+}
+
+
+def _custody_action_label(action: str) -> str:
+    """Mirrors src/lib/integrity.ts's custodyActionLabel — this report is read by
+    examiners and judges directly, not just the live app; keep both humanized."""
+    code, _, detail = action.partition(":")
+    label = _CUSTODY_ACTION_LABELS.get(code, code.replace("_", " "))
+    return f"{label}: {detail}" if detail else label
+
 
 def _recovery_summary(case_id: str) -> list[dict]:
     summary: list[dict] = []
@@ -149,7 +177,7 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
         for item in report["recovery_summary"]
     )
     custody_rows = "".join(
-        f"<tr><td>{escape(str(event['created_at']))}</td><td>{escape(str(event['action']))}</td>"
+        f"<tr><td>{escape(str(event['created_at']))}</td><td>{escape(_custody_action_label(str(event['action'])))}</td>"
         f"<td>{escape(str(event['actor']))}</td><td>{escape(str(event.get('detail') or ''))}</td></tr>"
         for event in report["custody_events"][:50]
     )
@@ -197,7 +225,7 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
             )
     chain_ok = report["custody_chain_valid"]["ok"]
     broken_row = report["custody_chain_valid"].get("first_broken_row_id")
-    chain_detail = "VALID" if chain_ok else f"BROKEN at custody row {broken_row}"
+    chain_detail = "INTACT" if chain_ok else f"BROKEN at custody row {broken_row}"
     timeline_section = "<br/>".join(timeline_notes) if timeline_notes else "Byte-offset ordering only; no recorder clock recovered."
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/><title>Forensic Report — {escape(str(case['title']))}</title>
@@ -258,7 +286,7 @@ def build_pdf_report(case_id: str, *, require_intact_chain: bool = True) -> tupl
     line(f"Generated: {report['generated_at']}")
     line(f"Build: {APP_VERSION}")
     chain_ok = report["custody_chain_valid"]["ok"]
-    chain_label = "VALID" if chain_ok else f"BROKEN row {report['custody_chain_valid'].get('first_broken_row_id')}"
+    chain_label = "INTACT" if chain_ok else f"BROKEN at custody row {report['custody_chain_valid'].get('first_broken_row_id')}"
     line(f"Custody chain: {chain_label}")
     line(f"Segments recovered: {report['total_segments_recovered']}")
     for ev in report["evidence"]:

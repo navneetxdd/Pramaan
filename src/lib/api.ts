@@ -490,10 +490,11 @@ export const api = {
     }>;
   },
 
-  importCase: async (actor: string, file: File) => {
+  importCase: async (actor: string, file: File, verifyOnly = false) => {
     const form = new FormData();
     form.append("actor", actor);
     form.append("bundle", file);
+    form.append("verify_only", String(verifyOnly));
     const response = await fetch(`${getApiBase()}/api/v1/cases/import`, {
       method: "POST",
       body: form,
@@ -507,6 +508,8 @@ export const api = {
       files_verified: number;
       integrity_ok: boolean;
       signer_fingerprint: string;
+      already_present_locally: boolean;
+      imported: boolean;
     }>;
   },
 
@@ -631,7 +634,12 @@ export const api = {
       total_segments: number;
       channel_count: number;
       channels: TimelineChannel[];
-      normalization: { method: string; rtc_parsed: boolean; note: string };
+      normalization: {
+        method: string;
+        rtc_parsed: boolean;
+        drift_offset_seconds: number;
+        note: string;
+      };
     }>(`/api/v1/cases/${caseId}/timeline/${deviceId}`),
 
   custody: (caseId: string) =>

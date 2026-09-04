@@ -94,11 +94,12 @@ export function FindingsTrack({
         })}
       </div>
       <p className="px-3 pb-3 text-[10px] text-[var(--text-tertiary)]">
-        Axis aligned with timeline
+        {items.length} marker{items.length === 1 ? "" : "s"} on the timeline's
+        shared axis
         {useTime
           ? " (wall/recorder time)"
           : ` (${formatOffset(min)}–${formatOffset(max)})`}
-        .{items.length} markers on shared axis.
+        .
       </p>
     </section>
   );
