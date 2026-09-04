@@ -32,9 +32,13 @@ def build_dahua_disk(specimen: bytes) -> bytes:
 
 
 def build_hikvision_disk(specimen: bytes) -> bytes:
-    # Hikvision specimen already includes markers at 512/1024 offsets.
+    # Hikvision specimen already includes markers at 512/1024 offsets. Never truncate —
+    # the HIKBTREE entries the specimen builder writes live near the end of the buffer,
+    # and cutting it down to DISK_SIZE silently drops every recording (confirmed: this
+    # exact truncation is why list_recordings() returned 0 on the previously-committed
+    # lab_hikvision_fs.img after build_hikvision_lab_specimen() grew past 4 MiB).
     if len(specimen) >= DISK_SIZE:
-        return specimen[:DISK_SIZE]
+        return specimen
     disk = bytearray(DISK_SIZE)
     disk[:len(specimen)] = specimen
     return bytes(disk)
