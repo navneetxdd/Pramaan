@@ -255,6 +255,7 @@ export type AiFinding = {
     sample_fps?: number;
     model?: string;
     model_version?: string;
+    note?: string;
   } | null;
 };
 
