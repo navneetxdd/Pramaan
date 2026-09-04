@@ -618,17 +618,6 @@ export function CaseAcquirePage() {
               </ul>
             )}
           </div>
-
-          <p className="mt-3 text-[12px] text-[var(--text-secondary)]">
-            Pulling recordings from a powered device?{" "}
-            <Link
-              className="font-medium text-[var(--accent-600)] underline"
-              to={`/cases/${caseId}/live`}
-            >
-              Live devices
-            </Link>
-            .
-          </p>
         </section>
 
         <section className="visily-card flex flex-col p-5">

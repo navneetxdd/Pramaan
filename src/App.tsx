@@ -13,7 +13,6 @@ import { CaseTimelinePage } from "@/pages/case/CaseTimelinePage";
 import { CaseCustodyPage } from "@/pages/case/CaseCustodyPage";
 import { CaseReportPage } from "@/pages/case/CaseReportPage";
 import { CaseAiAnalyticsPage } from "@/pages/case/CaseAiAnalyticsPage";
-import { CaseLiveDevicesPage } from "@/pages/case/CaseLiveDevicesPage";
 import { CaseCrossCameraPage } from "@/pages/case/CaseCrossCameraPage";
 
 export default function App() {
@@ -27,7 +26,6 @@ export default function App() {
             <Route index element={<CaseOverviewPage />} />
             <Route path="evidence" element={<CaseEvidenceCatalogPage />} />
             <Route path="jobs" element={<CaseJobsPage />} />
-            <Route path="live" element={<CaseLiveDevicesPage />} />
             <Route path="cross-camera" element={<CaseCrossCameraPage />} />
             <Route path="acquire" element={<CaseAcquirePage />} />
             <Route path="device-id" element={<CaseDeviceIdPage />} />
