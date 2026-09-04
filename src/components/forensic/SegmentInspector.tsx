@@ -249,7 +249,11 @@ export function SegmentInspector({
       ["Size", formatBytes(segment?.byte_length ?? detail?.byte_length ?? 0)],
       [
         "Parser",
-        `${detail?.parser_name ?? segment?.parser_name ?? "—"} ${detail?.parser_version ?? segment?.parser_version ?? ""}`.trim(),
+        (() => {
+          const name = detail?.parser_name ?? segment?.parser_name ?? "—";
+          const version = detail?.parser_version ?? segment?.parser_version;
+          return version ? `${name} · v${version}` : name;
+        })(),
       ],
       ["Validation", segment?.validation ?? detail?.validation_level ?? "—"],
       [
