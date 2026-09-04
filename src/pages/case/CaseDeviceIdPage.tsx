@@ -98,12 +98,10 @@ export function CaseDeviceIdPage() {
 
   const flatStructure = useMemo(() => flattenNodes(structure), [structure]);
 
-  const topHit = report?.hits[0];
-
   const selectedEvidence = evidence.find((e) => e.id === deviceId);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <PageHeader
         kicker="Step 2 · Identification"
         title="Device & format analysis"
@@ -230,6 +228,12 @@ export function CaseDeviceIdPage() {
                 <p className="mt-4 text-[13px] text-[var(--text-tertiary)]">
                   Run identification to see vendor hits and adapter routing.
                 </p>
+              ) : report.hits.length === 0 ? (
+                <p className="mt-4 text-[13px] text-[var(--text-tertiary)]">
+                  No vendor signature detected — this looks like generic or
+                  non-DVR footage. Select an adapter manually on Recovery, or
+                  continue with generic carving.
+                </p>
               ) : (
                 <ul className="mt-4 space-y-2">
                   {report.hits.map((hit) => (
@@ -324,7 +328,7 @@ export function CaseDeviceIdPage() {
                 </div>
               ) : null}
 
-              {report && topHit ? (
+              {report ? (
                 <Button asChild className="mt-4" variant="secondary">
                   <Link to={`/cases/${caseId}/recover`}>
                     Continue to recovery →
