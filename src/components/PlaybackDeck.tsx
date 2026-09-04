@@ -111,6 +111,7 @@ export function PlaybackDeck({
   const [laneMedia, setLaneMedia] = useState<Record<number, string>>({});
   const [laneGaps, setLaneGaps] = useState<Record<number, boolean>>({});
   const [laneLoading, setLaneLoading] = useState<Record<number, boolean>>({});
+  const [laneErrors, setLaneErrors] = useState<Record<number, boolean>>({});
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
   const rafRef = useRef<number | null>(null);
 
@@ -302,6 +303,7 @@ export function PlaybackDeck({
       setLaneMedia(nextMedia);
       setLaneGaps(nextGaps);
       setLaneLoading(nextLoading);
+      setLaneErrors({});
     }
 
     void syncLanes();
@@ -459,7 +461,7 @@ export function PlaybackDeck({
                   <span className="text-[var(--text-tertiary)]">gap</span>
                 ) : null}
               </div>
-              {laneUrls[channel.channel] ? (
+              {laneUrls[channel.channel] && !laneErrors[channel.channel] ? (
                 <video
                   ref={(el) => {
                     videoRefs.current[channel.channel] = el;
@@ -472,14 +474,22 @@ export function PlaybackDeck({
                   }
                   muted
                   playsInline
+                  onError={() =>
+                    setLaneErrors((prev) => ({
+                      ...prev,
+                      [channel.channel]: true,
+                    }))
+                  }
                 />
               ) : (
-                <div className="flex aspect-video items-center justify-center bg-[var(--surface-4)] text-[12px] text-[var(--text-tertiary)]">
-                  {laneGaps[channel.channel]
-                    ? "No segment at playhead"
-                    : laneLoading[channel.channel]
-                      ? "Exporting…"
-                      : "Preparing playback…"}
+                <div className="flex aspect-video items-center justify-center bg-[var(--surface-4)] p-3 text-center text-[12px] text-[var(--text-tertiary)]">
+                  {laneErrors[channel.channel]
+                    ? "Recovered segment has no decodable video frames — carve produced a non-continuous stream."
+                    : laneGaps[channel.channel]
+                      ? "No segment at playhead"
+                      : laneLoading[channel.channel]
+                        ? "Exporting…"
+                        : "Preparing playback…"}
                 </div>
               )}
             </div>
