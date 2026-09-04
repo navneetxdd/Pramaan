@@ -1,14 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
 import unittest
 
-from engine.app.core.job_manager import job_manager
-from engine.app.services.tool_verification_report import build_html_report, build_json_report, build_pdf_report
-from engine.app.verification.run_suite import run_verification_suite
+os.environ.setdefault("FORENSIC_WORKSTATION_DATA", tempfile.mkdtemp(prefix="forensic-toolverifyexport-"))
+
+from engine.app.core.db import init_db  # noqa: E402
+from engine.app.core.job_manager import job_manager  # noqa: E402
+from engine.app.services.tool_verification_report import build_html_report, build_json_report, build_pdf_report  # noqa: E402
+from engine.app.verification.run_suite import run_verification_suite  # noqa: E402
 
 
 class ToolVerificationExportTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        init_db()
+
     def test_signed_export_reports(self) -> None:
         async def _run_suite() -> str:
             job = await job_manager.create("tool_verification")
