@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfidenceBadge } from "@/components/forensic/ConfidenceBadge";
 import { RecoveryLogPanel } from "@/components/forensic/RecoveryLogPanel";
 import { RecoveryLastRun } from "@/components/forensic/RecoveryLastRun";
+import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { RecoveryChecksPanel } from "@/components/forensic/RecoveryChecksPanel";
 import { RecoveryDiskMap } from "@/components/forensic/RecoveryDiskMap";
 import { RecoveryTelemetryRibbon } from "@/components/forensic/RecoveryTelemetryRibbon";
@@ -210,6 +211,9 @@ export function CaseRecoverPage() {
   const [manualAdapter, setManualAdapter] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [deletedOnly, setDeletedOnly] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<string | null>("range");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { setWorking, setIdle } = useActivity();
 
   useEffect(() => {
@@ -279,13 +283,96 @@ export function CaseRecoverPage() {
     return map;
   }, [segments]);
 
-  const visibleSegments = useMemo(
-    () =>
-      deletedOnly
-        ? segments.filter((s) => allocationByRow.get(s.id) === "deleted")
-        : segments,
-    [segments, deletedOnly, allocationByRow],
-  );
+  /**
+   * Free-text match across the fields an examiner actually searches by:
+   * channel, byte offsets (decimal or hex), state, validation, parser and the
+   * recorder timestamp. Matching is done on a prebuilt lowercase haystack so a
+   * keystroke costs one pass, not a re-derivation per row per render.
+   */
+  const haystacks = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const seg of segments) {
+      const start = seg.offset_start ?? 0;
+      const end = seg.offset_end ?? 0;
+      map.set(
+        seg.id,
+        [
+          `ch${seg.channel ?? ""}`,
+          String(start),
+          String(end),
+          `0x${start.toString(16)}`,
+          `0x${end.toString(16)}`,
+          allocationByRow.get(seg.id) ?? "",
+          seg.validation ?? "",
+          seg.parser_name ?? "",
+          seg.recorder_start_ts ?? "",
+          seg.timestamp_source ?? "",
+        ]
+          .join(" ")
+          .toLowerCase(),
+      );
+    }
+    return map;
+  }, [segments, allocationByRow]);
+
+  const visibleSegments = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    let rows = deletedOnly
+      ? segments.filter((s) => allocationByRow.get(s.id) === "deleted")
+      : segments;
+    if (needle) {
+      rows = rows.filter((s) => haystacks.get(s.id)?.includes(needle));
+    }
+    if (!sortKey) return rows;
+
+    const value = (seg: Segment): string | number => {
+      switch (sortKey) {
+        case "ch":
+          return seg.channel ?? -1;
+        case "state":
+          return allocationByRow.get(seg.id) ?? "";
+        case "range":
+          return seg.offset_start ?? 0;
+        case "size":
+          return (
+            seg.byte_length ?? (seg.offset_end ?? 0) - (seg.offset_start ?? 0)
+          );
+        case "ts":
+          return seg.recorder_start_ts ?? "";
+        case "validation":
+          return seg.timestamp_confidence ?? -1;
+        default:
+          return 0;
+      }
+    };
+    // Copy before sorting: never mutate the array the rest of the page reads.
+    return [...rows].sort((a, b) => {
+      const av = value(a);
+      const bv = value(b);
+      const cmp =
+        typeof av === "number" && typeof bv === "number"
+          ? av - bv
+          : String(av).localeCompare(String(bv));
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [
+    segments,
+    deletedOnly,
+    allocationByRow,
+    haystacks,
+    query,
+    sortKey,
+    sortDir,
+  ]);
+
+  function handleSort(key: string) {
+    if (key === sortKey) {
+      setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
 
   // Never leave the inspector pinned to a row the filter has hidden.
   useEffect(() => {
@@ -515,360 +602,402 @@ export function CaseRecoverPage() {
   return (
     // On a short viewport the page scrolls rather than compressing panels to
     // zero height — a collapsed segments table is worse than a scrollbar.
-    <div className="recovery-shell flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
-      {/* shrink-0 + overflow-visible: .visily-card clips, and as a flex child this
+    <TooltipProvider delayDuration={250} skipDelayDuration={300}>
+      <div className="recovery-shell flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
+        {/* shrink-0 + overflow-visible: .visily-card clips, and as a flex child this
           card was compressing, so the expanded Advanced panel was cut in half. */}
-      <section className="visily-card flex shrink-0 flex-wrap items-end gap-3 overflow-visible p-4">
-        <div className="min-w-[180px] flex-1">
-          <label className="label">Evidence image</label>
-          <select
-            className="field w-full"
-            value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value)}
-          >
-            {(workspace?.evidence ?? []).map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.filename}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="min-w-[160px]">
-          <label className="label">Examiner</label>
-          <Input value={actor} onChange={(e) => setActor(e.target.value)} />
-        </div>
-        <div className="min-w-[220px]">
-          <label className="label">Recovery parser</label>
-          <div className="flex h-[34px] items-center gap-2">
-            {effectiveAdapter ? (
-              <span className="mono text-[13px] font-medium text-[var(--text-primary)]">
-                {effectiveAdapter}
-              </span>
-            ) : (
-              <span className="text-[13px] text-[var(--status-warning)]">
-                Not determined
-              </span>
-            )}
-            {manualAdapter ? (
-              <Badge variant="warning">manual override</Badge>
-            ) : hasRecommendation ? (
-              <Badge variant="info">auto</Badge>
-            ) : null}
+        <section className="visily-card flex shrink-0 flex-wrap items-end gap-3 overflow-visible p-4">
+          <div className="min-w-[180px] flex-1">
+            <label className="label">Evidence image</label>
+            <select
+              className="field w-full"
+              value={deviceId}
+              onChange={(e) => setDeviceId(e.target.value)}
+            >
+              {(workspace?.evidence ?? []).map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.filename}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
-        <Button
-          disabled={starting || !deviceId || isRecovering}
-          onClick={() => void handleRecover()}
-        >
-          {starting
-            ? "Starting…"
-            : isRecovering
-              ? "Recovery in progress…"
-              : "Run recovery"}
-        </Button>
-
-        <div className="w-full">
-          <button
-            type="button"
-            onClick={() => setAdvancedOpen((open) => !open)}
-            aria-expanded={advancedOpen}
-            className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-          >
-            {advancedOpen ? "▾" : "▸"} Advanced
-          </button>
-
-          {advancedOpen ? (
-            <div className="rec-well mt-2 flex flex-wrap items-end gap-3 rounded border border-[var(--border-subtle)] p-3">
-              <div className="min-w-[200px]">
-                <label className="label">Override parser</label>
-                <select
-                  className="field w-full"
-                  value={effectiveAdapter}
-                  onChange={(e) => setManualAdapter(e.target.value)}
-                >
-                  {!effectiveAdapter ? (
-                    <option value="">Select a parser…</option>
-                  ) : null}
-                  {adapters.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {manualAdapter && hasRecommendation ? (
-                <Button
-                  variant="ghost"
-                  onClick={() => setManualAdapter(null)}
-                  title={`Revert to ${recommendedAdapter}`}
-                >
-                  Reset to auto
-                </Button>
+          <div className="min-w-[160px]">
+            <label className="label">Examiner</label>
+            <Input value={actor} onChange={(e) => setActor(e.target.value)} />
+          </div>
+          <div className="min-w-[220px]">
+            <label className="label">Recovery parser</label>
+            <div className="flex h-[34px] items-center gap-2">
+              {effectiveAdapter ? (
+                <span className="mono text-[13px] font-medium text-[var(--text-primary)]">
+                  {effectiveAdapter}
+                </span>
+              ) : (
+                <span className="text-[13px] text-[var(--status-warning)]">
+                  Not determined
+                </span>
+              )}
+              {manualAdapter ? (
+                <Badge variant="warning">manual override</Badge>
+              ) : hasRecommendation ? (
+                <Badge variant="info">auto</Badge>
               ) : null}
-              <p className="w-full text-[12px] text-[var(--text-secondary)]">
-                {manualAdapter && hasRecommendation ? (
-                  <span className="text-[var(--status-warning)]">
-                    Overriding Identification, which recommends{" "}
-                    <span className="mono font-medium">
-                      {recommendedAdapter}
-                    </span>
-                    . Recorded in the recovery job.
-                  </span>
-                ) : hasRecommendation ? (
-                  <>
-                    Identification recommends{" "}
-                    <span className="mono font-medium">
-                      {recommendedAdapter}
-                    </span>
-                    . Override only if you have reason to.
-                  </>
-                ) : (
-                  <span className="text-[var(--status-warning)]">
-                    Identification could not determine a parser for this image —
-                    select one manually.
-                  </span>
-                )}
-              </p>
             </div>
-          ) : null}
-        </div>
-
-        <div className="-mx-4 -mb-4 mt-1 w-[calc(100%+2rem)]">
-          <RecoveryTelemetryRibbon
-            segments={segments}
-            evidence={selectedEvidence}
-            adapter={effectiveAdapter}
-          />
-        </div>
-      </section>
-
-      <div className="grid min-h-0 shrink-0 gap-3 lg:grid-cols-[1fr_200px]">
-        <section className="visily-card flex min-h-[240px] flex-col overflow-hidden">
-          <div className="visily-card-header">
-            <span className="visily-card-title">Engine log</span>
-            {isRecovering ? (
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={cancelling || !activeJobId}
-                title="Asks the engine to stop. A scan already near completion may still finish — the result is confirmed before anything is reported."
-                onClick={() => void handleCancel()}
-              >
-                {cancelling ? "Requesting stop…" : "Request cancel"}
-              </Button>
-            ) : null}
           </div>
-          {isRecovering ? (
-            <RecoveryProgress percent={progress} phase={phase} />
-          ) : null}
-          <div
-            ref={logRef}
-            className="flex min-h-[240px] flex-1 flex-col overflow-hidden"
+          <Button
+            disabled={starting || !deviceId || isRecovering}
+            onClick={() => void handleRecover()}
           >
-            {log.length > 0 || isRecovering ? (
-              <RecoveryLogPanel lines={log} />
-            ) : (
-              <RecoveryLastRun job={lastFinishedRecovery} segments={segments} />
-            )}
-          </div>
-        </section>
-        <section className="visily-card overflow-auto p-4">
-          <p className="visily-card-title mb-3">Checks passed</p>
-          <RecoveryChecksPanel segments={segments} />
-        </section>
-      </div>
+            {starting
+              ? "Starting…"
+              : isRecovering
+                ? "Recovery in progress…"
+                : "Run recovery"}
+          </Button>
 
-      <section className="visily-card shrink-0 overflow-hidden">
-        <div className="visily-card-header">
-          <span className="visily-card-title">Disk map</span>
-          <span className="text-[11px] text-[var(--text-tertiary)]">
-            Byte offsets across the evidence image
-          </span>
-        </div>
-        <RecoveryDiskMap
-          segments={segments}
-          scanning={isRecovering}
-          imageSize={selectedEvidence?.size_bytes ?? 0}
-          selectedSegmentId={selectedSegmentId}
-          onSelect={(id) => {
-            setDeletedOnly(false);
-            setSelectedSegmentId(id);
-          }}
-        />
-      </section>
-
-      <section className="visily-card shrink-0 overflow-hidden">
-        {partialResultStatus && !isRecovering ? (
-          <PartialResultBanner
-            status={partialResultStatus}
-            segmentCount={segments.length}
-          />
-        ) : null}
-        <div className="visily-card-header">
-          <span className="visily-card-title">Recovered segments</span>
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] text-[var(--text-secondary)]">
-              {summariseAllocations(segments.length, allocationCounts)}
-            </span>
+          <div className="w-full">
             <button
               type="button"
-              role="switch"
-              aria-checked={deletedOnly}
-              disabled={allocationCounts.deleted === 0}
-              onClick={() => setDeletedOnly((on) => !on)}
-              className={cn(
-                "rounded border px-2 py-0.5 text-[11px] transition-colors",
-                deletedOnly
-                  ? "border-[var(--status-danger)] bg-[rgba(220,38,38,0.12)] text-[var(--status-danger)]"
-                  : "border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)]",
-                allocationCounts.deleted === 0
-                  ? "cursor-not-allowed opacity-40"
-                  : "",
-              )}
-              title={
-                allocationCounts.deleted === 0
-                  ? "No deleted recordings on this image"
-                  : "Show only recordings recovered from cleared index entries"
-              }
+              onClick={() => setAdvancedOpen((open) => !open)}
+              aria-expanded={advancedOpen}
+              className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
             >
-              Deleted only
+              {advancedOpen ? "▾" : "▸"} Advanced
             </button>
+
+            {advancedOpen ? (
+              <div className="rec-well mt-2 flex flex-wrap items-end gap-3 rounded border border-[var(--border-subtle)] p-3">
+                <div className="min-w-[200px]">
+                  <label className="label">Override parser</label>
+                  <select
+                    className="field w-full"
+                    value={effectiveAdapter}
+                    onChange={(e) => setManualAdapter(e.target.value)}
+                  >
+                    {!effectiveAdapter ? (
+                      <option value="">Select a parser…</option>
+                    ) : null}
+                    {adapters.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {manualAdapter && hasRecommendation ? (
+                  <Button
+                    variant="ghost"
+                    onClick={() => setManualAdapter(null)}
+                    title={`Revert to ${recommendedAdapter}`}
+                  >
+                    Reset to auto
+                  </Button>
+                ) : null}
+                <p className="w-full text-[12px] text-[var(--text-secondary)]">
+                  {manualAdapter && hasRecommendation ? (
+                    <span className="text-[var(--status-warning)]">
+                      Overriding Identification, which recommends{" "}
+                      <span className="mono font-medium">
+                        {recommendedAdapter}
+                      </span>
+                      . Recorded in the recovery job.
+                    </span>
+                  ) : hasRecommendation ? (
+                    <>
+                      Identification recommends{" "}
+                      <span className="mono font-medium">
+                        {recommendedAdapter}
+                      </span>
+                      . Override only if you have reason to.
+                    </>
+                  ) : (
+                    <span className="text-[var(--status-warning)]">
+                      Identification could not determine a parser for this image
+                      — select one manually.
+                    </span>
+                  )}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="-mx-4 -mb-4 mt-1 w-[calc(100%+2rem)]">
+            <RecoveryTelemetryRibbon
+              segments={segments}
+              evidence={selectedEvidence}
+              adapter={effectiveAdapter}
+            />
+          </div>
+        </section>
+
+        {/* Two-column workspace: the evidence the examiner works on is on the
+          left and gets the width; the run's context sits beside it instead of
+          pushing the table below the fold. Stacks under 1280px. */}
+        <div className="grid min-h-0 shrink-0 gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="flex min-w-0 flex-col gap-3">
+            <section className="visily-card shrink-0 overflow-hidden">
+              <div className="visily-card-header">
+                <span className="visily-card-title">Disk map</span>
+                <span className="text-[11px] text-[var(--text-tertiary)]">
+                  Byte offsets across the evidence image
+                </span>
+              </div>
+              <RecoveryDiskMap
+                segments={segments}
+                scanning={isRecovering}
+                imageSize={selectedEvidence?.size_bytes ?? 0}
+                selectedSegmentId={selectedSegmentId}
+                onSelect={(id) => {
+                  setDeletedOnly(false);
+                  setSelectedSegmentId(id);
+                }}
+              />
+            </section>
+            <section className="visily-card shrink-0 overflow-hidden">
+              {partialResultStatus && !isRecovering ? (
+                <PartialResultBanner
+                  status={partialResultStatus}
+                  segmentCount={segments.length}
+                />
+              ) : null}
+              <div className="visily-card-header">
+                <span className="visily-card-title">Recovered segments</span>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <span className="text-[11px] text-[var(--text-secondary)]">
+                    {visibleSegments.length !== segments.length
+                      ? `${visibleSegments.length} of ${segments.length} shown`
+                      : summariseAllocations(segments.length, allocationCounts)}
+                  </span>
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Filter offset, channel, state…"
+                    aria-label="Filter recovered segments"
+                    className="field mono h-6 w-52 text-[11px]"
+                  />
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={deletedOnly}
+                    disabled={allocationCounts.deleted === 0}
+                    onClick={() => setDeletedOnly((on) => !on)}
+                    className={cn(
+                      "rounded border px-2 py-0.5 text-[11px] transition-colors",
+                      deletedOnly
+                        ? "border-[var(--status-danger)] bg-[rgba(220,38,38,0.12)] text-[var(--status-danger)]"
+                        : "border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)]",
+                      allocationCounts.deleted === 0
+                        ? "cursor-not-allowed opacity-40"
+                        : "",
+                    )}
+                    title={
+                      allocationCounts.deleted === 0
+                        ? "No deleted recordings on this image"
+                        : "Show only recordings recovered from cleared index entries"
+                    }
+                  >
+                    Deleted only
+                  </button>
+                </div>
+              </div>
+              <VirtualTable
+                rows={visibleSegments}
+                rowHeight={48}
+                maxHeight={288}
+                minWidth={940}
+                emptyMessage={
+                  query.trim()
+                    ? `No recovered segment matches "${query.trim()}".`
+                    : deletedOnly
+                      ? "No deleted recordings on this image."
+                      : "No segments for this device yet."
+                }
+                getRowKey={(seg) => seg.id}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSortChange={handleSort}
+                selectedRowKey={selectedSegmentId}
+                onRowClick={(seg) => setSelectedSegmentId(seg.id)}
+                getRowTitle={(seg) => allocationDetail(seg)}
+                // Inset shadow, not a border: a border would consume 4px of layout and
+                // shift every marked row out of alignment with the header.
+                getRowClassName={(seg) =>
+                  (seg.id === selectedSegmentId ? "rec-row-selected " : "") +
+                  (allocationByRow.get(seg.id) === "deleted"
+                    ? "rec-row rec-row-deleted shadow-[inset_4px_0_0_0_var(--status-danger)] bg-[rgba(220,38,38,0.06)]"
+                    : allocationByRow.get(seg.id) === "recording"
+                      ? "rec-row shadow-[inset_4px_0_0_0_var(--status-info)]"
+                      : "rec-row")
+                }
+                columns={[
+                  {
+                    key: "ch",
+                    sortable: true,
+                    header: "Ch",
+                    width: "56px",
+                    cell: (seg) => seg.channel ?? "—",
+                  },
+                  {
+                    key: "state",
+                    sortable: true,
+                    header: "State",
+                    width: "124px",
+                    cell: (seg) => {
+                      const state = allocationByRow.get(seg.id) ?? "unknown";
+                      return <AllocationCell state={state} />;
+                    },
+                  },
+                  {
+                    key: "range",
+                    sortable: true,
+                    header: "Byte range",
+                    width: "minmax(150px, 1.2fr)",
+                    className: "mono",
+                    cell: (seg) =>
+                      seg.offset_start != null && seg.offset_end != null ? (
+                        <span className="rec-offset">
+                          {seg.offset_start}–{seg.offset_end}
+                        </span>
+                      ) : (
+                        (seg.offset_time_label ?? "—")
+                      ),
+                  },
+                  {
+                    key: "size",
+                    sortable: true,
+                    header: "Size",
+                    width: "84px",
+                    className: "mono",
+                    cell: (seg) =>
+                      formatBytes(
+                        seg.byte_length ??
+                          (seg.offset_end ?? 0) - (seg.offset_start ?? 0),
+                      ),
+                  },
+                  {
+                    key: "frames",
+                    header: "Playable frames",
+                    width: "84px",
+                    className: "mono",
+                    cell: (seg) => (
+                      <span
+                        title={
+                          seg.playable_frame_count != null
+                            ? undefined
+                            : "Measured by ffprobe when the recording is exported"
+                        }
+                      >
+                        {seg.playable_frame_count != null
+                          ? String(seg.playable_frame_count)
+                          : "—"}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "ts",
+                    sortable: true,
+                    header: "Timestamp",
+                    width: "minmax(170px, 1.4fr)",
+                    cell: (seg) => (
+                      <div className="text-[11px]">
+                        <div>
+                          {seg.corrected_start_ts ??
+                            seg.recorder_start_ts ??
+                            "—"}
+                        </div>
+                        <div className="text-[var(--text-tertiary)]">
+                          {formatTimestampSource(seg.timestamp_source)}
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "parser",
+                    header: "Parser",
+                    width: "92px",
+                    className: "mono text-[10px]",
+                    cell: (seg) => seg.parser_name ?? "—",
+                  },
+                  {
+                    key: "validation",
+                    sortable: true,
+                    header: "Validation",
+                    width: "minmax(180px, 1.3fr)",
+                    cell: (seg) => (
+                      <div className="flex flex-col gap-0.5">
+                        <ConfidenceBadge
+                          tier={timestampTier(seg.timestamp_confidence)}
+                          label={seg.validation?.replace(/_/g, " ")}
+                        />
+                        <Tooltip
+                          content={
+                            (seg.validation_evidence?.[
+                              "timestamp_confidence_basis"
+                            ] as string) || undefined
+                          }
+                        >
+                          <span className="mono w-fit cursor-help border-b border-dotted border-[var(--border-strong)] text-[10px] text-[var(--text-tertiary)]">
+                            {seg.timestamp_confidence != null
+                              ? `ts conf ${seg.timestamp_confidence}`
+                              : "ts conf —"}
+                          </span>
+                        </Tooltip>
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            </section>
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-3">
+            <section className="visily-card overflow-auto p-4">
+              <p className="visily-card-title mb-3">Checks passed</p>
+              <RecoveryChecksPanel segments={segments} />
+            </section>
+            <section className="visily-card flex min-h-[240px] flex-col overflow-hidden">
+              <div className="visily-card-header">
+                <span className="visily-card-title">Engine log</span>
+                {isRecovering ? (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={cancelling || !activeJobId}
+                    title="Asks the engine to stop. A scan already near completion may still finish — the result is confirmed before anything is reported."
+                    onClick={() => void handleCancel()}
+                  >
+                    {cancelling ? "Requesting stop…" : "Request cancel"}
+                  </Button>
+                ) : null}
+              </div>
+              {isRecovering ? (
+                <RecoveryProgress percent={progress} phase={phase} />
+              ) : null}
+              <div
+                ref={logRef}
+                className="flex min-h-[240px] flex-1 flex-col overflow-hidden"
+              >
+                {log.length > 0 || isRecovering ? (
+                  <RecoveryLogPanel lines={log} />
+                ) : (
+                  <RecoveryLastRun
+                    job={lastFinishedRecovery}
+                    segments={segments}
+                  />
+                )}
+              </div>
+            </section>
           </div>
         </div>
-        <VirtualTable
-          rows={visibleSegments}
-          rowHeight={48}
-          maxHeight={288}
-          minWidth={940}
-          emptyMessage={
-            deletedOnly
-              ? "No deleted recordings on this image."
-              : "No segments for this device yet."
-          }
-          getRowKey={(seg) => seg.id}
-          selectedRowKey={selectedSegmentId}
-          onRowClick={(seg) => setSelectedSegmentId(seg.id)}
-          getRowTitle={(seg) => allocationDetail(seg)}
-          // Inset shadow, not a border: a border would consume 4px of layout and
-          // shift every marked row out of alignment with the header.
-          getRowClassName={(seg) =>
-            (seg.id === selectedSegmentId ? "rec-row-selected " : "") +
-            (allocationByRow.get(seg.id) === "deleted"
-              ? "rec-row rec-row-deleted shadow-[inset_4px_0_0_0_var(--status-danger)] bg-[rgba(220,38,38,0.06)]"
-              : allocationByRow.get(seg.id) === "recording"
-                ? "rec-row shadow-[inset_4px_0_0_0_var(--status-info)]"
-                : "rec-row")
-          }
-          columns={[
-            {
-              key: "ch",
-              header: "Ch",
-              width: "56px",
-              cell: (seg) => seg.channel ?? "—",
-            },
-            {
-              key: "state",
-              header: "State",
-              width: "124px",
-              cell: (seg) => {
-                const state = allocationByRow.get(seg.id) ?? "unknown";
-                return <AllocationCell state={state} />;
-              },
-            },
-            {
-              key: "range",
-              header: "Byte range",
-              width: "minmax(150px, 1.2fr)",
-              className: "mono",
-              cell: (seg) =>
-                seg.offset_start != null && seg.offset_end != null ? (
-                  <span className="rec-offset">
-                    {seg.offset_start}–{seg.offset_end}
-                  </span>
-                ) : (
-                  (seg.offset_time_label ?? "—")
-                ),
-            },
-            {
-              key: "size",
-              header: "Size",
-              width: "84px",
-              className: "mono",
-              cell: (seg) =>
-                formatBytes(
-                  seg.byte_length ??
-                    (seg.offset_end ?? 0) - (seg.offset_start ?? 0),
-                ),
-            },
-            {
-              key: "frames",
-              header: "Playable frames",
-              width: "84px",
-              className: "mono",
-              cell: (seg) => (
-                <span
-                  title={
-                    seg.playable_frame_count != null
-                      ? undefined
-                      : "Measured by ffprobe when the recording is exported"
-                  }
-                >
-                  {seg.playable_frame_count != null
-                    ? String(seg.playable_frame_count)
-                    : "—"}
-                </span>
-              ),
-            },
-            {
-              key: "ts",
-              header: "Timestamp",
-              width: "minmax(170px, 1.4fr)",
-              cell: (seg) => (
-                <div className="text-[11px]">
-                  <div>
-                    {seg.corrected_start_ts ?? seg.recorder_start_ts ?? "—"}
-                  </div>
-                  <div className="text-[var(--text-tertiary)]">
-                    {formatTimestampSource(seg.timestamp_source)}
-                  </div>
-                </div>
-              ),
-            },
-            {
-              key: "parser",
-              header: "Parser",
-              width: "92px",
-              className: "mono text-[10px]",
-              cell: (seg) => seg.parser_name ?? "—",
-            },
-            {
-              key: "validation",
-              header: "Validation",
-              width: "minmax(180px, 1.3fr)",
-              cell: (seg) => (
-                <div className="flex flex-col gap-0.5">
-                  <ConfidenceBadge
-                    tier={timestampTier(seg.timestamp_confidence)}
-                    label={seg.validation?.replace(/_/g, " ")}
-                  />
-                  <span className="mono text-[10px] text-[var(--text-tertiary)]">
-                    {seg.timestamp_confidence != null
-                      ? `ts conf ${seg.timestamp_confidence}`
-                      : "ts conf —"}
-                  </span>
-                </div>
-              ),
-            },
-          ]}
-        />
-      </section>
 
-      <SegmentInspector
-        caseId={caseId}
-        deviceId={deviceId}
-        segment={selectedSegment}
-        variant="recover"
-      />
-    </div>
+        <SegmentInspector
+          caseId={caseId}
+          deviceId={deviceId}
+          segment={selectedSegment}
+          variant="recover"
+        />
+      </div>
+    </TooltipProvider>
   );
 }

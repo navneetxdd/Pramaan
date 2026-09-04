@@ -12,6 +12,10 @@ type Column<T> = {
    * before widths existed.
    */
   width?: string;
+  /** Makes the header a sort control. Requires `sortValue`. */
+  sortable?: boolean;
+  /** Comparable value for this row when sorting by this column. */
+  sortValue?: (row: T) => string | number;
   cell: (row: T, index: number) => React.ReactNode;
 };
 
@@ -34,6 +38,11 @@ type VirtualTableProps<T> = {
    * columns. Omit to keep the table fluid at any width.
    */
   minWidth?: number | string;
+  /** Key of the column currently sorted by, if any. */
+  sortKey?: string | null;
+  sortDir?: "asc" | "desc";
+  /** Called when a sortable header is activated. */
+  onSortChange?: (key: string) => void;
 };
 
 const DEFAULT_TRACK = "minmax(0, 1fr)";
@@ -50,6 +59,9 @@ export function VirtualTable<T>({
   getRowClassName,
   getRowTitle,
   minWidth,
+  sortKey = null,
+  sortDir = "asc",
+  onSortChange,
 }: VirtualTableProps<T>) {
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -81,15 +93,48 @@ export function VirtualTable<T>({
           className="grid border-b border-[var(--border-subtle)] bg-[var(--surface-3)]"
           style={{ gridTemplateColumns }}
         >
-          {columns.map((col) => (
-            <div
-              key={col.key}
-              role="columnheader"
-              className="flex items-center px-3 py-2 text-[11px] font-semibold uppercase leading-tight tracking-[0.02em] text-[var(--text-tertiary)]"
-            >
-              {col.header}
-            </div>
-          ))}
+          {columns.map((col) => {
+            const active = sortKey === col.key;
+            const canSort = Boolean(col.sortable && onSortChange);
+            return (
+              <div
+                key={col.key}
+                role="columnheader"
+                aria-sort={
+                  active
+                    ? sortDir === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : canSort
+                      ? "none"
+                      : undefined
+                }
+                className="flex items-center px-3 py-2 text-[11px] font-semibold uppercase leading-tight tracking-[0.02em] text-[var(--text-tertiary)]"
+              >
+                {canSort ? (
+                  <button
+                    type="button"
+                    onClick={() => onSortChange?.(col.key)}
+                    className={cn(
+                      "-mx-1 flex items-center gap-1 rounded px-1 py-0.5 text-left uppercase transition-colors hover:text-[var(--text-secondary)]",
+                      active ? "text-[var(--accent-600)]" : "",
+                    )}
+                    title={`Sort by ${col.header}`}
+                  >
+                    <span>{col.header}</span>
+                    <span
+                      aria-hidden="true"
+                      className="text-[9px] leading-none"
+                    >
+                      {active ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
+                    </span>
+                  </button>
+                ) : (
+                  col.header
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div ref={parentRef} style={{ maxHeight, overflowY: "auto" }}>
