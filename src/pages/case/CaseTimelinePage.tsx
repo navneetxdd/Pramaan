@@ -15,6 +15,17 @@ import { FindingsTrack } from "@/components/forensic/FindingsTrack";
 import { SegmentInspector } from "@/components/forensic/SegmentInspector";
 import { PageHeader } from "@/components/visily/PageHeader";
 
+/** Parses "+05:30" / "-08:00" / "+0530" style UTC offsets into seconds, or null if invalid. */
+function parseTzOffsetSeconds(input: string): number | null {
+  const match = input.trim().match(/^([+-])(\d{1,2}):?(\d{2})?$/);
+  if (!match) return null;
+  const sign = match[1] === "-" ? -1 : 1;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] ?? "0");
+  if (hours > 14 || minutes > 59) return null;
+  return sign * (hours * 3600 + minutes * 60);
+}
+
 function parseSegmentStart(seg: Segment, useTime: boolean): number {
   if (useTime) {
     const raw =
@@ -39,6 +50,7 @@ export function CaseTimelinePage() {
   const [playhead, setPlayhead] = useState<number | null>(null);
   const [wallUnix, setWallUnix] = useState("");
   const [deviceUnix, setDeviceUnix] = useState("");
+  const [tzOffset, setTzOffset] = useState("");
   const [driftOffset, setDriftOffset] = useState<number | null>(null);
   const [normalization, setNormalization] = useState<{
     method: string;
@@ -153,6 +165,36 @@ export function CaseTimelinePage() {
     }
   }
 
+  async function handleTimezoneCalibration() {
+    if (!deviceId) return;
+    const offsetSeconds = parseTzOffsetSeconds(tzOffset);
+    if (offsetSeconds === null) {
+      toast.error("Enter a UTC offset like +05:30 or -08:00");
+      return;
+    }
+    // A recorder running local time gets its raw timestamps parsed as if they were
+    // already UTC (see the engine's corrected() helper), so they read offsetSeconds
+    // ahead of true UTC. Correcting that means the drift ADDED back is -offsetSeconds
+    // — reuse the wall/device pair the API already expects: wall - device = -offset.
+    const anchor = Math.floor(Date.now() / 1000);
+    try {
+      const result = await api.calibrateDrift(
+        deviceId,
+        anchor,
+        anchor + offsetSeconds,
+      );
+      setDriftOffset(result.drift_offset_seconds);
+      toast.success(
+        `Drift offset ${result.drift_offset_seconds.toFixed(0)}s stored for a ${tzOffset.trim()} recorder`,
+        { description: result.note },
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Calibration failed", {
+        duration: Infinity,
+      });
+    }
+  }
+
   const selectedSegment = useMemo(
     () => segments.find((s) => s.id === selectedSegmentId) ?? null,
     [segments, selectedSegmentId],
@@ -219,8 +261,27 @@ export function CaseTimelinePage() {
             </div>
           ) : null}
           <p className="text-[12px] text-[var(--text-tertiary)]">
-            Supply one known event: wall-clock Unix time and the same moment on
-            the DVR clock.
+            Recorder just set to local time, no real drift? Enter its UTC offset
+            instead of computing seconds by hand.
+          </p>
+          <div className="flex max-w-lg gap-2">
+            <input
+              className="field mono w-32"
+              placeholder="+05:30"
+              value={tzOffset}
+              onChange={(e) => setTzOffset(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void handleTimezoneCalibration()}
+            >
+              Use timezone offset
+            </Button>
+          </div>
+          <p className="text-[12px] text-[var(--text-tertiary)]">
+            Or supply one known event: wall-clock Unix time and the same moment
+            on the DVR clock.
           </p>
           <div className="grid max-w-lg gap-2 sm:grid-cols-2">
             <input

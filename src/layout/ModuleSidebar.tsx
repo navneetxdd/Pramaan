@@ -87,11 +87,17 @@ const caseWorkflow: NavItem[] = [
     requiresRecovery: true,
   },
 
+  { to: "report", label: "Report", icon: FileText, step: 6 },
+];
+
+// Supporting views: available any time, not gated to a position in the
+// numbered flow above. Cross-camera trace works on original clips even
+// before recovery; Custody, Evidence, and Job log are passive records,
+// not actions the examiner performs in sequence.
+const caseTools: NavItem[] = [
   { to: "cross-camera", label: "Cross-camera trace", icon: Waypoints },
 
   { to: "custody", label: "Custody", icon: ShieldCheck },
-
-  { to: "report", label: "Report", icon: FileText },
 
   { to: "evidence", label: "Evidence catalog", icon: LayoutGrid },
 
@@ -263,6 +269,12 @@ export function ModuleSidebar() {
             </p>
 
             {caseWorkflow.map(renderCaseItem)}
+
+            <p className="mt-3 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+              Case tools
+            </p>
+
+            {caseTools.map(renderCaseItem)}
           </>
         )}
       </nav>

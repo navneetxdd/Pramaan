@@ -197,7 +197,7 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
             )
     chain_ok = report["custody_chain_valid"]["ok"]
     broken_row = report["custody_chain_valid"].get("first_broken_row_id")
-    chain_detail = "VALID" if chain_ok else f"BROKEN at custody row {broken_row}"
+    chain_detail = "INTACT" if chain_ok else f"BROKEN at custody row {broken_row}"
     timeline_section = "<br/>".join(timeline_notes) if timeline_notes else "Byte-offset ordering only; no recorder clock recovered."
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/><title>Forensic Report — {escape(str(case['title']))}</title>
@@ -258,7 +258,7 @@ def build_pdf_report(case_id: str, *, require_intact_chain: bool = True) -> tupl
     line(f"Generated: {report['generated_at']}")
     line(f"Build: {APP_VERSION}")
     chain_ok = report["custody_chain_valid"]["ok"]
-    chain_label = "VALID" if chain_ok else f"BROKEN row {report['custody_chain_valid'].get('first_broken_row_id')}"
+    chain_label = "INTACT" if chain_ok else f"BROKEN at custody row {report['custody_chain_valid'].get('first_broken_row_id')}"
     line(f"Custody chain: {chain_label}")
     line(f"Segments recovered: {report['total_segments_recovered']}")
     for ev in report["evidence"]:

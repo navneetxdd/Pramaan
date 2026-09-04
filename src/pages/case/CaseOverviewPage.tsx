@@ -151,7 +151,7 @@ export function CaseOverviewPage() {
                   subtitle={
                     live?.message ??
                     (stats.segmentsFound != null
-                      ? `${stats.segmentsFound} segments indexed`
+                      ? `${stats.segmentsFound} segment${stats.segmentsFound === 1 ? "" : "s"} indexed`
                       : (job.error ?? job.status))
                   }
                   status={
