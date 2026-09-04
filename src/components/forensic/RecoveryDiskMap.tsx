@@ -5,6 +5,8 @@ import {
   allocationDetail,
   allocationLabel,
   allocationOf,
+  channelIsValid,
+  isPartial,
   type AllocationState,
 } from "@/lib/allocation";
 import { cn } from "@/lib/utils";
@@ -41,6 +43,8 @@ type DiskMapProps = {
   imageSize: number;
   selectedSegmentId: string | null;
   onSelect: (segmentId: string) => void;
+  /** True while the engine is actually scanning — drives the read-head sweep. */
+  scanning?: boolean;
 };
 
 export function RecoveryDiskMap({
@@ -48,6 +52,7 @@ export function RecoveryDiskMap({
   imageSize,
   selectedSegmentId,
   onSelect,
+  scanning = false,
 }: DiskMapProps) {
   const lanes = useMemo(() => {
     const byChannel = new Map<number, Segment[]>();
@@ -129,6 +134,19 @@ export function RecoveryDiskMap({
               </span>
             </span>
           ))}
+          {segments.some(isPartial) ? (
+            <span className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="text-[11px] leading-none text-[var(--status-warning)]"
+              >
+                ◐
+              </span>
+              <span className="text-[var(--text-secondary)]">
+                Partial (bytes overwritten)
+              </span>
+            </span>
+          ) : null}
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-2.5 w-2.5 rounded-[2px] border border-[var(--border-default)] bg-[var(--surface-4)]" />
             <span className="text-[var(--text-tertiary)]">Not recovered</span>
@@ -140,14 +158,28 @@ export function RecoveryDiskMap({
         {lanes.map(({ channel, rows: laneSegments, bytes, gaps }) => (
           <div key={channel} className="flex items-center gap-2">
             <span className="w-28 shrink-0 text-right text-[10px] leading-tight text-[var(--text-tertiary)]">
-              <span className="mono uppercase text-[var(--text-secondary)]">
-                Ch {channel}
-              </span>
+              {laneSegments.every((s) => !channelIsValid(s)) ? (
+                <span
+                  className="mono uppercase text-[var(--status-warning)]"
+                  title="This channel byte cannot name a camera — it is 0x00 or the format's 0xFF erase pattern. The raw value is shown as found."
+                >
+                  Ch {channel} · invalid
+                </span>
+              ) : (
+                <span className="mono uppercase text-[var(--text-secondary)]">
+                  Ch {channel}
+                </span>
+              )}
               <br />
               {laneSegments.length} rec · {formatBytes(bytes)}
               {gaps > 0 ? ` · ${gaps} gap${gaps > 1 ? "s" : ""}` : ""}
             </span>
-            <div className="relative h-7 min-w-0 flex-1 overflow-hidden rounded-[3px] border border-[var(--border-subtle)] bg-[var(--surface-4)]">
+            <div
+              className={cn(
+                "rec-lane rec-platter relative h-7 min-w-0 flex-1 overflow-hidden rounded-[3px] border border-[var(--border-subtle)]",
+                scanning ? "is-scanning" : "",
+              )}
+            >
               {laneSegments.map((segment) => {
                 const start = segment.offset_start ?? 0;
                 const length =
@@ -159,12 +191,21 @@ export function RecoveryDiskMap({
                     key={segment.id}
                     type="button"
                     onClick={() => onSelect(segment.id)}
-                    title={`${allocationLabel(state)} · ${formatBytes(length)} @ 0x${start.toString(16)}\n${allocationDetail(segment)}`}
-                    aria-label={`Channel ${channel}, ${allocationLabel(state)} recording of ${formatBytes(length)} at offset ${start}`}
+                    title={`${allocationLabel(state)}${isPartial(segment) ? " · Partial" : ""} · ${formatBytes(length)} @ 0x${start.toString(16)}\n${allocationDetail(segment)}`}
+                    aria-label={
+                      `Channel ${channel}${channelIsValid(segment) ? "" : " (invalid channel byte)"}, ` +
+                      `${allocationLabel(state)}${isPartial(segment) ? ", partially overwritten" : ""} ` +
+                      `recording of ${formatBytes(length)} at offset ${start}`
+                    }
                     className={cn(
-                      "absolute top-0 h-full rounded-[1px] transition-opacity hover:opacity-80",
+                      "rec-extent absolute top-0 h-full rounded-[1px] transition-opacity hover:opacity-80",
                       selected
                         ? "ring-2 ring-inset ring-[var(--accent-500)]"
+                        : "",
+                      // Amber outline marks a block that is not all there. Shape,
+                      // not just hue, so it survives greyscale printing.
+                      isPartial(segment)
+                        ? "outline outline-1 -outline-offset-1 outline-[var(--status-warning)]"
                         : "",
                     )}
                     style={{
@@ -172,7 +213,11 @@ export function RecoveryDiskMap({
                       // Floor the width so a small recording stays clickable
                       // instead of collapsing to an invisible sliver.
                       width: `max(3px, ${(length / imageSize) * 100}%)`,
-                      background: STATE_COLOR[state],
+                      background: isPartial(segment)
+                        ? // Hatched: the drawn extent is what the index claimed,
+                          // but only part of it is genuinely still on the platter.
+                          `repeating-linear-gradient(45deg, ${STATE_COLOR[state]} 0 3px, rgba(217,119,6,0.55) 3px 6px)`
+                        : STATE_COLOR[state],
                     }}
                   />
                 );
@@ -185,7 +230,7 @@ export function RecoveryDiskMap({
       <div className="flex items-center gap-2">
         {/* Must match the lane label width or the axis lies about position. */}
         <span className="w-28 shrink-0" />
-        <div className="relative h-4 min-w-0 flex-1">
+        <div className="rec-ruler relative h-4 min-w-0 flex-1">
           {[0, 0.25, 0.5, 0.75, 1].map((fraction) => (
             <span
               key={fraction}

@@ -1,0 +1,511 @@
+/**
+ * Recovery workspace — visual language.
+ *
+ * Every selector is scoped under `.recovery-shell`, which exists only on the
+ * Recovery page, so nothing here can reach another teammate's menu.
+ *
+ * The idea is "instrument, not dashboard": this screen is a bench readout for
+ * an examiner reading bytes off a platter, so it borrows from oscilloscopes and
+ * engineering drawings — a faint graticule, ticked micro-labels, tabular
+ * numerals that let offsets line up in a column — rather than the soft cards and
+ * gradients of a generic analytics page. It stays inside the existing blue/white
+ * token palette; it does not introduce a single new colour.
+ *
+ * Rules honoured here:
+ *   - presentation only, no layout maths that the disk map or table depend on
+ *   - motion only while something is genuinely happening, and never for decoration
+ *   - prefers-reduced-motion fully respected
+ */
+
+.recovery-shell {
+  --rec-graticule: rgba(37, 99, 235, 0.1);
+  --rec-hairline: rgba(37, 99, 235, 0.22);
+  --rec-ink: rgba(15, 23, 42, 0.04);
+}
+
+/* ------------------------------------------------------------------ *
+ * Numerals
+ *
+ * Byte offsets, sizes and counts are read down a column and compared.
+ * Tabular figures make them line up; proportional ones do not.
+ * ------------------------------------------------------------------ */
+.recovery-shell .mono,
+.recovery-shell [role="cell"],
+.recovery-shell [role="columnheader"] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ------------------------------------------------------------------ *
+ * Cards — a hairline of accent along the top edge instead of a shadow.
+ * Reads as an instrument bezel rather than a floating surface.
+ * ------------------------------------------------------------------ */
+.recovery-shell .visily-card {
+  position: relative;
+  border-color: var(--border-subtle);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px -18px rgba(37, 99, 235, 0.35);
+}
+
+.recovery-shell .visily-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--rec-hairline) 18%,
+    var(--rec-hairline) 82%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * Section labels — a 2px accent tick, the way a panel legend is ruled.
+ * ------------------------------------------------------------------ */
+.recovery-shell .visily-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  letter-spacing: 0.085em;
+}
+
+.recovery-shell .visily-card-title::before {
+  content: "";
+  width: 2px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--accent-500);
+  flex: none;
+}
+
+.recovery-shell .visily-card-header {
+  background: linear-gradient(
+    180deg,
+    var(--surface-3),
+    color-mix(in srgb, var(--surface-3) 88%, var(--surface-4))
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Disk map — the graticule.
+ *
+ * A faint engineering grid behind the channel lanes. Vertical rules echo the
+ * byte ruler beneath; the horizontal rule seats each lane on a baseline.
+ * Purely a backdrop: the lane's own geometry is unchanged.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-platter {
+  background-color: var(--surface-4);
+  /* Minor divisions every 1/16 of the image, major every 1/4 — the majors line
+     up with the byte ruler underneath, so the two read as one instrument. */
+  background-image:
+    linear-gradient(90deg, rgba(37, 99, 235, 0.17) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rec-graticule) 1px, transparent 1px),
+    linear-gradient(180deg, var(--rec-ink) 1px, transparent 1px);
+  background-size:
+    25% 100%,
+    6.25% 100%,
+    100% 100%;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* Recovered extents sit above the graticule with a faint inner lift. */
+.recovery-shell .rec-extent {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 1px 2px rgba(15, 23, 42, 0.18);
+}
+
+.recovery-shell .rec-extent:hover {
+  filter: brightness(1.06) saturate(1.05);
+}
+
+/* ------------------------------------------------------------------ *
+ * The read head.
+ *
+ * While a scan is actually running, a light sweeps the platter left to right.
+ * This is the one piece of motion on the page and it is tied to real state:
+ * it appears when the engine is working and stops the moment it settles.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-lane {
+  position: relative;
+  overflow: hidden;
+}
+
+.recovery-shell .rec-lane.is-scanning::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(37, 99, 235, 0.1),
+    rgba(37, 99, 235, 0.42),
+    rgba(37, 99, 235, 0.1),
+    transparent
+  );
+  animation: rec-sweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* Stagger the lanes so the head reads as one pass across the device. */
+.recovery-shell .rec-lane:nth-child(2n).is-scanning::after {
+  animation-delay: 0.18s;
+}
+.recovery-shell .rec-lane:nth-child(3n).is-scanning::after {
+  animation-delay: 0.36s;
+}
+
+@keyframes rec-sweep {
+  0% {
+    left: -20%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Progress — a lit filament rather than a flat fill.
+ * ------------------------------------------------------------------ */
+.recovery-shell [role="progressbar"] > div {
+  background: linear-gradient(
+    90deg,
+    var(--accent-600),
+    var(--accent-400) 60%,
+    var(--accent-500)
+  );
+  box-shadow: 0 0 8px -1px var(--accent-glow);
+  position: relative;
+  overflow: hidden;
+}
+
+.recovery-shell [role="progressbar"] > div::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.55),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: rec-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes rec-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Evidence table.
+ * ------------------------------------------------------------------ */
+.recovery-shell [role="columnheader"] {
+  letter-spacing: 0.07em;
+}
+
+/* The selected row is the one being inspected — mark it on the rail. */
+.recovery-shell .rec-row {
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+/* Deleted rows read as flagged specimens: a solid rail, not just a tint. */
+.recovery-shell .rec-row-deleted {
+  background-image: linear-gradient(
+    90deg,
+    rgba(220, 38, 38, 0.07),
+    transparent 42%
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Advanced disclosure — a recessed well, so an override is visibly a
+ * deliberate departure from the automatic path.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-well {
+  background:
+    linear-gradient(180deg, var(--surface-3), var(--surface-2)),
+    var(--surface-3);
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+/* ------------------------------------------------------------------ *
+ * Accessibility: nothing above is load-bearing, so drop all of it when
+ * the operating system asks for reduced motion.
+ * ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .recovery-shell .rec-lane.is-scanning::after,
+  .recovery-shell [role="progressbar"] > div::after {
+    animation: none;
+  }
+  .recovery-shell .rec-lane.is-scanning::after {
+    display: none;
+  }
+  .recovery-shell .rec-row {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Byte ruler — real tick marks rising to each label, the way a scale is
+ * engraved. Drawn off the existing label nodes, so no extra DOM.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-ruler > span::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 0;
+  width: 1px;
+  height: 4px;
+  background: var(--border-strong);
+}
+
+.recovery-shell .rec-ruler > span:first-child::before {
+  left: 0;
+}
+
+.recovery-shell .rec-ruler > span:last-child::before {
+  left: auto;
+  right: 0;
+}
+
+/* ================================================================== *
+ * Reference pass — patterns borrowed from the forensic-suite mockup,
+ * bound to data this engine actually produces.
+ *
+ * Taken: the telemetry ribbon, offset/hash chips, a sticky ruled table
+ * header, status pills, and a dark hex buffer.
+ * Deliberately NOT taken: aggregate confidence %, "integrity 99.98%",
+ * read-speed and entropy readouts. This engine measures none of those,
+ * and a number it cannot defend is worse than no number.
+ * ================================================================== */
+
+/* --- Telemetry ribbon --------------------------------------------- */
+.recovery-shell .rec-ribbon {
+  font-family: var(--font-mono, ui-monospace, "JetBrains Mono", monospace);
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
+  border-top: 1px solid var(--border-subtle);
+  letter-spacing: 0.01em;
+}
+
+/* --- Table: sticky ruled header ----------------------------------- */
+.recovery-shell [role="columnheader"] {
+  position: relative;
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-4));
+}
+
+/* Hairline rules between columns, the way a ledger is ruled. */
+.recovery-shell [role="columnheader"]:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 22%;
+  bottom: 22%;
+  width: 1px;
+  background: var(--border-subtle);
+}
+
+/* --- Offset chip ---------------------------------------------------
+ * A byte range is an address, so it gets the treatment an address
+ * deserves: boxed, monospaced, selectable at a glance.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-offset {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.recovery-shell .rec-row-selected .rec-offset,
+.recovery-shell .rec-row:hover .rec-offset {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: var(--accent-soft);
+  color: var(--accent-600);
+}
+
+/* --- Selected row --------------------------------------------------
+ * The inspected row is the subject of the whole lower pane, so it is
+ * marked on the rail as well as tinted.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-row-selected {
+  background-color: var(--accent-soft) !important;
+  box-shadow:
+    inset 3px 0 0 0 var(--accent-500),
+    inset 0 1px 0 rgba(37, 99, 235, 0.12),
+    inset 0 -1px 0 rgba(37, 99, 235, 0.12);
+}
+
+/* Deleted rows keep their red rail even when selected. */
+.recovery-shell .rec-row-deleted.rec-row-selected {
+  box-shadow:
+    inset 3px 0 0 0 var(--status-danger),
+    inset 0 1px 0 rgba(37, 99, 235, 0.12),
+    inset 0 -1px 0 rgba(37, 99, 235, 0.12);
+}
+
+/* --- Allocation pill -----------------------------------------------
+ * Pill form from the reference, but the glyph and the written label are
+ * kept: colour is never the only carrier of state.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px 1px 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  line-height: 1.6;
+}
+
+/* --- Hex buffer ----------------------------------------------------
+ * Hex is read against a dark ground in every serious tool — the bytes
+ * stop competing with the surrounding white chrome. Scoped to the
+ * Recovery inspector so the Identification page's viewer is untouched.
+ * ------------------------------------------------------------------ */
+.recovery-shell .rec-hex pre {
+  background: #0b1120;
+  border-color: #1e293b;
+  color: #cbd5e1;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.recovery-shell .rec-hex .visily-card-title {
+  color: var(--text-secondary);
+}
+
+/* ================================================================== *
+ * Depth pass — the page was cards on white with a large empty log
+ * panel. This gives the workspace a ground to sit on and turns the
+ * idle log into a readout.
+ * ================================================================== */
+
+/* --- Blueprint ground ----------------------------------------------
+ * A faint blue graticule behind the cards, same family as the disk
+ * map's platter, so the white cards read as instruments laid on a
+ * drafting surface rather than floating in nothing.
+ * ------------------------------------------------------------------ */
+.recovery-shell {
+  background-color: var(--surface-1);
+  background-image:
+    radial-gradient(
+      circle at 1px 1px,
+      rgba(37, 99, 235, 0.09) 1px,
+      transparent 0
+    ),
+    radial-gradient(
+      110% 60% at 50% -10%,
+      rgba(37, 99, 235, 0.06),
+      transparent 70%
+    );
+  background-size:
+    22px 22px,
+    100% 100%;
+  background-attachment: local, local;
+  padding: 2px;
+}
+
+/* --- Control card reads as the command deck ------------------------ */
+.recovery-shell > section:first-of-type {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(37, 99, 235, 0.05),
+      rgba(255, 255, 255, 0) 74px
+    ),
+    var(--surface-2);
+}
+
+/* --- Idle log panel ------------------------------------------------ */
+.recovery-shell .rec-idle {
+  background:
+    radial-gradient(
+      80% 100% at 50% 0%,
+      rgba(37, 99, 235, 0.05),
+      transparent 70%
+    ),
+    var(--surface-2);
+}
+
+/* Big legible figures for the last-run readout. */
+.recovery-shell .rec-metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+}
+
+.recovery-shell .rec-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.recovery-shell .rec-metric-value {
+  font-family: var(--font-mono, ui-monospace, "JetBrains Mono", monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.recovery-shell .rec-metric-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* Concentric rings — a platter at rest, for the never-run state. */
+.recovery-shell .rec-idle-glyph {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  box-shadow:
+    inset 0 0 0 6px rgba(37, 99, 235, 0.05),
+    inset 0 0 0 7px rgba(37, 99, 235, 0.22),
+    inset 0 0 0 15px rgba(37, 99, 235, 0.04),
+    inset 0 0 0 16px rgba(37, 99, 235, 0.14);
+  position: relative;
+}
+
+.recovery-shell .rec-idle-glyph::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent-500);
+  transform: translate(-50%, -50%);
+}

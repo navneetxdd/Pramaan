@@ -19,8 +19,8 @@
     {
       "id": "fixtures_tier1_hikvision_known_answer_bin",
       "path": "fixtures/tier1/hikvision_known_answer.bin",
-      "bytes": 6303744,
-      "sha256": "8f4a3017f67238e20ca19e5767117258cf982c1bc7112acd4d137e089737b488",
+      "bytes": 7360512,
+      "sha256": "fdc135d57db1dee07ee2f364113e7501e314ff75e0418ae99915c51bbab323c5",
       "kind": "generated_known_answer"
     },
     {
