@@ -51,8 +51,17 @@ class HikvisionParserGoldenTests(unittest.TestCase):
             path.write_bytes(build_hikvision_lab_specimen())
             segments = HikvisionAdapter().scan(path)
         self.assertGreater(len(segments), 0)
-        self.assertTrue(all(s.validation in {"hikbtree_indexed", "hikbtree_stale_entry"} for s in segments))
+        # Vocabulary per docs/reference/hikvision_fs.md §7: allocated / deleted / in-progress.
+        self.assertTrue(
+            all(
+                s.validation in {"hikbtree_indexed", "hikbtree_deleted_entry", "hikbtree_recording"}
+                for s in segments
+            ),
+            {s.validation for s in segments},
+        )
         self.assertTrue(any(s.timestamp_source == "hikbtree_entry" for s in segments))
+        # The cleared-index entry must be recovered, not silently dropped.
+        self.assertTrue(any(s.validation == "hikbtree_deleted_entry" for s in segments))
 
 
 if __name__ == "__main__":

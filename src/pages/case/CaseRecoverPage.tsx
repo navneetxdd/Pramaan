@@ -4,26 +4,48 @@ import { useCaseContext } from "@/context/CaseContext";
 import { api, type Segment } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { ConfidenceBadge } from "@/components/forensic/ConfidenceBadge";
-import {
-  ConfidenceDonut,
-  RecoveryLogPanel,
-} from "@/components/forensic/ConfidenceDonut";
+import { RecoveryLogPanel } from "@/components/forensic/RecoveryLogPanel";
+import { RecoveryChecksPanel } from "@/components/forensic/RecoveryChecksPanel";
+import { RecoveryDiskMap } from "@/components/forensic/RecoveryDiskMap";
 import { SegmentInspector } from "@/components/forensic/SegmentInspector";
 import { VirtualTable } from "@/components/ui/virtual-table";
 import { subscribeJobEvents } from "@/lib/sse";
 import { useActivity } from "@/context/ActivityContext";
-import { formatBytes } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import { formatTimestampSource } from "@/lib/integrity";
+import {
+  allocationDetail,
+  allocationLabel,
+  allocationOf,
+  countAllocations,
+  summariseAllocations,
+  type AllocationState,
+} from "@/lib/allocation";
+import { timestampTier } from "@/lib/checks";
 
-function tierOf(seg: Segment) {
+/**
+ * Allocation state cell. Colour is a reinforcement, never the only signal:
+ * every state carries a distinct glyph and a written label, so the column
+ * survives greyscale printing and colour-vision deficiency.
+ */
+function AllocationCell({ state }: { state: AllocationState }) {
+  const style: Record<AllocationState, { glyph: string; color: string }> = {
+    deleted: { glyph: "✕", color: "var(--status-danger)" },
+    recording: { glyph: "●", color: "var(--status-info)" },
+    allocated: { glyph: "✓", color: "var(--status-success)" },
+    unknown: { glyph: "?", color: "var(--text-tertiary)" },
+  };
+  const { glyph, color } = style[state];
   return (
-    seg.confidence_tier ??
-    (seg.validation?.includes("_4") || seg.confidence >= 0.85
-      ? "high"
-      : seg.confidence >= 0.5
-        ? "medium"
-        : "low")
+    <span
+      className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase"
+      style={{ color }}
+    >
+      <span aria-hidden="true">{glyph}</span>
+      {allocationLabel(state)}
+    </span>
   );
 }
 
@@ -39,7 +61,10 @@ export function CaseRecoverPage() {
     null,
   );
   const [adapters, setAdapters] = useState<string[]>([]);
-  const [selectedAdapter, setSelectedAdapter] = useState("");
+  // null = follow Identification. A string is a deliberate examiner override.
+  const [manualAdapter, setManualAdapter] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [deletedOnly, setDeletedOnly] = useState(false);
   const { setWorking, setIdle } = useActivity();
 
   useEffect(() => {
@@ -48,17 +73,37 @@ export function CaseRecoverPage() {
       .then((v) => setAdapters(v.capabilities.recovery_adapters ?? []));
   }, []);
 
-  const adapterHint = workspace?.evidence.find((e) => e.id === deviceId)
-    ?.identification?.recommended_adapter;
+  const selectedEvidence = useMemo(
+    () => workspace?.evidence.find((e) => e.id === deviceId) ?? null,
+    [workspace?.evidence, deviceId],
+  );
 
+  const recommendedAdapter =
+    selectedEvidence?.identification?.recommended_adapter;
+
+  const hasRecommendation = Boolean(
+    recommendedAdapter && recommendedAdapter !== "needs_selection",
+  );
+
+  // The adapter actually sent to the engine. Identification decides unless the
+  // examiner has explicitly overridden it for this device.
+  const effectiveAdapter = useMemo(() => {
+    if (manualAdapter) return manualAdapter;
+    if (hasRecommendation) return recommendedAdapter as string;
+    return "";
+  }, [manualAdapter, hasRecommendation, recommendedAdapter]);
+
+  // Switching evidence must drop the previous device's override, otherwise the
+  // next image silently runs under the wrong parser.
   useEffect(() => {
-    if (selectedAdapter) return;
-    if (adapterHint && adapterHint !== "needs_selection") {
-      setSelectedAdapter(adapterHint);
-    } else if (adapters[0]) {
-      setSelectedAdapter(adapters[0]);
-    }
-  }, [adapterHint, adapters, selectedAdapter, deviceId]);
+    setManualAdapter(null);
+  }, [deviceId]);
+
+  // Identification could not decide: the examiner has to, so surface the control.
+  useEffect(() => {
+    if (!deviceId) return;
+    setAdvancedOpen(!hasRecommendation);
+  }, [deviceId, hasRecommendation]);
 
   useEffect(() => {
     if (workspace?.evidence[0] && !deviceId)
@@ -76,12 +121,34 @@ export function CaseRecoverPage() {
       .catch(() => setSegments([]));
   }, [deviceId, workspace?.jobs]);
 
-  const tierCounts = useMemo(() => {
-    const high = segments.filter((s) => tierOf(s) === "high").length;
-    const medium = segments.filter((s) => tierOf(s) === "medium").length;
-    const low = segments.length - high - medium;
-    return { high, medium, low };
+  // Allocation is derived once per segments change, not per render and never
+  // inside the virtualizer's row renderer — that would run on every scroll frame.
+  const allocationCounts = useMemo(
+    () => countAllocations(segments),
+    [segments],
+  );
+
+  const allocationByRow = useMemo(() => {
+    const map = new Map<string, AllocationState>();
+    for (const segment of segments) map.set(segment.id, allocationOf(segment));
+    return map;
   }, [segments]);
+
+  const visibleSegments = useMemo(
+    () =>
+      deletedOnly
+        ? segments.filter((s) => allocationByRow.get(s.id) === "deleted")
+        : segments,
+    [segments, deletedOnly, allocationByRow],
+  );
+
+  // Never leave the inspector pinned to a row the filter has hidden.
+  useEffect(() => {
+    if (!selectedSegmentId) return;
+    if (!visibleSegments.some((s) => s.id === selectedSegmentId)) {
+      setSelectedSegmentId(null);
+    }
+  }, [visibleSegments, selectedSegmentId]);
 
   const recoveryRunning = useMemo(
     () =>
@@ -106,6 +173,13 @@ export function CaseRecoverPage() {
       toast.error("Select device and enter examiner");
       return;
     }
+    if (!effectiveAdapter) {
+      toast.error(
+        "Identification could not determine a parser — pick one under Advanced",
+      );
+      setAdvancedOpen(true);
+      return;
+    }
     setBusy(true);
     setLog([]);
     setWorking("Recovery running…");
@@ -115,7 +189,7 @@ export function CaseRecoverPage() {
         caseId,
         deviceId,
         actor.trim(),
-        selectedAdapter || undefined,
+        effectiveAdapter,
       );
       await new Promise<void>((resolve, reject) => {
         subscribeJobEvents(started.job.id, {
@@ -152,17 +226,18 @@ export function CaseRecoverPage() {
     }
   }
 
-  const adapterHintDisplay = workspace?.evidence.find((e) => e.id === deviceId)
-    ?.identification?.recommended_adapter;
-
   const selectedSegment = useMemo(
     () => segments.find((s) => s.id === selectedSegmentId) ?? null,
     [segments, selectedSegmentId],
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <section className="visily-card flex flex-wrap items-end gap-3 p-4">
+    // On a short viewport the page scrolls rather than compressing panels to
+    // zero height — a collapsed segments table is worse than a scrollbar.
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
+      {/* shrink-0 + overflow-visible: .visily-card clips, and as a flex child this
+          card was compressing, so the expanded Advanced panel was cut in half. */}
+      <section className="visily-card flex shrink-0 flex-wrap items-end gap-3 overflow-visible p-4">
         <div className="min-w-[180px] flex-1">
           <label className="label">Evidence image</label>
           <select
@@ -181,19 +256,24 @@ export function CaseRecoverPage() {
           <label className="label">Examiner</label>
           <Input value={actor} onChange={(e) => setActor(e.target.value)} />
         </div>
-        <div className="min-w-[200px]">
-          <label className="label">Recovery adapter</label>
-          <select
-            className="field w-full"
-            value={selectedAdapter}
-            onChange={(e) => setSelectedAdapter(e.target.value)}
-          >
-            {adapters.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+        <div className="min-w-[220px]">
+          <label className="label">Recovery parser</label>
+          <div className="flex h-[34px] items-center gap-2">
+            {effectiveAdapter ? (
+              <span className="mono text-[13px] font-medium text-[var(--text-primary)]">
+                {effectiveAdapter}
+              </span>
+            ) : (
+              <span className="text-[13px] text-[var(--status-warning)]">
+                Not determined
+              </span>
+            )}
+            {manualAdapter ? (
+              <Badge variant="warning">manual override</Badge>
+            ) : hasRecommendation ? (
+              <Badge variant="info">auto</Badge>
+            ) : null}
+          </div>
         </div>
         <Button
           disabled={busy || !deviceId || recoveryRunning}
@@ -201,18 +281,75 @@ export function CaseRecoverPage() {
         >
           {recoveryRunning ? "Recovery in progress…" : "Run recovery"}
         </Button>
-        {adapterHintDisplay ? (
-          <p className="w-full text-[12px] text-[var(--text-secondary)]">
-            Identification recommends:{" "}
-            <span className="mono font-medium">{adapterHintDisplay}</span>
-            {adapterHintDisplay === "needs_selection"
-              ? " — pick an adapter above."
-              : null}
-          </p>
-        ) : null}
+
+        <div className="w-full">
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen((open) => !open)}
+            aria-expanded={advancedOpen}
+            className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+          >
+            {advancedOpen ? "▾" : "▸"} Advanced
+          </button>
+
+          {advancedOpen ? (
+            <div className="mt-2 flex flex-wrap items-end gap-3 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] p-3">
+              <div className="min-w-[200px]">
+                <label className="label">Override parser</label>
+                <select
+                  className="field w-full"
+                  value={effectiveAdapter}
+                  onChange={(e) => setManualAdapter(e.target.value)}
+                >
+                  {!effectiveAdapter ? (
+                    <option value="">Select a parser…</option>
+                  ) : null}
+                  {adapters.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {manualAdapter && hasRecommendation ? (
+                <Button
+                  variant="ghost"
+                  onClick={() => setManualAdapter(null)}
+                  title={`Revert to ${recommendedAdapter}`}
+                >
+                  Reset to auto
+                </Button>
+              ) : null}
+              <p className="w-full text-[12px] text-[var(--text-secondary)]">
+                {manualAdapter && hasRecommendation ? (
+                  <span className="text-[var(--status-warning)]">
+                    Overriding Identification, which recommends{" "}
+                    <span className="mono font-medium">
+                      {recommendedAdapter}
+                    </span>
+                    . Recorded in the recovery job.
+                  </span>
+                ) : hasRecommendation ? (
+                  <>
+                    Identification recommends{" "}
+                    <span className="mono font-medium">
+                      {recommendedAdapter}
+                    </span>
+                    . Override only if you have reason to.
+                  </>
+                ) : (
+                  <span className="text-[var(--status-warning)]">
+                    Identification could not determine a parser for this image —
+                    select one manually.
+                  </span>
+                )}
+              </p>
+            </div>
+          ) : null}
+        </div>
       </section>
 
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[1fr_200px]">
+      <div className="grid min-h-0 shrink-0 gap-3 lg:grid-cols-[1fr_200px]">
         <section className="visily-card flex min-h-[240px] flex-col overflow-hidden">
           <div className="visily-card-header">
             <span className="visily-card-title">Engine log</span>
@@ -224,34 +361,105 @@ export function CaseRecoverPage() {
             <RecoveryLogPanel lines={log} />
           </div>
         </section>
-        <section className="visily-card p-4">
-          <p className="visily-card-title mb-3">Confidence tiers</p>
-          <ConfidenceDonut
-            high={tierCounts.high}
-            medium={tierCounts.medium}
-            low={tierCounts.low}
-            total={segments.length}
-          />
+        <section className="visily-card overflow-auto p-4">
+          <p className="visily-card-title mb-3">Checks passed</p>
+          <RecoveryChecksPanel segments={segments} />
         </section>
       </div>
 
-      <section className="visily-card overflow-hidden">
+      <section className="visily-card shrink-0 overflow-hidden">
+        <div className="visily-card-header">
+          <span className="visily-card-title">Disk map</span>
+          <span className="text-[11px] text-[var(--text-tertiary)]">
+            Byte offsets across the evidence image
+          </span>
+        </div>
+        <RecoveryDiskMap
+          segments={segments}
+          imageSize={selectedEvidence?.size_bytes ?? 0}
+          selectedSegmentId={selectedSegmentId}
+          onSelect={(id) => {
+            setDeletedOnly(false);
+            setSelectedSegmentId(id);
+          }}
+        />
+      </section>
+
+      <section className="visily-card shrink-0 overflow-hidden">
         <div className="visily-card-header">
           <span className="visily-card-title">Recovered segments</span>
-          <span className="mono text-[11px]">{segments.length}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-[var(--text-secondary)]">
+              {summariseAllocations(segments.length, allocationCounts)}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={deletedOnly}
+              disabled={allocationCounts.deleted === 0}
+              onClick={() => setDeletedOnly((on) => !on)}
+              className={cn(
+                "rounded border px-2 py-0.5 text-[11px] transition-colors",
+                deletedOnly
+                  ? "border-[var(--status-danger)] bg-[rgba(220,38,38,0.12)] text-[var(--status-danger)]"
+                  : "border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)]",
+                allocationCounts.deleted === 0
+                  ? "cursor-not-allowed opacity-40"
+                  : "",
+              )}
+              title={
+                allocationCounts.deleted === 0
+                  ? "No deleted recordings on this image"
+                  : "Show only recordings recovered from cleared index entries"
+              }
+            >
+              Deleted only
+            </button>
+          </div>
         </div>
         <VirtualTable
-          rows={segments}
+          rows={visibleSegments}
+          rowHeight={48}
           maxHeight={288}
-          emptyMessage="No segments for this device yet."
+          minWidth={940}
+          emptyMessage={
+            deletedOnly
+              ? "No deleted recordings on this image."
+              : "No segments for this device yet."
+          }
           getRowKey={(seg) => seg.id}
           selectedRowKey={selectedSegmentId}
           onRowClick={(seg) => setSelectedSegmentId(seg.id)}
+          getRowTitle={(seg) => allocationDetail(seg)}
+          // Inset shadow, not a border: a border would consume 4px of layout and
+          // shift every marked row out of alignment with the header.
+          getRowClassName={(seg) =>
+            allocationByRow.get(seg.id) === "deleted"
+              ? "shadow-[inset_4px_0_0_0_var(--status-danger)] bg-[rgba(220,38,38,0.06)]"
+              : allocationByRow.get(seg.id) === "recording"
+                ? "shadow-[inset_4px_0_0_0_var(--status-info)]"
+                : undefined
+          }
           columns={[
-            { key: "ch", header: "Ch", cell: (seg) => seg.channel ?? "—" },
+            {
+              key: "ch",
+              header: "Ch",
+              width: "56px",
+              cell: (seg) => seg.channel ?? "—",
+            },
+            {
+              key: "state",
+              header: "State",
+              width: "124px",
+              cell: (seg) => {
+                const state = allocationByRow.get(seg.id) ?? "unknown";
+                return <AllocationCell state={state} />;
+              },
+            },
             {
               key: "range",
               header: "Byte range",
+              width: "minmax(150px, 1.2fr)",
               className: "mono",
               cell: (seg) =>
                 seg.offset_start != null && seg.offset_end != null
@@ -261,6 +469,7 @@ export function CaseRecoverPage() {
             {
               key: "size",
               header: "Size",
+              width: "84px",
               className: "mono",
               cell: (seg) =>
                 formatBytes(
@@ -271,15 +480,26 @@ export function CaseRecoverPage() {
             {
               key: "frames",
               header: "Playable frames",
+              width: "84px",
               className: "mono",
-              cell: (seg) =>
-                seg.playable_frame_count != null
-                  ? String(seg.playable_frame_count)
-                  : "—",
+              cell: (seg) => (
+                <span
+                  title={
+                    seg.playable_frame_count != null
+                      ? undefined
+                      : "Measured by ffprobe when the recording is exported"
+                  }
+                >
+                  {seg.playable_frame_count != null
+                    ? String(seg.playable_frame_count)
+                    : "—"}
+                </span>
+              ),
             },
             {
               key: "ts",
               header: "Timestamp",
+              width: "minmax(170px, 1.4fr)",
               cell: (seg) => (
                 <div className="text-[11px]">
                   <div>
@@ -294,17 +514,26 @@ export function CaseRecoverPage() {
             {
               key: "parser",
               header: "Parser",
+              width: "92px",
               className: "mono text-[10px]",
               cell: (seg) => seg.parser_name ?? "—",
             },
             {
               key: "validation",
               header: "Validation",
+              width: "minmax(180px, 1.3fr)",
               cell: (seg) => (
-                <ConfidenceBadge
-                  tier={tierOf(seg)}
-                  label={seg.validation?.replace(/_/g, " ")}
-                />
+                <div className="flex flex-col gap-0.5">
+                  <ConfidenceBadge
+                    tier={timestampTier(seg.timestamp_confidence)}
+                    label={seg.validation?.replace(/_/g, " ")}
+                  />
+                  <span className="mono text-[10px] text-[var(--text-tertiary)]">
+                    {seg.timestamp_confidence != null
+                      ? `ts conf ${seg.timestamp_confidence}`
+                      : "ts conf —"}
+                  </span>
+                </div>
               ),
             },
           ]}

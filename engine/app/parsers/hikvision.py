@@ -1,118 +1,146 @@
+"""Hikvision recovery adapter.
+
+Structure offsets and their sources: ``docs/reference/hikvision_fs.md``.
+
+Memory contract (§10 of that document) — this adapter runs in a desktop shell against images
+that can be multi-terabyte:
+
+* Converting the whole mapping to a ``bytes`` object is forbidden; slice bounded windows only.
+* No segment retains its payload. ``raw_bytes`` is always empty: ``recovery`` re-reads the byte
+  range from the image when it writes the artifact.
+* All byte scanning goes through ``find`` (C-level), never a Python ``range()`` loop.
+"""
+
 from __future__ import annotations
 
 import mmap
-from datetime import datetime, timezone
 from pathlib import Path
 
 from engine.app.parsers.base import RecoveredSegment
 from engine.app.parsers.schemas.hikvision_fs import (
-    MASTER_BLOCK_OFFSET,
-    carve_mpegps_block,
-    parse_hikbtree_entries,
+    STATE_DELETED,
+    STATE_RECORDING,
+    RecordingEntry,
+    find_master_block,
+    list_recordings,
     parse_master_block,
+    summarize,
 )
+
+# Validation vocabulary surfaced to the Recovery menu and the report.
+VALIDATION_BY_STATE = {
+    "allocated": "hikbtree_indexed",
+    STATE_RECORDING: "hikbtree_recording",
+    STATE_DELETED: "hikbtree_deleted_entry",
+}
 
 
 class HikvisionAdapter:
     name = "hikvision"
     vendor = "Hikvision"
-    version = "3"
+    version = "4"
 
     def scan(self, image_path: Path, *, max_bytes: int | None = None) -> list[RecoveredSegment]:
-        with image_path.open("rb") as handle:
-            file_size = handle.seek(0, 2)
-            view_len = file_size if max_bytes is None else min(file_size, max_bytes)
-            if view_len <= 0:
+        return self._scan(image_path, max_bytes=max_bytes)
+
+    def list_recordings(self, image_path: Path, *, max_bytes: int | None = None) -> list[dict]:
+        """The engine output contract — docs/reference/hikvision_fs.md §9.
+
+        Returns dicts with exactly: channel, start_ts, end_ts, byte_offset, byte_length,
+        event_type, resolution, fps, allocation_state. This is what the playback pipeline
+        consumes; ``scan()`` wraps the same data in the shared ``RecoveredSegment`` shape.
+        """
+        with self._mapped(image_path, max_bytes) as data:
+            if data is None:
                 return []
-            with mmap.mmap(handle.fileno(), view_len, access=mmap.ACCESS_READ) as data:
-                return self._scan_mapped(data)
+            return [item.as_dict() for item in list_recordings(data)]
 
-    def _scan_mapped(self, data: mmap.mmap | bytes) -> list[RecoveredSegment]:
-        master = parse_master_block(data, MASTER_BLOCK_OFFSET)
-        if not master:
-            return []
+    # -- internals ---------------------------------------------------------------------
 
-        tree_offset = int(master["hikbtree_offset"])
-        entries = parse_hikbtree_entries(data, tree_offset)
-        segments: list[RecoveredSegment] = []
-        for entry in entries:
-            if entry.data_offset >= len(data):
-                continue
-            block = data[entry.data_offset : min(len(data), entry.data_offset + 512 * 1024)]
-            ps_runs = carve_mpegps_block(block) if entry.has_footage else []
-            validation = "hikbtree_indexed" if entry.has_footage else "hikbtree_stale_entry"
-            if not ps_runs and not entry.has_footage:
-                ps_runs = carve_mpegps_block(block[:65536])
-            for run in ps_runs or ([block[:65536]] if entry.has_footage else []):
-                start_iso = _unix_iso(entry.start_unix)
-                end_iso = _unix_iso(entry.end_unix)
-                segments.append(
-                    RecoveredSegment(
-                        channel=entry.channel,
-                        vendor=self.vendor,
-                        offset_start=entry.data_offset,
-                        offset_end=entry.data_offset + len(run),
-                        frame_count=max(1, run.count(b"\x00\x00\x01\xba")),
-                        confidence=0.9 if entry.has_footage else 0.55,
-                        validation=validation,
-                        raw_bytes=run,
-                        codec="h264",
-                        recorder_start_ts=start_iso,
-                        recorder_end_ts=end_iso,
-                        timestamp_source="hikbtree_entry" if start_iso else "unavailable",
-                        timestamp_confidence=0.85 if start_iso else None,
-                        parser_name=self.name,
-                        parser_version=self.version,
-                        signature_evidence={
-                            "master_block": "HIKVISION@HANGZHOU",
-                            "hikbtree_index": True,
-                            "mpeg_ps_pack": b"\x00\x00\x01\xba" in run,
-                        },
-                        validation_evidence={
-                            "hikbtree_stale": entry.stale,
-                            "recovery_context": validation,
-                        },
-                    )
-                )
-        return _merge(segments)
+    def _scan(self, image_path: Path, *, max_bytes: int | None) -> list[RecoveredSegment]:
+        with self._mapped(image_path, max_bytes) as data:
+            if data is None:
+                return []
+            master_offset = find_master_block(data)
+            master = parse_master_block(data, master_offset) if master_offset is not None else None
+            recordings = list_recordings(data)
+            counts = summarize(recordings)
+            return [self._to_segment(item, master, counts) for item in recordings]
 
+    class _Mapping:
+        """Context manager yielding a read-only mmap, or None for an unusable image."""
 
-def _unix_iso(value: int) -> str | None:
-    if value <= 0 or value >= 0x7FFFFFFF:
-        return None
-    try:
-        return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
-    except (OverflowError, OSError, ValueError):
-        return None
+        def __init__(self, path: Path, max_bytes: int | None) -> None:
+            self._path = path
+            self._max_bytes = max_bytes
+            self._handle = None
+            self._map = None
 
+        def __enter__(self):
+            self._handle = self._path.open("rb")
+            file_size = self._handle.seek(0, 2)
+            view_len = file_size if self._max_bytes is None else min(file_size, self._max_bytes)
+            if view_len <= 0:
+                self._handle.close()
+                self._handle = None
+                return None
+            self._map = mmap.mmap(self._handle.fileno(), view_len, access=mmap.ACCESS_READ)
+            return self._map
 
-def _merge(segments: list[RecoveredSegment]) -> list[RecoveredSegment]:
-    if not segments:
-        return []
-    segments.sort(key=lambda s: s.offset_start)
-    out = [segments[0]]
-    for seg in segments[1:]:
-        prev = out[-1]
-        if seg.offset_start <= prev.offset_end and seg.channel == prev.channel and seg.validation == prev.validation:
-            out[-1] = RecoveredSegment(
-                channel=prev.channel,
-                vendor=prev.vendor,
-                offset_start=prev.offset_start,
-                offset_end=max(prev.offset_end, seg.offset_end),
-                frame_count=prev.frame_count + seg.frame_count,
-                confidence=min(prev.confidence, seg.confidence),
-                validation=prev.validation,
-                raw_bytes=b"",
-                codec=prev.codec,
-                recorder_start_ts=prev.recorder_start_ts,
-                recorder_end_ts=seg.recorder_end_ts or prev.recorder_end_ts,
-                timestamp_source=prev.timestamp_source,
-                timestamp_confidence=prev.timestamp_confidence,
-                parser_name=prev.parser_name,
-                parser_version=prev.parser_version,
-                signature_evidence=prev.signature_evidence,
-                validation_evidence=prev.validation_evidence,
-            )
-        else:
-            out.append(seg)
-    return out
+        def __exit__(self, *exc) -> None:
+            if self._map is not None:
+                self._map.close()
+            if self._handle is not None:
+                self._handle.close()
+            return None
+
+    def _mapped(self, image_path: Path, max_bytes: int | None) -> "HikvisionAdapter._Mapping":
+        return self._Mapping(image_path, max_bytes)
+
+    def _to_segment(self, item: RecordingEntry, master, counts: dict[str, int]) -> RecoveredSegment:
+        validation = VALIDATION_BY_STATE.get(item.allocation_state, "hikbtree_entry")
+        return RecoveredSegment(
+            channel=item.channel,
+            vendor=self.vendor,
+            offset_start=item.byte_offset,
+            offset_end=item.byte_offset + item.byte_length,
+            # The recorder writes one picture-index header per NAL unit, so this counts
+            # container units, not decodable frames. The playback pipeline sets
+            # playable_frame_count from ffprobe.
+            frame_count=0,
+            # docs/reference/hikvision_fs.md §7.1 — the documented three-rung ladder, not an
+            # invented score. The checks that actually passed are in signature_evidence.
+            confidence=item.timestamp_confidence if item.timestamp_confidence is not None else 0.3,
+            validation=validation,
+            raw_bytes=b"",
+            codec="h264",
+            recorder_start_ts=item.start_ts,
+            recorder_end_ts=item.end_ts,
+            timestamp_source=item.timestamp_source,
+            timestamp_confidence=item.timestamp_confidence,
+            parser_name=self.name,
+            parser_version=self.version,
+            signature_evidence={
+                "master_block_signature": "HIKVISION@HANGZHOU",
+                "master_block_offset": None if master is None else master.hikbtree_offset,
+                "hikbtree_index": True,
+                "firmware": None if master is None else master.version,
+                "system_init_time": None if master is None else master.init_time_iso,
+                "sps_decoded": item.resolution is not None,
+                "idr_table_read": item.event_type != "unknown",
+            },
+            validation_evidence={
+                # The §9 output contract, carried through to the Recovery page and report
+                # without needing a change to the shared RecoveredSegment shape.
+                "allocation_state": item.allocation_state,
+                "event_type": item.event_type,
+                "resolution": item.resolution,
+                "fps": item.fps,
+                "byte_offset": item.byte_offset,
+                "byte_length": item.byte_length,
+                "timestamp_confidence_basis": item.timestamp_confidence_basis,
+                "deleted": item.allocation_state == STATE_DELETED,
+                "recovery_context": validation,
+                "image_allocation_counts": counts,
+            },
+        )

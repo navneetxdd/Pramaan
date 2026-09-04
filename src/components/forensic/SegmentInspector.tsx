@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   api,
   type AiFinding,
@@ -8,7 +9,69 @@ import {
 } from "@/lib/api";
 import { formatBytes, formatOffset } from "@/lib/utils";
 import { formatTimestampSource } from "@/lib/integrity";
+import { allocationLabel, allocationOf } from "@/lib/allocation";
 import { HexViewer } from "@/components/forensic/HexViewer";
+
+/** Read one key out of a parser's validation_evidence bag. */
+function evidenceValue(
+  segment: Segment | null,
+  detail: SegmentDetail | null,
+  key: string,
+): unknown {
+  return (
+    segment?.validation_evidence?.[key] ?? detail?.validation_evidence?.[key]
+  );
+}
+
+function displayOrDash(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  return String(value);
+}
+
+/**
+ * Frame rate as the engine measured it. `String(6.0)` is "6", which reads like
+ * an integer guess rather than a decoded VUI value, so keep one decimal — but
+ * never pad a rate that genuinely has more precision (e.g. 29.97).
+ */
+function formatFps(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return displayOrDash(value);
+  }
+  const text = Number.isInteger(value) ? value.toFixed(1) : String(value);
+  return `${text} fps`;
+}
+
+async function copyText(value: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    toast.success(`${label} copied`);
+  } catch {
+    toast.error("Could not copy to clipboard");
+  }
+}
+
+/** Hash row with a copy button. Long digests wrap rather than truncate. */
+function CopyRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="w-16 shrink-0 pt-0.5 text-[10px] uppercase text-[var(--text-tertiary)]">
+        {label}
+      </span>
+      <span className="mono min-w-0 flex-1 break-all text-[11px] text-[var(--text-secondary)]">
+        {value}
+      </span>
+      <button
+        type="button"
+        onClick={() => void copyText(value, label)}
+        title={`Copy ${label}`}
+        aria-label={`Copy ${label}`}
+        className="shrink-0 rounded border border-[var(--border-default)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--surface-3)]"
+      >
+        Copy
+      </button>
+    </div>
+  );
+}
 
 type SegmentInspectorProps = {
   caseId: string;
@@ -31,13 +94,13 @@ export function SegmentInspector({
   segment,
   variant = "timeline",
 }: SegmentInspectorProps) {
-  const [tab, setTab] = useState(variant === "recover" ? "hex" : "meta");
+  const [tab, setTab] = useState(variant === "recover" ? "metadata" : "meta");
   const [detail, setDetail] = useState<SegmentDetail | null>(null);
   const [findings, setFindings] = useState<AiFinding[]>([]);
   const [custody, setCustody] = useState<CustodyLogEntry[]>([]);
 
   useEffect(() => {
-    setTab(variant === "recover" ? "hex" : "meta");
+    setTab(variant === "recover" ? "metadata" : "meta");
   }, [segment?.id, variant]);
 
   useEffect(() => {
@@ -73,7 +136,7 @@ export function SegmentInspector({
 
   const tabs =
     variant === "recover"
-      ? (["hex", "provenance"] as const)
+      ? (["metadata", "hex", "provenance"] as const)
       : (["meta", "findings", "validation"] as const);
 
   const byteStart = segment?.offset_start ?? detail?.byte_start ?? 0;
@@ -126,6 +189,60 @@ export function SegmentInspector({
     [segment, detail],
   );
 
+  /**
+   * Recording telemetry the parsers extracted from the stream itself —
+   * resolution and fps from the H.264 SPS/VUI, event type from the IDR table
+   * cadence. Absent values render as "—"; nothing here is defaulted or guessed.
+   */
+  const forensicRows = useMemo(() => {
+    if (!segment) return [];
+    return [
+      ["Channel", displayOrDash(segment.channel ?? detail?.channel)],
+      ["Allocation state", allocationLabel(allocationOf(segment))],
+      [
+        "Event type",
+        displayOrDash(evidenceValue(segment, detail, "event_type")),
+      ],
+      [
+        "Resolution",
+        displayOrDash(evidenceValue(segment, detail, "resolution")),
+      ],
+      ["Frame rate", formatFps(evidenceValue(segment, detail, "fps"))],
+      ["Codec", displayOrDash(segment.codec ?? detail?.codec)],
+      [
+        "Recorder start",
+        displayOrDash(segment.recorder_start_ts ?? detail?.recorder_start_ts),
+      ],
+      [
+        "Recorder end",
+        displayOrDash(segment.recorder_end_ts ?? detail?.recorder_end_ts),
+      ],
+      [
+        "Timestamp source",
+        formatTimestampSource(
+          segment.timestamp_source ?? detail?.timestamp_source,
+        ),
+      ],
+      [
+        "Timestamp confidence",
+        displayOrDash(
+          segment.timestamp_confidence ?? detail?.timestamp_confidence,
+        ),
+      ],
+      [
+        "Byte range",
+        `${formatOffset(segment.offset_start)}–${formatOffset(segment.offset_end)}`,
+      ],
+      ["Size", formatBytes(segment.byte_length ?? detail?.byte_length ?? 0)],
+    ] as Array<[string, string]>;
+  }, [segment, detail]);
+
+  const confidenceBasis = evidenceValue(
+    segment,
+    detail,
+    "timestamp_confidence_basis",
+  );
+
   if (!segment) {
     return (
       <section className="visily-card flex min-h-[200px] items-center justify-center p-4 text-[13px] text-[var(--text-tertiary)]">
@@ -159,6 +276,52 @@ export function SegmentInspector({
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
+        {tab === "metadata" ? (
+          <div className="space-y-3">
+            <table className="w-full text-[12px]">
+              <tbody>
+                {forensicRows.map(([label, value]) => (
+                  <tr
+                    key={label}
+                    className="border-b border-[var(--border-subtle)]"
+                  >
+                    <td className="py-1.5 pr-3 text-[var(--text-tertiary)]">
+                      {label}
+                    </td>
+                    <td className="mono py-1.5 text-[var(--text-primary)]">
+                      {value}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {typeof confidenceBasis === "string" && confidenceBasis ? (
+              <div className="rounded border border-[var(--border-subtle)] bg-[var(--surface-3)] p-2">
+                <p className="mb-1 text-[10px] font-semibold uppercase text-[var(--text-tertiary)]">
+                  Why this confidence
+                </p>
+                <p className="text-[11px] leading-relaxed text-[var(--text-secondary)]">
+                  {confidenceBasis}
+                </p>
+              </div>
+            ) : null}
+
+            {detail?.output_md5 || detail?.output_sha256 ? (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase text-[var(--text-tertiary)]">
+                  Artifact hashes
+                </p>
+                {detail.output_md5 ? (
+                  <CopyRow label="MD5" value={detail.output_md5} />
+                ) : null}
+                {detail.output_sha256 ? (
+                  <CopyRow label="SHA-256" value={detail.output_sha256} />
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {tab === "hex" ? (
           <HexViewer
             deviceId={deviceId}
@@ -186,17 +349,15 @@ export function SegmentInspector({
               </tbody>
             </table>
             {detail?.output_md5 || detail?.output_sha256 ? (
-              <div className="space-y-1 text-[11px]">
-                <p className="font-semibold uppercase text-[var(--text-tertiary)]">
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase text-[var(--text-tertiary)]">
                   Artifact hashes
                 </p>
                 {detail.output_md5 ? (
-                  <p className="mono break-all">MD5 {detail.output_md5}</p>
+                  <CopyRow label="MD5" value={detail.output_md5} />
                 ) : null}
                 {detail.output_sha256 ? (
-                  <p className="mono break-all">
-                    SHA-256 {detail.output_sha256}
-                  </p>
+                  <CopyRow label="SHA-256" value={detail.output_sha256} />
                 ) : null}
               </div>
             ) : null}

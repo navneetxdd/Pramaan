@@ -6,19 +6,37 @@ type Column<T> = {
   key: string;
   header: string;
   className?: string;
+  /**
+   * CSS grid track for this column, e.g. "72px" or "minmax(150px, 1.5fr)".
+   * Defaults to an equal flexible share, which is what every call site got
+   * before widths existed.
+   */
+  width?: string;
   cell: (row: T, index: number) => React.ReactNode;
 };
 
 type VirtualTableProps<T> = {
   rows: T[];
   columns: Column<T>[];
+  /** Estimated row height. Real heights are measured, so multi-line cells fit. */
   rowHeight?: number;
   maxHeight?: number;
   emptyMessage?: string;
   getRowKey?: (row: T, index: number) => string;
   selectedRowKey?: string | null;
   onRowClick?: (row: T, index: number) => void;
+  /** Extra classes per row, e.g. to mark forensically significant rows. */
+  getRowClassName?: (row: T, index: number) => string | undefined;
+  /** Native title attribute per row, surfaced as a hover tooltip. */
+  getRowTitle?: (row: T, index: number) => string | undefined;
+  /**
+   * Width below which the table scrolls horizontally instead of crushing
+   * columns. Omit to keep the table fluid at any width.
+   */
+  minWidth?: number | string;
 };
+
+const DEFAULT_TRACK = "minmax(0, 1fr)";
 
 export function VirtualTable<T>({
   rows,
@@ -29,6 +47,9 @@ export function VirtualTable<T>({
   getRowKey,
   selectedRowKey,
   onRowClick,
+  getRowClassName,
+  getRowTitle,
+  minWidth,
 }: VirtualTableProps<T>) {
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -46,73 +67,99 @@ export function VirtualTable<T>({
     );
   }
 
+  // One template drives the header and every row, so they cannot drift apart.
+  const gridTemplateColumns = columns
+    .map((col) => col.width ?? DEFAULT_TRACK)
+    .join(" ");
+
   return (
-    <div className="overflow-hidden">
-      <table className="data-table w-full">
-        <thead>
-          <tr>
-            {columns.map((col) => (
-              <th key={col.key} className={col.className}>
-                {col.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-      </table>
-      <div ref={parentRef} style={{ maxHeight, overflow: "auto" }}>
+    // Single horizontal scroller wrapping header + body keeps them in lockstep.
+    <div className="overflow-x-auto">
+      <div style={{ minWidth }}>
         <div
-          style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+          role="row"
+          className="grid border-b border-[var(--border-subtle)] bg-[var(--surface-3)]"
+          style={{ gridTemplateColumns }}
         >
-          {virtualizer.getVirtualItems().map((item) => {
-            const row = rows[item.index];
-            const rowKey = getRowKey?.(row, item.index) ?? String(item.index);
-            const selected =
-              selectedRowKey != null && rowKey === selectedRowKey;
-            return (
-              <div
-                key={item.key}
-                role={onRowClick ? "button" : undefined}
-                tabIndex={onRowClick ? 0 : undefined}
-                onClick={
-                  onRowClick ? () => onRowClick(row, item.index) : undefined
-                }
-                onKeyDown={
-                  onRowClick
-                    ? (e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          onRowClick(row, item.index);
+          {columns.map((col) => (
+            <div
+              key={col.key}
+              role="columnheader"
+              className="flex items-center px-3 py-2 text-[11px] font-semibold uppercase leading-tight tracking-[0.02em] text-[var(--text-tertiary)]"
+            >
+              {col.header}
+            </div>
+          ))}
+        </div>
+
+        <div ref={parentRef} style={{ maxHeight, overflowY: "auto" }}>
+          <div
+            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+          >
+            {virtualizer.getVirtualItems().map((item) => {
+              const row = rows[item.index];
+              const rowKey = getRowKey?.(row, item.index) ?? String(item.index);
+              const selected =
+                selectedRowKey != null && rowKey === selectedRowKey;
+              return (
+                <div
+                  key={item.key}
+                  // Measured rather than assumed: stacked cells set the height.
+                  data-index={item.index}
+                  ref={virtualizer.measureElement}
+                  role={onRowClick ? "button" : "row"}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  title={getRowTitle?.(row, item.index)}
+                  onClick={
+                    onRowClick ? () => onRowClick(row, item.index) : undefined
+                  }
+                  onKeyDown={
+                    onRowClick
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onRowClick(row, item.index);
+                          }
                         }
-                      }
-                    : undefined
-                }
-                className={cn(
-                  "absolute left-0 grid w-full border-b border-[var(--border-subtle)] text-[13px]",
-                  item.index % 2
-                    ? "bg-[var(--surface-2)]"
-                    : "bg-[var(--surface-1)]",
-                  selected ? "ring-1 ring-inset ring-[var(--accent-500)]" : "",
-                  onRowClick
-                    ? "cursor-pointer hover:bg-[var(--surface-3)]"
-                    : "",
-                )}
-                style={{
-                  height: item.size,
-                  transform: `translateY(${item.start}px)`,
-                  gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`,
-                }}
-              >
-                {columns.map((col) => (
-                  <div
-                    key={col.key}
-                    className={cn("flex items-center px-3 py-1", col.className)}
-                  >
-                    {col.cell(row, item.index)}
-                  </div>
-                ))}
-              </div>
-            );
-          })}
+                      : undefined
+                  }
+                  className={cn(
+                    "absolute left-0 grid w-full border-b border-[var(--border-subtle)] text-[13px]",
+                    item.index % 2
+                      ? "bg-[var(--surface-2)]"
+                      : "bg-[var(--surface-1)]",
+                    selected
+                      ? "ring-1 ring-inset ring-[var(--accent-500)]"
+                      : "",
+                    onRowClick
+                      ? "cursor-pointer hover:bg-[var(--surface-3)]"
+                      : "",
+                    getRowClassName?.(row, item.index),
+                  )}
+                  style={{
+                    minHeight: rowHeight,
+                    transform: `translateY(${item.start}px)`,
+                    gridTemplateColumns,
+                  }}
+                >
+                  {columns.map((col) => (
+                    <div
+                      key={col.key}
+                      role="cell"
+                      className={cn(
+                        // min-w-0 lets long values wrap instead of forcing the
+                        // grid track wider; height comes from the content.
+                        "flex min-w-0 items-center break-words px-3 py-1.5",
+                        col.className,
+                      )}
+                    >
+                      {col.cell(row, item.index)}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

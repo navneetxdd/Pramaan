@@ -62,7 +62,10 @@ class HikvisionE2ETests(unittest.TestCase):
         segments = job_detail.get("segments") or []
         self.assertGreater(len(segments), 0)
         validations = {s.get("validation") for s in segments}
-        self.assertTrue(any(v in {"hikbtree_indexed", "hikbtree_stale_entry", "hkvi_block_4", "hkvi_block"} for v in validations), validations)
+        self.assertTrue(any(v in {"hikbtree_indexed", "hikbtree_deleted_entry"} for v in validations), validations)
+        # A cleared index entry whose data pointer still addresses the video area must reach
+        # the Recovery page as deleted — docs/reference/hikvision_fs.md §7.
+        self.assertIn("hikbtree_deleted_entry", validations)
         stored = list_sequences(device_id)
         device = get_device(device_id)
         assert device is not None
@@ -77,9 +80,24 @@ class HikvisionE2ETests(unittest.TestCase):
                 source_bytes[sequence["byte_start"] : sequence["byte_end"]],
             )
             self.assertIsNotNone(sequence["recorder_start_ts"])
-            self.assertEqual(sequence["timestamp_source"], "hikbtree_entry")
+            # §7.1 timestamp provenance ladder — indexed, residual, or IDR-table recovered.
+            self.assertIn(
+                sequence["timestamp_source"],
+                {"hikbtree_entry", "hikbtree_residual", "idr_table_scan"},
+            )
             self.assertEqual(sequence["parser_name"], "hikvision")
             self.assertTrue(sequence["signature_evidence"].get("hikbtree_index"))
+            evidence = sequence["validation_evidence"]
+            self.assertIn("allocation_state", evidence)
+            self.assertEqual(evidence["resolution"], "320x240")
+
+        # A deleted recording carries lower timestamp confidence than an allocated one.
+        by_state = {seq["validation_evidence"]["allocation_state"]: seq for seq in stored}
+        self.assertIn("deleted (index entry cleared)", by_state)
+        self.assertLess(
+            by_state["deleted (index entry cleared)"]["timestamp_confidence"],
+            by_state["allocated"]["timestamp_confidence"],
+        )
 
 
 if __name__ == "__main__":

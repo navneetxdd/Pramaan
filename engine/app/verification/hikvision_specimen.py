@@ -1,79 +1,147 @@
+"""Hikvision lab specimen — FABRICATED EVIDENCE, not a real acquisition.
+
+Scheduled for deletion together with the ``/devices/acquire/synthetic`` route (that removal is
+owned by the Identification/Settings workstream, not by this module). It is kept alive here
+only so that route keeps working until it is removed.
+
+It previously imported ``build_master_block`` / ``build_hikbtree_page`` from the engine's
+Hikvision schema module. Those builders have been removed from the engine: a parser that can
+only be tested against structures it wrote itself proves nothing. The equivalent structures are
+written inline below, from the documented offsets in ``docs/reference/hikvision_fs.md``, and
+the parser is validated for real against the emulated image in
+``engine/tests/support/hikvision_builder.py``.
+"""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import struct
 from pathlib import Path
 
 from engine.app.parsers.schemas.hikvision_fs import (
+    ENTRY_ALLOC_FLAG_OFF,
+    ENTRY_CHANNEL_OFF,
+    ENTRY_DATA_OFFSET_OFF,
+    ENTRY_END_TS_OFF,
+    ENTRY_SIZE,
+    ENTRY_START_TS_OFF,
+    HIKBTREE_SIG,
+    HIKVISION_SIG,
+    IDR_RECORD_SIZE,
+    IDR_TABLE_SIG,
     MASTER_BLOCK_OFFSET,
-    HikbtreeEntry,
-    build_hikbtree_header,
-    build_hikbtree_page,
-    build_master_block,
-    wrap_mpegps,
+    MASTER_CAPACITY_OFF,
+    MASTER_DATA_BLOCK_SIZE_OFF,
+    MASTER_HIKBTREE_OFF,
+    MASTER_HIKBTREE_SIZE_OFF,
+    MASTER_INIT_TIME_OFF,
+    MASTER_SIG_OFF,
+    MASTER_TOTAL_BLOCKS_OFF,
+    MASTER_VERSION_OFF,
+    MASTER_VIDEO_AREA_OFF,
+    PAGE_ENTRY_BASE,
+    PAGE_ENTRY_COUNT_OFF,
+    PAGE_NEXT_PAGE_OFF,
+    PAGE_SIZE,
+    PICTURE_INDEX_BA,
+    TREE_FIRST_PAGE_OFF,
+    TREE_SIG_OFF,
 )
-from engine.app.verification.media_fixture import get_nal_source
+from engine.app.verification.media_fixture import get_nal_source, split_annexb_nals
+
+SPECIMEN_LABEL = b"PRAMAAN-LAB-SPECIMEN-HIKVISION"
 
 _LAB_EPOCH = 1_700_000_000
-DISK_SIZE = 4 * 1024 * 1024
+DATA_BLOCK_SIZE = 1 << 20
+TOTAL_DATA_BLOCKS = 5
+VIDEO_AREA_OFFSET = 0x100000
+HIKBTREE_OFFSET = VIDEO_AREA_OFFSET + DATA_BLOCK_SIZE * TOTAL_DATA_BLOCKS
+FIRST_PAGE_OFFSET = HIKBTREE_OFFSET + PAGE_SIZE
+DISK_SIZE = FIRST_PAGE_OFFSET + PAGE_SIZE * 2
 
-HIKBTREE_OFFSET = 0x1000
-PAGE_OFFSET = 0x1800
-DATA_BASE = 0x100000
+_ALLOC_ALLOCATED = 0x0000000000000000
+_ALLOC_CLEARED = 0xFFFFFFFFFFFFFFFF
+
+# (channel, block index, allocated?)
+_LAYOUT = ((1, 0, True), (1, 1, True), (2, 2, True), (1, 3, True), (2, 4, False))
+
+
+def _picture_indexed_payload(target_bytes: int) -> bytes:
+    """Real H.264 NALs behind Hikvision picture-index headers (see reference doc §5.1)."""
+    source = get_nal_source()
+    out = bytearray()
+    index = 1
+    guard = 0
+    while len(out) < target_bytes and guard < 1024:
+        guard += 1
+        for nal in split_annexb_nals(source.next_gop()):
+            if not nal:
+                continue
+            out += PICTURE_INDEX_BA + struct.pack("<I", 0x10000000 | (index & 0xFFFFFF))
+            index += 1
+            if nal.startswith(b"\x00\x00\x00\x01"):
+                out += nal
+            elif nal.startswith(b"\x00\x00\x01"):
+                out += b"\x00" + nal
+            else:
+                out += b"\x00\x00\x00\x01" + nal
+            if len(out) >= target_bytes:
+                break
+    return bytes(out)
 
 
 def build_hikvision_lab_specimen() -> bytes:
-    """Synthetic Hikvision disk: master @ 0x200, HIKBTREE index, MPEG-PS data blocks."""
+    """Fabricated Hikvision disk: master sector, HIKBTREE index, H.264 data blocks."""
     get_nal_source().reset()
     disk = bytearray(DISK_SIZE)
+    disk[0 : len(SPECIMEN_LABEL)] = SPECIMEN_LABEL
 
-    entries: list[HikbtreeEntry] = []
-    data_cursor = DATA_BASE
-    frame_index = 0
-    for channel in (1, 1, 2, 1):
-        source = get_nal_source()
-        access_unit = source.next_gop() + source.next_gop()
-        ps_blob = wrap_mpegps(access_unit)
-        disk[data_cursor : data_cursor + len(ps_blob)] = ps_blob
-        start = _LAB_EPOCH + frame_index * 60
-        entries.append(
-            HikbtreeEntry(
-                channel=channel,
-                start_unix=start,
-                end_unix=start + 30,
-                data_offset=data_cursor,
-                has_footage=True,
-                stale=False,
-            )
-        )
-        data_cursor += max(len(ps_blob), 0x10000)
-        frame_index += 1
-
-    # Stale / deleted-recording tell
-    entries.append(
-        HikbtreeEntry(
-            channel=2,
-            start_unix=_LAB_EPOCH + 900,
-            end_unix=_LAB_EPOCH + 930,
-            data_offset=DATA_BASE + 0x80000,
-            has_footage=False,
-            stale=True,
-        )
-    )
-
-    disk[HIKBTREE_OFFSET : HIKBTREE_OFFSET + len(build_hikbtree_header(PAGE_OFFSET))] = build_hikbtree_header(
-        PAGE_OFFSET
-    )
-    page = build_hikbtree_page(entries)
-    disk[PAGE_OFFSET : PAGE_OFFSET + len(page)] = page
-
-    master = build_master_block(
-        hikbtree_offset=HIKBTREE_OFFSET,
-        hikbtree_size=len(build_hikbtree_header(PAGE_OFFSET)),
-        init_time=_LAB_EPOCH,
-        video_area_offset=DATA_BASE,
-    )
+    master = bytearray(0x100)
+    master[MASTER_SIG_OFF : MASTER_SIG_OFF + len(HIKVISION_SIG)] = HIKVISION_SIG
+    master[MASTER_VERSION_OFF : MASTER_VERSION_OFF + 9] = b"V4.30.005"
+    struct.pack_into("<Q", master, MASTER_CAPACITY_OFF, DISK_SIZE)
+    struct.pack_into("<Q", master, MASTER_VIDEO_AREA_OFF, VIDEO_AREA_OFFSET)
+    struct.pack_into("<Q", master, MASTER_DATA_BLOCK_SIZE_OFF, DATA_BLOCK_SIZE)
+    struct.pack_into("<I", master, MASTER_TOTAL_BLOCKS_OFF, TOTAL_DATA_BLOCKS)
+    struct.pack_into("<Q", master, MASTER_HIKBTREE_OFF, HIKBTREE_OFFSET)
+    struct.pack_into("<I", master, MASTER_HIKBTREE_SIZE_OFF, PAGE_SIZE * 2)
+    struct.pack_into("<I", master, MASTER_INIT_TIME_OFF, _LAB_EPOCH)
     disk[MASTER_BLOCK_OFFSET : MASTER_BLOCK_OFFSET + len(master)] = master
-    disk[512:512 + len(b"HIKVISION-DVR\x00")] = b"HIKVISION-DVR\x00"
+
+    payload = _picture_indexed_payload(64 * 1024)
+    page = bytearray(PAGE_SIZE)
+    struct.pack_into("<I", page, PAGE_ENTRY_COUNT_OFF, len(_LAYOUT))
+    struct.pack_into("<Q", page, PAGE_NEXT_PAGE_OFF, 0xFFFFFFFFFFFFFFFF)
+
+    for slot, (channel, block_index, allocated) in enumerate(_LAYOUT):
+        block_start = VIDEO_AREA_OFFSET + block_index * DATA_BLOCK_SIZE
+        disk[block_start : block_start + len(payload)] = payload
+
+        start = _LAB_EPOCH + 3600 + slot * 600
+        end = start + 300
+        stamps = [start + step * 60 for step in range(5)]
+        table_start = block_start + DATA_BLOCK_SIZE - len(stamps) * IDR_RECORD_SIZE
+        for idr_index, stamp in enumerate(stamps):
+            record = bytearray(IDR_RECORD_SIZE)
+            record[0:4] = IDR_TABLE_SIG
+            struct.pack_into("<I", record, 4, idr_index)
+            struct.pack_into("<I", record, 8, stamp)
+            at = table_start + idr_index * IDR_RECORD_SIZE
+            disk[at : at + IDR_RECORD_SIZE] = record
+
+        entry = bytearray(ENTRY_SIZE)
+        struct.pack_into("<Q", entry, ENTRY_ALLOC_FLAG_OFF, _ALLOC_ALLOCATED if allocated else _ALLOC_CLEARED)
+        entry[ENTRY_CHANNEL_OFF] = channel
+        struct.pack_into("<I", entry, ENTRY_START_TS_OFF, start)
+        struct.pack_into("<I", entry, ENTRY_END_TS_OFF, end)
+        struct.pack_into("<Q", entry, ENTRY_DATA_OFFSET_OFF, block_start)
+        at = PAGE_ENTRY_BASE + slot * ENTRY_SIZE
+        page[at : at + ENTRY_SIZE] = entry
+
+    header = bytearray(PAGE_SIZE)
+    header[TREE_SIG_OFF : TREE_SIG_OFF + len(HIKBTREE_SIG)] = HIKBTREE_SIG
+    struct.pack_into("<Q", header, TREE_FIRST_PAGE_OFF, FIRST_PAGE_OFFSET)
+    disk[HIKBTREE_OFFSET : HIKBTREE_OFFSET + PAGE_SIZE] = header
+    disk[FIRST_PAGE_OFFSET : FIRST_PAGE_OFFSET + PAGE_SIZE] = page
     return bytes(disk)
 
 
