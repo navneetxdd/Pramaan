@@ -49,13 +49,68 @@ function AllocationCell({ state }: { state: AllocationState }) {
   );
 }
 
+/**
+ * Determinate recovery progress.
+ *
+ * The engine emits `progress` on every job event (recovery.py: 1 -> 10 -> 12 ->
+ * per-segment -> 100). The page previously discarded it and showed only a
+ * scrolling log, which on a multi-terabyte image told the examiner nothing about
+ * how far along the run was. Falls back to an indeterminate bar only while the
+ * first event is still in flight.
+ */
+function RecoveryProgress({
+  percent,
+  phase,
+}: {
+  percent: number | null;
+  phase: string | null;
+}) {
+  const known = typeof percent === "number" && Number.isFinite(percent);
+  const clamped = known ? Math.max(0, Math.min(100, percent)) : 0;
+  return (
+    <div className="border-b border-[var(--border-subtle)] px-4 py-3">
+      <div className="mb-1.5 flex items-baseline justify-between gap-3">
+        <span className="truncate text-[12px] text-[var(--text-secondary)]">
+          {phase ?? "Waiting for the engine…"}
+        </span>
+        <span className="mono shrink-0 text-[12px] font-medium text-[var(--text-primary)]">
+          {known ? `${clamped.toFixed(0)}%` : "—"}
+        </span>
+      </div>
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={known ? Math.round(clamped) : undefined}
+        aria-label="Recovery progress"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-4)]"
+      >
+        <div
+          className={cn(
+            "h-full rounded-full bg-[var(--accent-500)] transition-[width] duration-300 ease-out",
+            known ? "" : "w-1/3 animate-pulse",
+          )}
+          style={known ? { width: `${clamped}%` } : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function CaseRecoverPage() {
   const { caseId, workspace, refresh } = useCaseContext();
   const [deviceId, setDeviceId] = useState("");
   const [actor, setActor] = useState(workspace?.case.examiner_name ?? "");
-  const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
+  // The recovery job this page is currently streaming. The SSE subscription is
+  // owned by an effect keyed on this, never by an async handler, so it is always
+  // torn down on unmount — see the effect below.
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [phase, setPhase] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
     null,
@@ -161,12 +216,109 @@ export function CaseRecoverPage() {
     [workspace?.jobs, deviceId],
   );
 
+  // True while this page is streaming a job, or the workspace still reports one
+  // running for this device (covers the gap before the first SSE event lands).
+  const isRecovering = activeJobId !== null || recoveryRunning;
+
   useEffect(() => {
     logRef.current?.scrollTo({
       top: logRef.current.scrollHeight,
       behavior: "smooth",
     });
   }, [log]);
+
+  // Keep the effect below free of changing dependencies: re-running it would
+  // tear down and re-open a live SSE connection mid-recovery.
+  const finishRef = useRef({ refresh, setWorking, setIdle });
+  finishRef.current = { refresh, setWorking, setIdle };
+
+  /**
+   * Owns the job event stream for the lifetime of `activeJobId`.
+   *
+   * The subscription used to live inside the click handler, whose unsubscribe
+   * function was discarded — navigating away mid-recovery leaked the
+   * EventSource and kept setState running on an unmounted component. Here the
+   * cleanup is returned to React, so unmount, device change and job completion
+   * all close the connection exactly once.
+   */
+  useEffect(() => {
+    if (!activeJobId) return;
+    let cancelledByUnmount = false;
+    finishRef.current.setWorking("Recovery running…");
+
+    const settle = () => {
+      if (cancelledByUnmount) return;
+      setActiveJobId(null);
+      setCancelling(false);
+      setProgress(null);
+      setPhase(null);
+      finishRef.current.setIdle();
+    };
+
+    const unsubscribe = subscribeJobEvents(activeJobId, {
+      onEvent: (event) => {
+        if (cancelledByUnmount) return;
+        if (typeof event.progress === "number") setProgress(event.progress);
+        if (event.message) {
+          setPhase(event.message);
+          setLog((prev) => [...prev.slice(-200), event.message!]);
+        }
+        if (event.status === "completed") {
+          void api
+            .getJob(activeJobId)
+            .then(async (result) => {
+              if (cancelledByUnmount) return;
+              setSegments(result.segments);
+              toast.success(`${result.segments.length} sequences recovered`);
+              await finishRef.current.refresh();
+            })
+            .catch(() => undefined)
+            .finally(settle);
+          return;
+        }
+        if (event.status === "cancelled") {
+          toast.message("Recovery cancelled");
+          void finishRef.current.refresh();
+          settle();
+          return;
+        }
+        if (event.status === "failed" || event.status === "interrupted") {
+          toast.error(
+            event.error || event.message || `Recovery ${event.status}`,
+            { duration: Infinity },
+          );
+          settle();
+        }
+      },
+      onError: (err) => {
+        if (cancelledByUnmount) return;
+        toast.error(err.message || "Lost connection to the recovery job", {
+          duration: Infinity,
+        });
+        settle();
+      },
+    });
+
+    return () => {
+      // Unmount / job change: close the stream and stop touching state.
+      cancelledByUnmount = true;
+      unsubscribe();
+      finishRef.current.setIdle();
+    };
+  }, [activeJobId]);
+
+  // Reattach to a recovery already running for this device (page reload, or the
+  // examiner navigating back mid-run) so progress and cancel stay available.
+  useEffect(() => {
+    if (activeJobId || !deviceId) return;
+    const running = workspace?.jobs.find(
+      (job) =>
+        job.kind === "recovery" &&
+        (job.device_id === deviceId || job.image_id === deviceId) &&
+        (job.status === "running" || job.status === "pending"),
+    );
+    if (running) setActiveJobId(running.id);
+  }, [workspace?.jobs, deviceId, activeJobId]);
 
   async function handleRecover() {
     if (!deviceId || !actor.trim()) {
@@ -180,10 +332,10 @@ export function CaseRecoverPage() {
       setAdvancedOpen(true);
       return;
     }
-    setBusy(true);
+    setStarting(true);
     setLog([]);
-    setWorking("Recovery running…");
-
+    setProgress(0);
+    setPhase("Starting recovery…");
     try {
       const started = await api.recover(
         caseId,
@@ -191,38 +343,30 @@ export function CaseRecoverPage() {
         actor.trim(),
         effectiveAdapter,
       );
-      await new Promise<void>((resolve, reject) => {
-        subscribeJobEvents(started.job.id, {
-          onEvent: (event) => {
-            if (event.message)
-              setLog((prev) => [...prev.slice(-200), event.message!]);
-            if (event.status === "completed") resolve();
-            if (
-              event.status === "failed" ||
-              event.status === "cancelled" ||
-              event.status === "interrupted"
-            ) {
-              reject(
-                new Error(
-                  event.error || event.message || `Recovery ${event.status}`,
-                ),
-              );
-            }
-          },
-          onError: reject,
-        });
-      });
-      const result = await api.getJob(started.job.id);
-      setSegments(result.segments);
-      toast.success(`${result.segments.length} sequences recovered`);
-      await refresh();
+      setActiveJobId(started.job.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Recovery failed", {
         duration: Infinity,
       });
+      setProgress(null);
+      setPhase(null);
     } finally {
-      setBusy(false);
-      setIdle();
+      setStarting(false);
+    }
+  }
+
+  async function handleCancel() {
+    if (!activeJobId) return;
+    setCancelling(true);
+    try {
+      await api.cancelJob(activeJobId);
+      // The terminal `cancelled` event settles the UI; if the job finished in
+      // the race, the completion event settles it instead.
+    } catch (err) {
+      setCancelling(false);
+      toast.error(
+        err instanceof Error ? err.message : "Could not cancel the job",
+      );
     }
   }
 
@@ -276,10 +420,14 @@ export function CaseRecoverPage() {
           </div>
         </div>
         <Button
-          disabled={busy || !deviceId || recoveryRunning}
+          disabled={starting || !deviceId || isRecovering}
           onClick={() => void handleRecover()}
         >
-          {recoveryRunning ? "Recovery in progress…" : "Run recovery"}
+          {starting
+            ? "Starting…"
+            : isRecovering
+              ? "Recovery in progress…"
+              : "Run recovery"}
         </Button>
 
         <div className="w-full">
@@ -353,7 +501,20 @@ export function CaseRecoverPage() {
         <section className="visily-card flex min-h-[240px] flex-col overflow-hidden">
           <div className="visily-card-header">
             <span className="visily-card-title">Engine log</span>
+            {isRecovering ? (
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={cancelling || !activeJobId}
+                onClick={() => void handleCancel()}
+              >
+                {cancelling ? "Cancelling…" : "Cancel recovery"}
+              </Button>
+            ) : null}
           </div>
+          {isRecovering ? (
+            <RecoveryProgress percent={progress} phase={phase} />
+          ) : null}
           <div
             ref={logRef}
             className="flex min-h-[240px] flex-1 flex-col overflow-hidden"
