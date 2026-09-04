@@ -171,7 +171,7 @@ export function CaseOverviewPage() {
                 />
               );
             })}
-            {jobs.length === 0 ? (
+            {sortedJobs.length === 0 ? (
               <JobProgressCard
                 title="No recovery jobs"
                 subtitle="Acquire evidence on the Acquisition screen, then run recovery."

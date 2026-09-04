@@ -103,7 +103,7 @@ export function CaseDeviceIdPage() {
   const selectedEvidence = evidence.find((e) => e.id === deviceId);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <PageHeader
         kicker="Step 2 · Identification"
         title="Device & format analysis"
