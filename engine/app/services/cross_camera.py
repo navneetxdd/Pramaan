@@ -47,8 +47,12 @@ REID_STD = (0.229, 0.224, 0.225)
 # match_sensitivity in [0,1] -> average-linkage cosine floor; see cos_threshold in run_correlation
 # (0.40 + 0.35*s, so 0.40 loose .. 0.75 strict)
 MIN_APPEARANCES = 3             # drop clusters with fewer detections (transient noise)
-MIN_FACE_PX = 20               # SFace is unreliable below this face height on CCTV footage
-FACE_MATCH_COS = 0.28         # SFace same-person cosine floor (OpenCV Zoo reference)
+MIN_FACE_PX = 36                # measured floor: YuNet returns no usable detection below this height
+FACE_MATCH_COS = 0.363          # SFace same-person cosine floor, ~99.80% accuracy at this cutoff —
+                                 # opencv/opencv_zoo face_recognition_sface/demo.py. The prior 0.28 was
+                                 # looser than the model's own validated boundary: wrong-person faces
+                                 # measured up to 0.30 similarity, which 0.28 would have reported as a
+                                 # match. A false identity match is the worst error this tool can make.
 
 VIDEO_SUFFIXES = {".mp4", ".avi", ".mkv", ".mov", ".mpg", ".mpeg", ".m4v", ".dav", ".ts", ".webm"}
 

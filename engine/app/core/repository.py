@@ -407,22 +407,18 @@ def insert_sequence(
         conn.execute(
             """
             INSERT INTO recovered_sequences (
-              id, device_id, channel, start_ts_raw, end_ts_raw, start_ts_corrected, end_ts_corrected,
+              id, device_id, channel,
               confidence, validation_level, output_path, output_md5, output_sha256, frame_count,
               byte_start, byte_end, byte_length, codec, recorder_start_ts, recorder_end_ts,
               corrected_start_ts, corrected_end_ts, offset_order, timestamp_source,
               timestamp_confidence, parser_name, parser_version, recovery_job_id, signature_evidence_json,
               validation_evidence_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 seq_id,
                 device_id,
                 channel,
-                start_ts_raw or "",
-                end_ts_raw or "",
-                corrected_start or "",
-                corrected_end or "",
                 confidence,
                 validation_level,
                 output_path,
@@ -817,22 +813,18 @@ def import_case_bundle_rows(
             conn.execute(
                 """
                 INSERT INTO recovered_sequences (
-                  id, device_id, channel, start_ts_raw, end_ts_raw, start_ts_corrected, end_ts_corrected,
+                  id, device_id, channel,
                   confidence, validation_level, output_path, output_md5, output_sha256, frame_count,
                   byte_start, byte_end, byte_length, codec, recorder_start_ts, recorder_end_ts,
                   corrected_start_ts, corrected_end_ts, offset_order, timestamp_source,
                   timestamp_confidence, parser_name, parser_version, recovery_job_id, signature_evidence_json,
                   validation_evidence_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     seq["id"],
                     seq["device_id"],
                     seq["channel"],
-                    seq.get("start_ts_raw") or "",
-                    seq.get("end_ts_raw") or "",
-                    seq.get("start_ts_corrected") or "",
-                    seq.get("end_ts_corrected") or "",
                     seq["confidence"],
                     seq["validation_level"],
                     seq["output_path"],

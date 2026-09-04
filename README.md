@@ -151,6 +151,7 @@ flowchart TB
 ## Validation & testing
 
 ```powershell
+pip install -r engine/requirements-dev.txt   # adds pytest, httpx (TestClient) on top of the runtime deps
 python -m pytest engine/tests -q
 python scripts/validation/verify_p0.py
 python scripts/validation/smoke_test.py      # engine must be running

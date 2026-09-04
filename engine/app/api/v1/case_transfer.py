@@ -21,6 +21,8 @@ class ImportCaseResponse(BaseModel):
     files_verified: int
     integrity_ok: bool
     signer_fingerprint: str
+    already_present_locally: bool = False
+    imported: bool = True
 
 
 @router.post("/cases/{case_id}/export")
@@ -65,7 +67,17 @@ def download_bundle(filename: str) -> FileResponse:
 
 
 @router.post("/cases/import", response_model=ImportCaseResponse)
-async def import_case(actor: str = Form(...), bundle: UploadFile = File(...)) -> ImportCaseResponse:
+async def import_case(
+    actor: str = Form(...),
+    bundle: UploadFile = File(...),
+    verify_only: bool = Form(False),
+) -> ImportCaseResponse:
+    """Import a signed case bundle.
+
+    verify_only=true runs the same signature and per-file hash check as a real import,
+    then stops before writing anything — lets an examiner confirm a bundle they just
+    exported is intact without needing a second machine or deleting the original case.
+    """
     if not bundle.filename:
         raise HTTPException(status_code=400, detail="Bundle filename required")
 
@@ -82,12 +94,14 @@ async def import_case(actor: str = Form(...), bundle: UploadFile = File(...)) ->
                     raise HTTPException(status_code=413, detail="Bundle exceeds configured upload limit")
                 handle.write(chunk)
 
-        result = import_case_bundle(temp_path, actor.strip())
+        result = import_case_bundle(temp_path, actor.strip(), verify_only=verify_only)
         return ImportCaseResponse(
             case_id=result["case_id"],
             files_verified=result["files_verified"],
             integrity_ok=result["integrity_ok"],
             signer_fingerprint=result["signer_fingerprint"],
+            already_present_locally=result["already_present_locally"],
+            imported=result["imported"],
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

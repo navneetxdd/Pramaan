@@ -183,7 +183,18 @@ def export_case_bundle(case_id: str, actor: str) -> Path:
     return bundle_path
 
 
-def import_case_bundle(bundle_path: Path, actor: str) -> dict:
+def import_case_bundle(bundle_path: Path, actor: str, *, verify_only: bool = False) -> dict:
+    """Import a signed case bundle, or with verify_only=True, check it without writing anything.
+
+    Full import refuses a case ID that already exists locally (see
+    import_case_bundle_rows) — by design, so a transfer can never silently overwrite
+    another case's evidence trail. That also means an examiner cannot re-import their
+    own export on the machine that made it to double-check it, without first deleting
+    the original. verify_only exists for exactly that: it runs the same signature check
+    and the same per-file hash check against the manifest as a real import, then stops
+    before touching the database or case storage — an honest "is this bundle intact"
+    answer that works regardless of whether the case already exists here.
+    """
     if not bundle_path.exists():
         raise ValueError("Bundle file not found")
 
@@ -236,6 +247,17 @@ def import_case_bundle(bundle_path: Path, actor: str) -> dict:
 
         case_row = manifest["case"]
         case_id = case_row["id"]
+
+        if verify_only:
+            return {
+                "case_id": case_id,
+                "files_verified": len(verified_files),
+                "integrity_ok": True,
+                "signer_fingerprint": signer_fingerprint,
+                "already_present_locally": get_case(case_id) is not None,
+                "imported": False,
+            }
+
         storage = case_storage_dir(case_id)
 
         devices = manifest.get("devices", [])
@@ -286,6 +308,8 @@ def import_case_bundle(bundle_path: Path, actor: str) -> dict:
             "files_verified": len(verified_files),
             "integrity_ok": integrity_ok,
             "signer_fingerprint": signer_fingerprint,
+            "already_present_locally": False,
+            "imported": True,
         }
     finally:
         shutil.rmtree(extract_dir, ignore_errors=True)

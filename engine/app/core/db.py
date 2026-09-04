@@ -68,10 +68,6 @@ CREATE TABLE IF NOT EXISTS recovered_sequences (
   id TEXT PRIMARY KEY,
   device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
   channel INTEGER NOT NULL,
-  start_ts_raw TEXT,
-  end_ts_raw TEXT,
-  start_ts_corrected TEXT,
-  end_ts_corrected TEXT,
   confidence TEXT NOT NULL,
   validation_level TEXT NOT NULL,
   output_path TEXT NOT NULL,
@@ -149,23 +145,6 @@ CREATE TABLE IF NOT EXISTS jobs (
   error TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS live_devices (
-  id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
-  display_name TEXT NOT NULL,
-  host TEXT NOT NULL,
-  port INTEGER NOT NULL,
-  scheme TEXT NOT NULL DEFAULT 'http',
-  vendor TEXT NOT NULL,
-  channel_count INTEGER NOT NULL DEFAULT 1,
-  model_hint TEXT,
-  serial_hint TEXT,
-  firmware_hint TEXT,
-  channels_json TEXT NOT NULL,
-  added_by TEXT NOT NULL,
-  added_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_devices_case ON devices(case_id);
@@ -277,26 +256,11 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     if current < 8:
         _add_columns(conn, "ai_findings", {"report_state": "TEXT NOT NULL DEFAULT 'EXCLUDED'"})
         _add_columns(conn, "recovered_sequences", {"playable_frame_count": "INTEGER"})
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS live_devices (
-              id TEXT PRIMARY KEY,
-              case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
-              display_name TEXT NOT NULL,
-              host TEXT NOT NULL,
-              port INTEGER NOT NULL,
-              scheme TEXT NOT NULL DEFAULT 'http',
-              vendor TEXT NOT NULL,
-              channel_count INTEGER NOT NULL DEFAULT 1,
-              model_hint TEXT,
-              serial_hint TEXT,
-              firmware_hint TEXT,
-              channels_json TEXT NOT NULL,
-              added_by TEXT NOT NULL,
-              added_at TEXT NOT NULL
-            );
-            """
-        )
+        # A `live_devices` table used to be created here for the live-monitoring feature.
+        # That feature (frontend, API, and every reference to it) was removed; a fresh
+        # install no longer creates the table. Databases already at schema version >= 8
+        # keep whatever tables they already have — this migration step never re-runs for
+        # them, so removing it here does not touch existing data.
     if current < 9:
         conn.executescript(
             """
