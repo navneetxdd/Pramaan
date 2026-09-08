@@ -160,7 +160,10 @@ export function RecoveryTelemetryRibbon({
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10.5px]">
-        <span className="text-[var(--text-tertiary)]" title={adapter || undefined}>
+        <span
+          className="text-[var(--text-tertiary)]"
+          title={adapter || undefined}
+        >
           METHOD{" "}
           <span className="font-semibold text-[var(--text-secondary)]">
             {adapter ? recoveryAdapterLabel(adapter) : "Not determined"}

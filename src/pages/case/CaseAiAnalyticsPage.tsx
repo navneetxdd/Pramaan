@@ -18,7 +18,9 @@ export function CaseAiAnalyticsPage() {
   const [deviceId, setDeviceId] = useState("");
   const [findings, setFindings] = useState<AiFinding[]>([]);
   const [busy, setBusy] = useState(false);
-  const [analyticsUnavailable, setAnalyticsUnavailable] = useState<string | null>(null);
+  const [analyticsUnavailable, setAnalyticsUnavailable] = useState<
+    string | null
+  >(null);
   const { setWorking, setIdle } = useActivity();
 
   const devices = workspace?.evidence ?? [];

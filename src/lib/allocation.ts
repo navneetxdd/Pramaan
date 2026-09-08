@@ -10,12 +10,7 @@ import type { Segment } from "@/lib/api";
  * "allocated" would understate what was recovered.
  */
 export type AllocationState =
-  | "allocated"
-  | "deleted"
-  | "recording"
-  | "carve"
-  | "structural"
-  | "unknown";
+  "allocated" | "deleted" | "recording" | "carve" | "structural" | "unknown";
 
 /** Validation levels that mean "deleted" for vendors without allocation_state. */
 const DELETED_VALIDATIONS = new Set([
@@ -121,8 +116,7 @@ export function summariseAllocations(
   if (counts.deleted > 0) extras.push(`${counts.deleted} deleted`);
   if (counts.recording > 0) extras.push(`${counts.recording} in progress`);
   if (counts.carve > 0) extras.push(`${counts.carve} carve`);
-  if (counts.structural > 0)
-    extras.push(`${counts.structural} structural`);
+  if (counts.structural > 0) extras.push(`${counts.structural} structural`);
   // Counted separately from the allocation states above because it is a
   // different axis: a partial recording is usually also allocated, so it must
   // not be presented as a fourth kind of allocation.

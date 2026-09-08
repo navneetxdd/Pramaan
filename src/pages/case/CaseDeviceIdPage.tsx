@@ -144,8 +144,7 @@ export function CaseDeviceIdPage() {
         }
       />
 
-      {(selectedEvidence?.acquisition_class ||
-        report?.acquisition_class) && (
+      {(selectedEvidence?.acquisition_class || report?.acquisition_class) && (
         <div
           role="alert"
           className="rounded-md border border-[var(--status-danger)] bg-[var(--status-danger-soft,transparent)] px-3 py-2 text-[13px] text-[var(--status-danger)]"

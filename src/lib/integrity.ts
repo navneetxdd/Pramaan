@@ -69,10 +69,16 @@ export function isVendorParserHit(hit: {
   capability_tier?: string | null;
   validation_scope?: string | null;
 }): boolean {
-  if (hit.capability_tier == null || !VENDOR_PARSER_TIERS.has(hit.capability_tier)) {
+  if (
+    hit.capability_tier == null ||
+    !VENDOR_PARSER_TIERS.has(hit.capability_tier)
+  ) {
     return false;
   }
-  if (hit.validation_scope != null && SIGNATURE_ONLY_SCOPES.has(hit.validation_scope)) {
+  if (
+    hit.validation_scope != null &&
+    SIGNATURE_ONLY_SCOPES.has(hit.validation_scope)
+  ) {
     return false;
   }
   return true;
