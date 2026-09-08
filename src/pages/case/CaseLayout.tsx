@@ -18,9 +18,21 @@ function CaseLayoutInner() {
 
   if (loading && !workspace) {
     return (
-      <p className="text-[13px] text-[var(--text-tertiary)]">
-        Loading case workspace…
-      </p>
+      <div className="flex h-full min-h-0 flex-col gap-4 p-5">
+        <div className="h-24 animate-pulse rounded-lg bg-[var(--surface-3)]" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-20 animate-pulse rounded-lg bg-[var(--surface-3)]"
+            />
+          ))}
+        </div>
+        <div className="h-64 animate-pulse rounded-lg bg-[var(--surface-3)]" />
+        <p className="text-center text-[12px] text-[var(--text-tertiary)]">
+          Loading case…
+        </p>
+      </div>
     );
   }
   if (error && !notFound) {

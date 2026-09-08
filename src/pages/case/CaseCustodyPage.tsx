@@ -59,7 +59,7 @@ export function CaseCustodyPage() {
           icon={Shield}
         />
         <DashboardStat
-          label="Unique actors"
+          label="Actors"
           value={String(actors)}
           icon={ShieldCheck}
           tone="info"

@@ -351,13 +351,13 @@ export function CasesPage() {
                   className="text-[12px] font-medium text-[var(--text-primary)]"
                   htmlFor="handler"
                 >
-                  Handler
+                  Examiner
                 </label>
                 <Input
                   id="handler"
                   value={handler}
                   onChange={(e) => setHandler(e.target.value)}
-                  placeholder="Examiner name"
+                  placeholder="Your name, recorded on the custody log"
                   required
                 />
               </div>
@@ -416,13 +416,13 @@ export function CasesPage() {
                   className="text-[12px] font-medium text-[var(--text-primary)]"
                   htmlFor="import-handler"
                 >
-                  Handler
+                  Examiner
                 </label>
                 <Input
                   id="import-handler"
                   value={importHandler}
                   onChange={(e) => setImportHandler(e.target.value)}
-                  placeholder="Examiner name"
+                  placeholder="Your name, recorded on the custody log"
                   required
                 />
               </div>

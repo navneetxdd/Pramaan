@@ -123,13 +123,27 @@ export function CaseDeviceIdPage() {
   // an H.264 stream is not a partition table. Real container-signature vendor
   // hits are kept.
   const visibleHits = useMemo(() => {
-    const hits = report?.hits ?? [];
-    if (!isClip) return hits;
-    return hits.filter(
-      (h) =>
-        h.vendor !== "Filesystem" &&
-        h.capability_tier !== "filesystem_recovery",
-    );
+    let hits = report?.hits ?? [];
+    if (isClip) {
+      hits = hits.filter(
+        (h) =>
+          h.vendor !== "Filesystem" &&
+          h.capability_tier !== "filesystem_recovery",
+      );
+    }
+    // Collapse hits that route to the same vendor + adapter (the engine can
+    // emit two "Filesystem / generic_tier2" hits off different markers). Keep
+    // the one with the most marker evidence so nothing useful is lost.
+    const byRoute = new Map<string, (typeof hits)[number]>();
+    for (const h of hits) {
+      const routeKey = `${h.vendor}|${h.adapter}`;
+      const existing = byRoute.get(routeKey);
+      const markerCount = (h.markers ?? []).length;
+      if (!existing || markerCount > (existing.markers ?? []).length) {
+        byRoute.set(routeKey, h);
+      }
+    }
+    return [...byRoute.values()];
   }, [report, isClip]);
 
   return (
@@ -298,9 +312,9 @@ export function CaseDeviceIdPage() {
                 </p>
               ) : (
                 <ul className="mt-4 space-y-2">
-                  {visibleHits.map((hit) => (
+                  {visibleHits.map((hit, hitIndex) => (
                     <li
-                      key={`${hit.vendor}-${hit.adapter}`}
+                      key={`${hit.vendor}-${hit.adapter}-${hitIndex}`}
                       className="rounded-lg border border-[var(--border-subtle)] px-3 py-2"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -355,7 +369,7 @@ export function CaseDeviceIdPage() {
                 >
                   <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
                     Parser coverage across the {report.oem_capabilities.length}{" "}
-                    vendors this build recognises
+                    vendors this build recognizes
                   </p>
                   <div className="mt-2 overflow-x-auto">
                     <table className="w-full text-[11px]">
