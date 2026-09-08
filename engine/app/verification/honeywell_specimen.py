@@ -29,10 +29,12 @@ def _gpt_sector() -> bytes:
     return bytes(sector)
 
 
+BUILDER_MARKER = b"Honeywell HWDVR builder image\x00"
+
+
 def _machine_data_sector() -> bytes:
     sector = bytearray(SECTOR_SIZE)
-    label = b"Honeywell HWDVR builder image\x00"
-    sector[: len(label)] = label
+    sector[: len(BUILDER_MARKER)] = BUILDER_MARKER
     return bytes(sector)
 
 
@@ -82,6 +84,10 @@ def build_honeywell_builder_specimen() -> bytes:
     size = max(video_end + 4096, CHANNEL_LIST_BASE + 64)
     blob = bytearray(size)
 
+    # Builder marker in the first sector so acquisition-class detection (which
+    # reads only the first 512 bytes) flags this as a builder image, not just
+    # the machine-data sector at sector 34.
+    blob[: len(BUILDER_MARKER)] = BUILDER_MARKER
     blob[SECTOR_SIZE : SECTOR_SIZE * 2] = _gpt_sector()
     blob[SECTOR_34_OFFSET : SECTOR_34_OFFSET + SECTOR_SIZE] = _machine_data_sector()
 
