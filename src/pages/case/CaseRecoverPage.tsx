@@ -47,6 +47,7 @@ function AllocationCell({ state }: { state: AllocationState }) {
     recording: { glyph: "●", color: "var(--status-info)" },
     allocated: { glyph: "✓", color: "var(--status-success)" },
     carve: { glyph: "◆", color: "var(--text-tertiary)" },
+    structural: { glyph: "▣", color: "var(--status-info)" },
     unknown: { glyph: "?", color: "var(--text-tertiary)" },
   };
   const { glyph, color } = style[state];

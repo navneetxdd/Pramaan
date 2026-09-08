@@ -14,6 +14,7 @@ export type AllocationState =
   | "deleted"
   | "recording"
   | "carve"
+  | "structural"
   | "unknown";
 
 /** Validation levels that mean "deleted" for vendors without allocation_state. */
@@ -28,13 +29,16 @@ const DELETED_VALIDATIONS = new Set([
 
 const ALLOCATED_VALIDATIONS = new Set([
   "hikbtree_indexed",
-  "dual_signature_4",
-  "dual_signature",
   "honeywell_index_4",
   "honeywell_format_carve_4",
   "hkvi_block_4",
   "hkvi_block",
 ]);
+
+// Structurally complete but with no filesystem allocation map behind them.
+// A DHAV dual-signature frame bracket is a complete recording unit; the DHAV
+// path is a frame carver, so "Allocated" would overclaim disk allocation.
+const STRUCTURAL_VALIDATIONS = new Set(["dual_signature_4", "dual_signature"]);
 
 export function allocationOf(segment: Segment): AllocationState {
   const raw = segment.validation_evidence?.["allocation_state"];
@@ -44,6 +48,7 @@ export function allocationOf(segment: Segment): AllocationState {
     if (value.startsWith("recording")) return "recording";
     if (value.startsWith("allocated")) return "allocated";
     if (value.startsWith("carve")) return "carve";
+    if (value.startsWith("structural")) return "structural";
   }
 
   // A stream carve has no filesystem allocation map. Guessing allocated or
@@ -53,6 +58,7 @@ export function allocationOf(segment: Segment): AllocationState {
 
   const validation = segment.validation ?? "";
   if (DELETED_VALIDATIONS.has(validation)) return "deleted";
+  if (STRUCTURAL_VALIDATIONS.has(validation)) return "structural";
   if (ALLOCATED_VALIDATIONS.has(validation)) return "allocated";
   return "unknown";
 }
@@ -67,6 +73,8 @@ export function allocationLabel(state: AllocationState): string {
       return "Allocated";
     case "carve":
       return "Carve (no allocation map)";
+    case "structural":
+      return "Structurally complete (no allocation map)";
     default:
       return "Unknown";
   }
@@ -95,6 +103,7 @@ export function countAllocations(segments: Segment[]): AllocationCounts {
     deleted: 0,
     recording: 0,
     carve: 0,
+    structural: 0,
     unknown: 0,
   };
   for (const segment of segments) counts[allocationOf(segment)] += 1;
@@ -112,6 +121,8 @@ export function summariseAllocations(
   if (counts.deleted > 0) extras.push(`${counts.deleted} deleted`);
   if (counts.recording > 0) extras.push(`${counts.recording} in progress`);
   if (counts.carve > 0) extras.push(`${counts.carve} carve`);
+  if (counts.structural > 0)
+    extras.push(`${counts.structural} structural`);
   // Counted separately from the allocation states above because it is a
   // different axis: a partial recording is usually also allocated, so it must
   // not be presented as a fourth kind of allocation.

@@ -102,6 +102,23 @@ class RecoveryResultMetadataTests(unittest.TestCase):
                 f"carve segment {seq['id']} has a blank allocation_state",
             )
 
+        # Soft-C14: the DHAV path is a frame carver. A dual-signature frame
+        # bracket is structurally complete but has no filesystem allocation
+        # table, so it must not carry a bare/allocated state.
+        dual = [
+            s
+            for s in list_sequences("d")
+            if str(s["validation_level"]).startswith("dual_signature")
+        ]
+        self.assertTrue(dual, "DHAV specimen should yield dual-signature segments")
+        for seq in dual:
+            evidence = seq.get("validation_evidence") or {}
+            self.assertEqual(
+                evidence.get("allocation_state"),
+                "structural (no allocation map)",
+                f"dual-signature segment {seq['id']} must be marked structural",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -285,11 +285,18 @@ async def run_recovery_job(
             conf = _confidence_label(seg.confidence, seg.validation)
             kind = classify_artifact_kind(seg.validation)
             seg_evidence = dict(seg.validation_evidence or {})
-            if kind == "carve" and not seg_evidence.get("allocation_state"):
-                # A stream carve has no filesystem allocation map. Say so
-                # explicitly; a blank allocation state reads as "allocated,
-                # checked" in the recovery table and the segment inspector.
-                seg_evidence["allocation_state"] = "carve (no allocation map)"
+            if not seg_evidence.get("allocation_state"):
+                if kind == "carve":
+                    # A stream carve has no filesystem allocation map. Say so
+                    # explicitly; a blank allocation state reads as "allocated,
+                    # checked" in the recovery table and the segment inspector.
+                    seg_evidence["allocation_state"] = "carve (no allocation map)"
+                elif str(seg.validation or "").startswith("dual_signature"):
+                    # DHAV recovery is a frame carver. A dual-signature frame
+                    # bracket is structurally complete, but there is no
+                    # filesystem allocation table behind it, so it must not
+                    # render as a green "Allocated".
+                    seg_evidence["allocation_state"] = "structural (no allocation map)"
             row = insert_sequence(
                 device_id,
                 channel=int(seg.channel or 0),

@@ -36,6 +36,7 @@ const STATE_COLOR: Record<AllocationState, string> = {
   deleted: "var(--status-danger)",
   recording: "var(--status-info)",
   carve: "var(--text-secondary)",
+  structural: "var(--status-info)",
   unknown: "var(--text-tertiary)",
 };
 

@@ -25,6 +25,7 @@ const ALLOCATION_COLOR: Record<string, string> = {
   deleted: "var(--status-danger)",
   recording: "var(--status-info)",
   carve: "var(--text-tertiary)",
+  structural: "var(--status-info)",
   unknown: "var(--text-tertiary)",
 };
 
