@@ -21,6 +21,7 @@ import { formatBytes } from "@/lib/utils";
 import {
   custodyActionLabel,
   integrityLabel,
+  recoveryAdapterLabel,
   resolveIntegrityState,
 } from "@/lib/integrity";
 
@@ -77,13 +78,18 @@ export function CaseOverviewPage() {
   const totalBytes = evidence.reduce((sum, e) => sum + e.size_bytes, 0);
   const segmentTotal = totalRecoveredSegments(jobs);
   const flagged = failedJobCount(jobs);
-  const identified = evidence.filter(
-    (e) => e.identification?.recommended_adapter,
-  ).length;
-  const coveragePct =
-    evidence.length === 0
-      ? "—"
-      : `${Math.round((identified / evidence.length) * 100)}%`;
+  // A vendor hit means a vendor-specific parser matched, not a generic
+  // filesystem signature. Generic FAT/E01 detection routing to generic_tier2
+  // is not vendor identification and must not be counted as such.
+  const hasVendorHit = (e: (typeof evidence)[number]) =>
+    (e.identification?.hits ?? []).some(
+      (h) =>
+        h.capability_tier && h.capability_tier !== "acquisition_generic_only",
+    );
+  const vendorHit = evidence.filter(hasVendorHit).length;
+  const identifyRan = evidence.filter((e) => e.identification != null).length;
+  const noVendorHit = identifyRan - vendorHit;
+  const identifyPending = evidence.length - identifyRan;
   const sortedJobs = jobs
     .filter((j) => j.kind === "recovery")
     .sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""));
@@ -111,15 +117,20 @@ export function CaseOverviewPage() {
           tone="info"
         />
         <DashboardStat
-          label="OEM identified"
-          value={coveragePct}
-          hint={`${identified} of ${evidence.length} imaged`}
+          label="Vendor identified"
+          value={`${vendorHit} of ${evidence.length}`}
+          hint={
+            identifyPending > 0
+              ? `${noVendorHit} no vendor signature, ${identifyPending} not yet identified`
+              : `${noVendorHit} no vendor signature`
+          }
           icon={Shield}
-          tone="success"
+          tone={vendorHit > 0 ? "success" : undefined}
         />
         <DashboardStat
           label="Recovered segments"
           value={segmentTotal.toLocaleString()}
+          hint="recordings, carves and filesystem undelete — see Recovery for the breakdown"
           icon={ScanSearch}
         />
         <DashboardStat
@@ -151,7 +162,7 @@ export function CaseOverviewPage() {
               return (
                 <JobProgressCard
                   key={job.id}
-                  title={`${job.vendor ?? "Unknown OEM"} // ${job.adapter ?? "pending adapter"}`}
+                  title={`${job.vendor ?? "Vendor not identified"} · ${recoveryAdapterLabel(job.adapter)}`}
                   subtitle={
                     live?.message ??
                     (stats.segmentsFound != null

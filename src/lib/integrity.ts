@@ -61,6 +61,22 @@ export function capabilityTierLabel(tier: string): string {
   }
 }
 
+const RECOVERY_ADAPTER_LABELS: Record<string, string> = {
+  hikvision: "Hikvision HIKBTREE index",
+  dahua_dhav: "Dahua DHAV frame carve",
+  honeywell: "Honeywell index",
+  h264_carve: "H.264 stream carve",
+  generic_tier2: "Generic filesystem / carve",
+  needs_selection: "Adapter not selected",
+};
+
+/** Recovery adapters are internal engine keys. Examiners see the method name,
+ * not the key. The Dahua adapter is a frame carver, never an index parser. */
+export function recoveryAdapterLabel(adapter?: string | null): string {
+  if (!adapter) return "Adapter not selected";
+  return RECOVERY_ADAPTER_LABELS[adapter] ?? adapter.replace(/_/g, " ");
+}
+
 export function validationScopeLabel(scope: string): string {
   switch (scope) {
     case "synthetic_and_known_fixtures":
