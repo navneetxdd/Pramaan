@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from engine.app.core.db import get_db, init_db, verify_custody_chain  # noqa: E402
 from engine.app.main import app  # noqa: E402
-from engine.app.services.acquisition import create_lab_specimen  # noqa: E402
+from engine.app.services.acquisition import create_builder_specimen  # noqa: E402
 import asyncio  # noqa: E402
 
 
@@ -26,7 +26,7 @@ class CustodyEvidenceDigestTests(unittest.IsolatedAsyncioTestCase):
             json={"name": "Digest bind", "examiner_name": "Examiner"},
         )
         case_id = created.json()["id"]
-        result = await create_lab_specimen(case_id, "Examiner", vendor="dahua")
+        result = await create_builder_specimen(case_id, "Examiner", vendor="dahua")
         sha256 = result["evidence"]["sha256"]
         with get_db() as conn:
             rows = conn.execute(

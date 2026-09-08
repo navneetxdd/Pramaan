@@ -18,7 +18,7 @@ export function CaseAiAnalyticsPage() {
   const [deviceId, setDeviceId] = useState("");
   const [findings, setFindings] = useState<AiFinding[]>([]);
   const [busy, setBusy] = useState(false);
-  const [demoUnavailable, setDemoUnavailable] = useState<string | null>(null);
+  const [analyticsUnavailable, setAnalyticsUnavailable] = useState<string | null>(null);
   const { setWorking, setIdle } = useActivity();
 
   const devices = workspace?.evidence ?? [];
@@ -41,7 +41,7 @@ export function CaseAiAnalyticsPage() {
       return;
     }
     setBusy(true);
-    setDemoUnavailable(null);
+    setAnalyticsUnavailable(null);
     setWorking("Running frame sampling…");
     try {
       const started = await api.runAiAnalytics(deviceId, actor.trim());
@@ -62,21 +62,21 @@ export function CaseAiAnalyticsPage() {
       });
       const status = await api.getJobStatus(started.job.id);
       const parsed = (status.result ?? {}) as {
-        demo_mode_unavailable?: boolean;
+        analytics_unavailable?: boolean;
         message?: string;
       };
-      if (parsed.demo_mode_unavailable) {
-        setDemoUnavailable(
+      if (parsed.analytics_unavailable) {
+        setAnalyticsUnavailable(
           parsed.message ??
-            "OpenCV/decodable video unavailable on this host — analytics skipped",
+            "OpenCV or a decodable video stream is unavailable on this host. Analytics skipped.",
         );
       }
       const resultFindings = await api.listAiFindings(deviceId);
       setFindings(resultFindings.findings);
       toast.success(
-        parsed?.demo_mode_unavailable
+        parsed?.analytics_unavailable
           ? "Analytics unavailable on this host"
-          : `Analysis complete — ${resultFindings.count} lead(s)`,
+          : `Analysis complete. ${resultFindings.count} lead(s).`,
       );
       await refresh();
     } catch (err) {
@@ -125,18 +125,18 @@ export function CaseAiAnalyticsPage() {
       <PageHeader
         kicker="Investigative leads"
         title="Findings"
-        subtitle="Five pipelines: foreground motion, scene change, face candidate, YOLOX object candidate, and person-object proximity — leads only, none asserted as fact."
+        subtitle="Five pipelines: foreground motion, scene change, face candidate, YOLOX object candidate, and person-object proximity. Leads only, none asserted as fact."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        {demoUnavailable ? (
+        {analyticsUnavailable ? (
           <div className="visily-card col-span-full flex items-start gap-3 border border-amber-500/40 bg-amber-50 p-4 text-amber-950">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
               <p className="text-[13px] font-semibold">
                 Analytics unavailable on this host
               </p>
-              <p className="mt-1 text-[12px]">{demoUnavailable}</p>
+              <p className="mt-1 text-[12px]">{analyticsUnavailable}</p>
             </div>
           </div>
         ) : null}
@@ -175,7 +175,7 @@ export function CaseAiAnalyticsPage() {
         <section className="visily-card space-y-3 p-3">
           <p className="visily-card-title text-[11px]">Run analysis</p>
           <div className="rounded border border-amber-500/40 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-            Investigative leads only — not verified evidence.
+            Investigative leads only. Not verified evidence.
           </div>
           {devices.length === 0 ? (
             <p className="text-[12px] text-[var(--text-secondary)]">

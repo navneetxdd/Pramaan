@@ -10,7 +10,7 @@ from engine.app.core.repository import case_storage_dir, list_sequences, registe
 from engine.app.parsers.manufacturer_detect import identify_image
 from engine.app.parsers.registry import bootstrap_defaults
 from engine.app.services.recovery import run_recovery_job
-from engine.app.services.acquisition import create_lab_specimen
+from engine.app.services.acquisition import create_builder_specimen
 from engine.app.core.config import VALIDATION_DATA_DIR
 from engine.app.verification.playable_checks import _playable_export_stage, dahua_real_dav_stage
 
@@ -22,15 +22,15 @@ async def _vendor_stages(
     expected_vendors: set[str],
 ) -> tuple[list[dict], str | None]:
     """Acquire known-answer specimen, run recovery, return stage results and device id."""
-    result = await create_lab_specimen(case_id, actor, vendor=vendor)
+    result = await create_builder_specimen(case_id, actor, vendor=vendor)
     device = result["evidence"]
     device_id = device["id"]
     dest = case_storage_dir(case_id)
     specimen_name = {
-        "honeywell": "lab_honeywell_specimen.bin",
-        "hikvision": "lab_hikvision_specimen.bin",
-        "dahua": "lab_dahua_dhav_specimen.bin",
-    }.get(vendor, "lab_dahua_dhav_specimen.bin")
+        "honeywell": "builder_honeywell.bin",
+        "hikvision": "builder_hikvision.bin",
+        "dahua": "builder_dahua_dhav.bin",
+    }.get(vendor, "builder_dahua_dhav.bin")
     specimen_path = dest / specimen_name
 
     stages: list[dict] = []

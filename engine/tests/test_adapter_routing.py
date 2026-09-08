@@ -6,14 +6,14 @@ from pathlib import Path
 
 from engine.app.parsers.manufacturer_detect import VENDOR_PARSER_TIERS, identify_image
 from engine.app.verification.honeywell_specimen import write_honeywell_specimen
-from engine.app.verification.lab_specimen import write_lab_specimen
+from engine.app.verification.builder_specimen import write_builder_specimen
 
 
 class AdapterRoutingTests(unittest.TestCase):
     def test_dahua_specimen_routes_to_dahua_adapter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "dahua.bin"
-            write_lab_specimen(path)
+            write_builder_specimen(path)
             report = identify_image(path)
             hits = report.get("hits") or []
             self.assertTrue(any(h.get("vendor") in {"Dahua", "CP Plus"} for h in hits))

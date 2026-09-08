@@ -1,7 +1,7 @@
 """Cross-camera trace: correlate the same person across multiple recovered channels.
 
-Delivers the SIH26150 requirement "correlate events across cameras" on already-recovered
-footage. One batch job per case: sample each source video at a low frame rate, detect
+Correlates events across cameras on already-recovered footage. One batch job per
+case: sample each source video at a low frame rate, detect
 people (YOLOX-nano ONNX, already bundled), embed each crop with a compact re-identification
 model (person_reid_youtu ONNX (Tencent Youtu, via OpenCV Zoo), CPU, runs on CPU via cv2.dnn), then greedily cluster
 the embeddings across every source. The result is a list of tracked identities, each with

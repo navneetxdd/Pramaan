@@ -1,4 +1,4 @@
-"""Real decodable H.264 Annex-B payloads for lab specimens (CAVIAR Walk1)."""
+"""Real decodable H.264 Annex-B payloads for builder images (CAVIAR Walk1)."""
 
 from __future__ import annotations
 

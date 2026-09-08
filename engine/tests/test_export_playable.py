@@ -6,7 +6,7 @@ from pathlib import Path
 
 from engine.app.parsers.dahua_dhfs import DahuaDhavAdapter
 from engine.app.parsers.unwrap import NAL_START_4, unwrap_to_h264
-from engine.app.verification.lab_specimen import build_dahua_lab_specimen
+from engine.app.verification.builder_specimen import build_dahua_builder_specimen
 from engine.app.verification.media_fixture import split_annexb_nals
 
 
@@ -24,7 +24,7 @@ class ExportPlayableTests(unittest.TestCase):
     def test_unwrap_produces_annexb_with_idr(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "dahua.bin"
-            path.write_bytes(build_dahua_lab_specimen())
+            path.write_bytes(build_dahua_builder_specimen())
             segments = DahuaDhavAdapter().scan(path)
             self.assertGreater(len(segments), 0)
             chunk = path.read_bytes()[segments[0].offset_start : segments[0].offset_end]

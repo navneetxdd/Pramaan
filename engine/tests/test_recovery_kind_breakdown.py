@@ -79,10 +79,10 @@ class RecoveryResultMetadataTests(unittest.TestCase):
     def test_carve_segments_carry_an_explicit_allocation_state(self) -> None:
         from engine.app.core.repository import list_sequences
         from engine.app.services.recovery import classify_artifact_kind
-        from engine.app.verification.lab_specimen import write_lab_specimen
+        from engine.app.verification.builder_specimen import write_builder_specimen
 
         blob = self._dir / "dahua_carve.bin"
-        write_lab_specimen(blob)
+        write_builder_specimen(blob)
         self._new_device(blob)
 
         asyncio.run(

@@ -9,13 +9,13 @@ from pathlib import Path
 from engine.app.parsers.dahua_dhfs import DahuaDhavAdapter
 from engine.app.parsers.hikvision import HikvisionAdapter
 from engine.app.parsers.schemas.dhav import validate_dhav_frame
-from engine.app.verification.hikvision_specimen import build_hikvision_lab_specimen
-from engine.app.verification.lab_specimen import build_dahua_lab_specimen
+from engine.app.verification.hikvision_specimen import build_hikvision_builder_specimen
+from engine.app.verification.builder_specimen import build_dahua_builder_specimen
 
 
 class DhavParserGoldenTests(unittest.TestCase):
     def test_lab_specimen_frames_pass_four_check_validation(self) -> None:
-        blob = build_dahua_lab_specimen()
+        blob = build_dahua_builder_specimen()
         validated = 0
         offset = 0
         while True:
@@ -33,7 +33,7 @@ class DhavParserGoldenTests(unittest.TestCase):
     def test_adapter_recovers_specimen_segments(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "specimen.bin"
-            path.write_bytes(build_dahua_lab_specimen())
+            path.write_bytes(build_dahua_builder_specimen())
             segments = DahuaDhavAdapter().scan(path)
         self.assertGreater(len(segments), 0)
         self.assertTrue(any(s.validation == "dual_signature_4" for s in segments))
@@ -48,7 +48,7 @@ class HikvisionParserGoldenTests(unittest.TestCase):
     def test_lab_specimen_uses_hikbtree_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "specimen.bin"
-            path.write_bytes(build_hikvision_lab_specimen())
+            path.write_bytes(build_hikvision_builder_specimen())
             segments = HikvisionAdapter().scan(path)
         self.assertGreater(len(segments), 0)
         # Vocabulary per docs/reference/hikvision_fs.md §7: allocated / deleted / in-progress.

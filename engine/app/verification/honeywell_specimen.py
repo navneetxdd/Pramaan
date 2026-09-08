@@ -31,7 +31,7 @@ def _gpt_sector() -> bytes:
 
 def _machine_data_sector() -> bytes:
     sector = bytearray(SECTOR_SIZE)
-    label = b"Honeywell HWDVR-Lab-Specimen\x00"
+    label = b"Honeywell HWDVR builder image\x00"
     sector[: len(label)] = label
     return bytes(sector)
 
@@ -51,7 +51,7 @@ def _build_nal_frame(*, frame_type: int, timestamp_us: int, payload_extra: int =
     return header + payload
 
 
-def build_honeywell_lab_specimen() -> bytes:
+def build_honeywell_builder_specimen() -> bytes:
     get_nal_source().reset()
     """Synthetic Honeywell GPT disk with both deletion-recovery mechanisms."""
     header_start_time = 1_700_000_000
@@ -125,5 +125,5 @@ def build_honeywell_lab_specimen() -> bytes:
 
 def write_honeywell_specimen(dest: Path) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(build_honeywell_lab_specimen())
+    dest.write_bytes(build_honeywell_builder_specimen())
     return dest

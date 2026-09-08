@@ -27,10 +27,37 @@ SAMPLE_FPS = 1.0
 SCENE_CHANGE_THRESHOLD = 0.18
 FOREGROUND_RATIO_THRESHOLD = 0.005
 MOTION_CONFIDENCE_FLOOR = 0.35
-OBJECT_CONFIDENCE_THRESHOLD = 0.35
+OBJECT_CONFIDENCE_THRESHOLD = 0.45
 OBJECT_NMS_THRESHOLD = 0.45
 YOLOX_INPUT_SIZE = (416, 416)
 YOLOX_VERSION = "0.1.1rc0"
+
+# COCO carries 80 classes; most are indoor/kitchen items that only add noise on
+# surveillance footage ("wine glass", "bowl", "clock" at 0.4 on a grainy frame).
+# Object findings are limited to classes an investigator would actually follow up.
+INVESTIGATIVE_OBJECT_LABELS = frozenset(
+    {
+        "person",
+        "bicycle",
+        "car",
+        "motorcycle",
+        "bus",
+        "truck",
+        "backpack",
+        "handbag",
+        "suitcase",
+        "knife",
+        "baseball bat",
+        "scissors",
+        "cell phone",
+        "laptop",
+    }
+)
+
+# Per recovered sequence, keep only the strongest object findings. A busy scene
+# at 1 fps can otherwise emit hundreds of near-duplicate boxes that bury the
+# leads worth reading.
+MAX_OBJECT_FINDINGS_PER_SEQUENCE = 40
 
 # Review-only co-occurrence flags: two independently detected boxes overlapping in the same
 # frame. Never asserted as contact/collision — every flag carries an explicit caveat.
@@ -252,6 +279,8 @@ def _detect_objects(frame: object) -> list[tuple[str, float, dict]]:
         x, y, box_width, box_height = boxes[index]
         class_id = class_ids[index]
         label = COCO_LABELS[class_id] if class_id < len(COCO_LABELS) else f"class_{class_id}"
+        if label not in INVESTIGATIVE_OBJECT_LABELS:
+            continue
         hits.append(
             (
                 label,
@@ -461,7 +490,29 @@ def _analyze_sequence(video_path: Path) -> tuple[list[dict], list[str], int]:
         warnings.append("yunet_model_unavailable_haar_fallback")
     if not YOLOX_MODEL_PATH.exists():
         warnings.append("yolox_model_unavailable")
-    return findings, warnings, frame_count
+
+    capped, was_capped = _cap_object_findings(findings, MAX_OBJECT_FINDINGS_PER_SEQUENCE)
+    if was_capped:
+        warnings.append(f"object_findings_capped_at_{MAX_OBJECT_FINDINGS_PER_SEQUENCE}")
+    return capped, warnings, frame_count
+
+
+def _cap_object_findings(findings: list[dict], limit: int) -> tuple[list[dict], bool]:
+    """Keep at most `limit` object findings, the highest-confidence ones. Other
+    finding types pass through untouched. Order is otherwise preserved."""
+    object_indices = [i for i, f in enumerate(findings) if f["finding_type"] == "object"]
+    if len(object_indices) <= limit:
+        return findings, False
+    ranked = sorted(
+        object_indices,
+        key=lambda i: findings[i].get("confidence") or 0.0,
+        reverse=True,
+    )
+    keep = set(ranked[:limit])
+    return (
+        [f for i, f in enumerate(findings) if f["finding_type"] != "object" or i in keep],
+        True,
+    )
 
 
 async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor: str) -> None:
@@ -501,8 +552,8 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
             "case_id": case_id,
             "device_id": device_id,
             "findings_count": 0,
-            "demo_mode_unavailable": True,
-            "message": "OpenCV/decodable video unavailable on this host — analytics skipped",
+            "analytics_unavailable": True,
+            "message": "OpenCV or a decodable video stream is unavailable on this host. Analytics skipped.",
             "warnings": ["opencv_unavailable"],
             "investigative_leads_only": True,
         }
@@ -556,7 +607,7 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
             message=f"Analyzed sequence {index + 1}/{len(sequences)} · {created} leads",
         )
 
-    demo_unavailable = decoded_frames == 0 and created == 0
+    analytics_unavailable = decoded_frames == 0 and created == 0
     result = {
         "case_id": case_id,
         "device_id": device_id,
@@ -566,9 +617,9 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
         "warnings": sorted(set(warnings)),
         "investigative_leads_only": True,
     }
-    if demo_unavailable:
-        result["demo_mode_unavailable"] = True
-        result["message"] = "No decodable video frames on recovered artifacts — analytics produced no leads"
+    if analytics_unavailable:
+        result["analytics_unavailable"] = True
+        result["message"] = "No decodable video frames on the recovered artifacts. Analytics produced no leads."
     with get_db() as conn:
         append_custody(
             conn,
