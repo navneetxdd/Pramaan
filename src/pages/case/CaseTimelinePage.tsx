@@ -55,6 +55,7 @@ export function CaseTimelinePage() {
   const [normalization, setNormalization] = useState<{
     method: string;
     rtc_parsed: boolean;
+    drift_offset_seconds?: number;
     note: string;
   } | null>(null);
 
@@ -252,8 +253,8 @@ export function CaseTimelinePage() {
                 }`}
               >
                 {normalization.rtc_parsed
-                  ? "Recorder clock found — timeline is time-ordered."
-                  : "No recorder clock found — timeline is byte-offset order only, not wall-clock time."}
+                  ? "Recorder clock found. Timeline is time-ordered."
+                  : "No recorder clock found. Timeline is byte-offset order only, not wall-clock time."}
               </p>
               <p className="mono text-[10px] text-[var(--text-tertiary)]">
                 {normalization.note}
@@ -334,6 +335,8 @@ export function CaseTimelinePage() {
             selectedSegmentId={selectedSegmentId}
             onSelect={seekToSegment}
             onSelectFinding={(segmentId) => seekToSegment(segmentId)}
+            rtcParsed={normalization?.rtc_parsed}
+            driftSeconds={normalization?.drift_offset_seconds}
           />
           <FindingsTrack
             channels={channels}

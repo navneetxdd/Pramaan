@@ -10,6 +10,10 @@ type IntegrityPanelProps = {
   lastAudit?: string;
   witnessHash?: string;
   witnessLabel?: string;
+  /** Database id of the first custody row that fails verification, when the
+   * chain is broken. Shown so the examiner sees the break point here, not only
+   * on the Custody page. */
+  brokenRowId?: number | null;
   onVerify?: () => void;
 };
 
@@ -18,9 +22,11 @@ export function IntegrityPanel({
   lastAudit,
   witnessHash,
   witnessLabel = "Chain tip hash",
+  brokenRowId,
   onVerify,
 }: IntegrityPanelProps) {
   const intact = state === "intact";
+  const broken = state === "broken";
 
   return (
     <div className="visily-card h-full">
@@ -46,6 +52,13 @@ export function IntegrityPanel({
             {intact ? "Intact" : state === "checking" ? "Checking" : "Broken"}
           </span>
         </div>
+        {broken ? (
+          <p className="text-[11px] text-[var(--status-danger)]">
+            {brokenRowId != null
+              ? `First failing row: custody id ${brokenRowId}. Rows before it still verify. See Custody for the full log.`
+              : "Verification failed but the exact break point could not be determined. See Custody."}
+          </p>
+        ) : null}
         {lastAudit ? (
           <p className="mono text-[11px] text-[var(--text-tertiary)]">
             Last audit: {lastAudit}

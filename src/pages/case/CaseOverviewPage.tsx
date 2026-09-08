@@ -32,6 +32,7 @@ export function CaseOverviewPage() {
   const { caseId, workspace } = useCaseContext();
   const [custody, setCustody] = useState<ChainLinkState>("checking");
   const [chainTip, setChainTip] = useState<string | null>(null);
+  const [brokenRowId, setBrokenRowId] = useState<number | null>(null);
   const [liveJobState, setLiveJobState] = useState<
     Record<string, { progress: number; message: string }>
   >({});
@@ -42,6 +43,7 @@ export function CaseOverviewPage() {
       .then((s) => {
         setCustody(s.intact ? "intact" : "broken");
         setChainTip(s.tip_hash ?? null);
+        setBrokenRowId(s.first_broken_row_id);
       })
       .catch(() => setCustody("unknown"));
   }, [caseId]);
@@ -216,10 +218,12 @@ export function CaseOverviewPage() {
                 : "No events yet"
             }
             witnessHash={chainTip ?? undefined}
+            brokenRowId={brokenRowId}
             onVerify={() =>
               void api.custodyStatus(caseId).then((s) => {
                 setCustody(s.intact ? "intact" : "broken");
                 setChainTip(s.tip_hash ?? null);
+                setBrokenRowId(s.first_broken_row_id);
               })
             }
           />
