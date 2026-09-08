@@ -41,6 +41,50 @@ _CUSTODY_ACTION_LABELS = {
 }
 
 
+_ACQUISITION_METHOD_LABELS = {
+    "operator_oem_image": "Operator OEM image",
+    "logical_network": "Logical network acquisition",
+    "logical_file_acquisition": "Logical file acquisition",
+    "physical_imaging": "Physical imaging",
+    "upload": "File upload",
+    "synthetic_specimen": "Builder image",
+}
+_WRITE_BLOCKER_LABELS = {
+    "source_opened_read_only": "Source opened read-only (software)",
+    "hardware": "Hardware write blocker",
+    "none": "None",
+}
+_CAPABILITY_TIER_LABELS = {
+    "validated_parser": "Validated parser (fixture scope)",
+    "experimental_parser": "Experimental parser",
+    "acquisition_generic_only": "Acquisition and generic only",
+    "filesystem_recovery": "Filesystem undelete",
+}
+_VALIDATION_SCOPE_LABELS = {
+    "builder_and_known_fixtures": "Proven on builder and known fixtures only",
+    "builder_fixture_only": "Proven on builder fixtures only",
+    "signature_match_only": "Signature match only, parser not run for this family",
+    "generic_signature_carving_only": "Generic carving only, no vendor-specific parser",
+    "annex_b_signature_only": "Generic H.264 signature only, no vendor structure",
+    "pytsk3_tier2": "Filesystem undelete via The Sleuth Kit",
+}
+_ADAPTER_LABELS = {
+    "hikvision": "Hikvision HIKBTREE index",
+    "dahua_dhav": "Dahua DHAV frame carve",
+    "honeywell": "Honeywell index",
+    "h264_carve": "H.264 stream carve",
+    "generic_tier2": "Generic filesystem / carve",
+    "needs_selection": "Adapter not selected",
+}
+
+
+def _label(value: object, table: dict[str, str], fallback: str = "—") -> str:
+    text = str(value).strip() if value not in (None, "") else ""
+    if not text:
+        return fallback
+    return table.get(text, text.replace("_", " "))
+
+
 def _custody_action_label(action: str) -> str:
     """Mirrors src/lib/integrity.ts's custodyActionLabel. This report is read by
     examiners and the court directly, not just the live app; keep both
@@ -176,8 +220,8 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
     rows = "".join(
         f"<tr><td>{escape(str(ev['filename']))}</td><td><code>{escape(str(ev['sha256'][:16]))}…</code></td>"
         f"<td><code>{escape(str((ev.get('md5') or '—')[:16]))}…</code></td><td>{int(ev['size_bytes'])}</td>"
-        f"<td>{escape(str(ev.get('acquisition_method') or '—'))}</td>"
-        f"<td>{escape(str(ev.get('write_blocker') or '—'))}</td></tr>"
+        f"<td>{escape(_label(ev.get('acquisition_method'), _ACQUISITION_METHOD_LABELS))}</td>"
+        f"<td>{escape(_label(ev.get('write_blocker'), _WRITE_BLOCKER_LABELS))}</td></tr>"
         for ev in report["evidence"]
     )
     logical_banner = (
@@ -189,7 +233,7 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
     recovery_rows = "".join(
         f"<tr><td><code>{escape(str(item.get('job_id', item.get('device_id', ''))[:12]))}…</code></td>"
         f"<td>{escape(str(item.get('status', 'current')))}</td>"
-        f"<td>{escape(str(item.get('vendor') or '—'))}</td><td>{escape(str(item.get('adapter') or '—'))}</td>"
+        f"<td>{escape(str(item.get('vendor') or '—'))}</td><td>{escape(_label(item.get('adapter'), _ADAPTER_LABELS))}</td>"
         f"<td>{int(item['segment_count'])}</td></tr>"
         for item in report["recovery_summary"]
     )
@@ -223,9 +267,9 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
         for hit in hits[:8]:
             capability_rows += (
                 f"<tr><td>{escape(str(hit.get('vendor', '—')))}</td>"
-                f"<td>{escape(str(hit.get('adapter', '—')))}</td>"
-                f"<td>{escape(str(hit.get('capability_tier', 'generic')))}</td>"
-                f"<td>{escape(str(hit.get('validation_scope', 'routing_hint')))}</td></tr>"
+                f"<td>{escape(_label(hit.get('adapter'), _ADAPTER_LABELS))}</td>"
+                f"<td>{escape(_label(hit.get('capability_tier'), _CAPABILITY_TIER_LABELS, 'Generic'))}</td>"
+                f"<td>{escape(_label(hit.get('validation_scope'), _VALIDATION_SCOPE_LABELS, 'Routing hint'))}</td></tr>"
             )
         drift = float(device.get("drift_offset_seconds") or 0)
         timeline_notes.append(
