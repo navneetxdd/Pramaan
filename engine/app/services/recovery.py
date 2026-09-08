@@ -55,6 +55,79 @@ def _write_raw_artifact(destination: Path, data: bytes) -> tuple[str, str]:
     return hash_file(destination)
 
 
+# Recovered artifacts are not one kind of thing. An examiner reading "26
+# recovered" needs to know how many are recorder recordings, how many are raw
+# stream carves with no index backing, and how many are filesystem-undelete
+# fragments (which can be directory debris a few bytes long). The kind is a
+# deterministic projection of the parser's validation_level, which is stored
+# NOT NULL on every recovered_sequences row.
+ARTIFACT_KINDS = ("recording", "carve", "filesystem_undelete")
+
+_RECORDING_VALIDATIONS = frozenset(
+    {
+        "dual_signature_4",
+        "dual_signature",
+        "hikbtree_indexed",
+        "hikbtree_recording",
+        "hikbtree_deleted_entry",
+        "hikbtree_entry",
+        "honeywell_index_4",
+        "honeywell_index",
+        "honeywell_expired_index",
+    }
+)
+
+_ARTIFACT_KIND_LABELS = {
+    "recording": "Recording",
+    "carve": "Stream carve",
+    "filesystem_undelete": "Filesystem undelete",
+}
+
+_VALIDATION_LABELS = {
+    "filesystem_deleted_inode": "Filesystem undelete (deleted inode)",
+    "filesystem_unallocated": "Filesystem carve (unallocated inode)",
+    "unreferenced_carve": "Stream carve (no index reference)",
+    "h264_nal": "H.264 stream carve",
+    "h264_nal_tail": "H.264 tail carve",
+    "offset-ordered, timestamp unverified": "Offset-ordered carve (timestamps unverified)",
+    "header_footer_only": "Frame carve (header and footer only)",
+    "honeywell_format_carve_4": "Honeywell format carve",
+    "honeywell_gpt_carve": "Honeywell GPT-scoped carve",
+    "dual_signature_4": "DHAV recording (start and end frame verified)",
+    "dual_signature": "DHAV recording (dual signature)",
+    "hikbtree_indexed": "HIKBTREE-indexed recording",
+    "hikbtree_recording": "HIKBTREE recording (open)",
+    "hikbtree_deleted_entry": "HIKBTREE recording (index entry deleted)",
+    "hikbtree_entry": "HIKBTREE index entry",
+    "honeywell_index_4": "Honeywell index recording",
+    "honeywell_index": "Honeywell index recording",
+    "honeywell_expired_index": "Honeywell recording (index entry expired)",
+}
+
+
+def classify_artifact_kind(validation_level: str | None) -> str:
+    value = (validation_level or "").strip()
+    if value.startswith("filesystem_"):
+        return "filesystem_undelete"
+    if value in _RECORDING_VALIDATIONS:
+        return "recording"
+    # Unknown or carve vocabulary: default to carve. A token that does not name a
+    # known index-backed validation has not proven index backing, so it must not
+    # be shown to an examiner as a recording.
+    return "carve"
+
+
+def artifact_kind_label(kind: str) -> str:
+    return _ARTIFACT_KIND_LABELS.get(kind, kind.replace("_", " "))
+
+
+def validation_label(validation_level: str | None) -> str:
+    value = (validation_level or "").strip()
+    if not value:
+        return "Not recorded"
+    return _VALIDATION_LABELS.get(value, value.replace("_", " "))
+
+
 def _confidence_label(value: float, validation: str) -> str:
     if validation in {"dual_signature_4", "dual_signature"} and value >= 0.85:
         return "high"
@@ -166,6 +239,7 @@ async def run_recovery_job(
 
         stored = 0
         skipped_oob = 0
+        kind_counts = {kind: 0 for kind in ARTIFACT_KINDS}
         evidence_rows: list[dict] = []
         artifact_dir = case_storage_dir(case_id) / "sequences"
         media_size = evidence_size(image_path)
@@ -234,6 +308,7 @@ async def run_recovery_job(
                 validation_evidence=seg.validation_evidence,
             )
             stored += 1
+            kind_counts[classify_artifact_kind(seg.validation)] += 1
             evidence_rows.append(
                 {
                     "sequence_id": row["id"],
@@ -271,6 +346,7 @@ async def run_recovery_job(
             "device_id": device_id,
             "segments_found": stored,
             "segments_skipped_out_of_bounds": skipped_oob,
+            "segments_by_kind": kind_counts,
             "adapter": adapter_key,
             "vendor": vendors[0].vendor if vendors else "Generic",
             "app_version": APP_VERSION,
@@ -328,7 +404,15 @@ def segments_as_legacy(device_id: str, job_meta: dict | None = None) -> list[dic
                 "vendor": job_meta.get("vendor", "Unknown") if job_meta else "Unknown",
                 "offset_start": seq.get("byte_start"),
                 "offset_end": seq.get("byte_end"),
+                "byte_start": seq.get("byte_start"),
+                "byte_end": seq.get("byte_end"),
                 "byte_length": seq.get("byte_length"),
+                "output_path": seq.get("output_path"),
+                "validation_label": validation_label(seq["validation_level"]),
+                "artifact_kind": classify_artifact_kind(seq["validation_level"]),
+                "artifact_kind_label": artifact_kind_label(
+                    classify_artifact_kind(seq["validation_level"])
+                ),
                 "container_units": seq["frame_count"],
                 "playable_frame_count": seq.get("playable_frame_count"),
                 "confidence": _confidence_score(seq["confidence"], seq["validation_level"]),

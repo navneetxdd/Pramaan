@@ -32,6 +32,7 @@ import {
   truncationLabel,
   type AllocationState,
 } from "@/lib/allocation";
+import { countSegmentKinds, summariseSegmentKinds } from "@/lib/caseStats";
 import { timestampTier } from "@/lib/checks";
 import "@/styles/recovery.css";
 
@@ -391,6 +392,22 @@ export function CaseRecoverPage() {
   const truncatedIndex = useMemo(() => indexTruncation(segments), [segments]);
 
   const partialCount = useMemo(() => countPartial(segments), [segments]);
+
+  // The allocation summary noun is "recordings". When the engine reported that
+  // this recovery mixed recordings with carves or filesystem-undelete
+  // fragments, that noun is wrong, so the header uses a kind-aware summary
+  // instead. Only triggers when at least one row carries an engine kind.
+  const kindCounts = useMemo(() => countSegmentKinds(segments), [segments]);
+  const kindsAreMixed = useMemo(() => {
+    if (!segments.some((s) => s.artifact_kind != null)) return false;
+    return (
+      [
+        kindCounts.recording,
+        kindCounts.carve,
+        kindCounts.filesystem_undelete,
+      ].filter((n) => n > 0).length > 1
+    );
+  }, [segments, kindCounts]);
 
   const allocationByRow = useMemo(() => {
     const map = new Map<string, AllocationState>();
@@ -892,11 +909,13 @@ export function CaseRecoverPage() {
                   <span className="text-[11px] text-[var(--text-secondary)]">
                     {visibleSegments.length !== segments.length
                       ? `${visibleSegments.length} of ${segments.length} shown`
-                      : summariseAllocations(
-                          segments.length,
-                          allocationCounts,
-                          partialCount,
-                        )}
+                      : kindsAreMixed
+                        ? summariseSegmentKinds(kindCounts)
+                        : summariseAllocations(
+                            segments.length,
+                            allocationCounts,
+                            partialCount,
+                          )}
                   </span>
                   <input
                     type="search"
@@ -1074,8 +1093,16 @@ export function CaseRecoverPage() {
                       <div className="flex flex-col gap-0.5">
                         <ConfidenceBadge
                           tier={timestampTier(seg.timestamp_confidence)}
-                          label={seg.validation?.replace(/_/g, " ")}
+                          label={
+                            seg.validation_label ??
+                            seg.validation?.replace(/_/g, " ")
+                          }
                         />
+                        {seg.artifact_kind_label ? (
+                          <span className="text-[10px] text-[var(--text-tertiary)]">
+                            {seg.artifact_kind_label}
+                          </span>
+                        ) : null}
                         <Tooltip
                           content={
                             (seg.validation_evidence?.[

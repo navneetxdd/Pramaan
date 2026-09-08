@@ -128,10 +128,16 @@ export type Segment = {
   vendor: string;
   offset_start: number;
   offset_end: number;
+  byte_start?: number | null;
+  byte_end?: number | null;
+  output_path?: string | null;
   container_units: number;
   playable_frame_count?: number | null;
   confidence: number;
   validation: string;
+  validation_label?: string | null;
+  artifact_kind?: "recording" | "carve" | "filesystem_undelete" | string | null;
+  artifact_kind_label?: string | null;
   confidence_tier?: string;
   preview_path: string | null;
   created_at: string;
@@ -167,6 +173,9 @@ export type SegmentDetail = {
   frame_count: number;
   confidence: string | null;
   validation_level: string | null;
+  validation_label?: string | null;
+  artifact_kind?: "recording" | "carve" | "filesystem_undelete" | string | null;
+  artifact_kind_label?: string | null;
   output_path: string | null;
   output_md5: string | null;
   output_sha256: string | null;

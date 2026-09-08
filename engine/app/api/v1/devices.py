@@ -28,7 +28,13 @@ from engine.app.parsers.manufacturer_detect import identify_image
 from engine.app.parsers.unwrap import NAL_START_3, NAL_START_4, unwrap_to_h264
 from engine.app.services.acquisition import acquire_upload, create_lab_specimen, _device_as_evidence
 from engine.app.parsers.image_io import evidence_size, read_image_bytes
-from engine.app.services.recovery import run_recovery_job, segments_as_legacy
+from engine.app.services.recovery import (
+    artifact_kind_label,
+    classify_artifact_kind,
+    run_recovery_job,
+    segments_as_legacy,
+    validation_label,
+)
 from engine.app.services.timeline import build_timeline_for_device
 
 logger = logging.getLogger("forensic.engine")
@@ -216,6 +222,11 @@ def _sequence_payload(seq: dict, device: dict) -> dict:
         "playable_frame_count": seq.get("playable_frame_count"),
         "confidence": seq.get("confidence"),
         "validation_level": seq.get("validation_level"),
+        "validation_label": validation_label(seq.get("validation_level")),
+        "artifact_kind": classify_artifact_kind(seq.get("validation_level")),
+        "artifact_kind_label": artifact_kind_label(
+            classify_artifact_kind(seq.get("validation_level"))
+        ),
         "output_path": seq.get("output_path"),
         "output_md5": seq.get("output_md5"),
         "output_sha256": seq.get("output_sha256"),

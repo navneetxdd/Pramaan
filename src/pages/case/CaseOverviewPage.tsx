@@ -14,7 +14,9 @@ import {
   failedJobCount,
   jobDisplayProgress,
   parseJobStats,
+  recoveredSegmentsByKind,
   runningJobs,
+  summariseSegmentKinds,
   totalRecoveredSegments,
 } from "@/lib/caseStats";
 import { formatBytes } from "@/lib/utils";
@@ -78,6 +80,11 @@ export function CaseOverviewPage() {
   const { case: record, evidence, jobs, custody: events } = workspace;
   const totalBytes = evidence.reduce((sum, e) => sum + e.size_bytes, 0);
   const segmentTotal = totalRecoveredSegments(jobs);
+  // Recordings, carves and filesystem-undelete fragments are different findings.
+  // When the engine reported a per-kind split, show the recording count as the
+  // headline and the full split beneath it, so a pile of byte-scale FAT
+  // fragments never reads as a recording count.
+  const segmentKinds = recoveredSegmentsByKind(jobs);
   const flagged = failedJobCount(jobs);
   // A vendor hit means a vendor-specific parser matched (Dahua, Hikvision,
   // Honeywell). A generic MBR/FAT/NTFS signature on a disk image carries
@@ -127,9 +134,16 @@ export function CaseOverviewPage() {
           tone={vendorHit > 0 ? "success" : undefined}
         />
         <DashboardStat
-          label="Recovered segments"
-          value={segmentTotal.toLocaleString()}
-          hint="recordings, carves and filesystem undelete — see Recovery for the breakdown"
+          label={segmentKinds ? "Recordings recovered" : "Recovered artifacts"}
+          value={(segmentKinds
+            ? segmentKinds.recording
+            : segmentTotal
+          ).toLocaleString()}
+          hint={
+            segmentKinds
+              ? summariseSegmentKinds(segmentKinds)
+              : "open Recovery for the recording, carve and filesystem-undelete split"
+          }
           icon={ScanSearch}
         />
         <DashboardStat
