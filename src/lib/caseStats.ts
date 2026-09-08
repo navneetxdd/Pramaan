@@ -2,6 +2,7 @@ import type { RecoveryJob } from "@/lib/api";
 
 type JobStats = {
   segmentsFound?: number;
+  segmentsSkippedOutOfBounds?: number;
   progress?: number;
   message?: string;
 };
@@ -17,6 +18,10 @@ export function parseJobStats(statsJson: string | null | undefined): JobStats {
           : typeof parsed.segmentsFound === "number"
             ? parsed.segmentsFound
             : undefined,
+      segmentsSkippedOutOfBounds:
+        typeof parsed.segments_skipped_out_of_bounds === "number"
+          ? parsed.segments_skipped_out_of_bounds
+          : undefined,
       progress:
         typeof parsed.progress === "number" ? parsed.progress : undefined,
       message: typeof parsed.message === "string" ? parsed.message : undefined,

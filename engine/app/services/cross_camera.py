@@ -442,9 +442,9 @@ async def run_correlation(
             job_id, progress=78,
             message=f"Correlating {len(all_tracklets)} tracks from {det_total} detections",
         )
-        if not all_tracklets:
-            raise RuntimeError("No trackable people found in the selected sources at this sample rate.")
-
+        # A run that finds nobody is a completed run with an empty result, not a
+        # failure — it still ran to the end. Marking it "failed" would inflate the
+        # Overview / Job-log "Failed jobs" counters for a normal null outcome.
         groups = _agglomerate(all_tracklets, cos_threshold)
 
         class _Ident:

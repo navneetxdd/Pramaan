@@ -246,10 +246,10 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/><title>Forensic Report — {escape(str(case['title']))}</title>
 <style>
-body{{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#0a0e1a;color:#eef1f8}}
-table{{border-collapse:collapse;width:100%;margin:1rem 0}} th,td{{border:1px solid #2e3a5c;padding:8px;font-size:13px}}
-th{{background:#161d30}} code{{font-family:monospace;font-size:12px}}
-.ok{{color:#3ba676}} .bad{{color:#d6584f}} h2{{margin-top:2rem}}
+body{{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#ffffff;color:#111418}}
+table{{border-collapse:collapse;width:100%;margin:1rem 0}} th,td{{border:1px solid #d7dbe0;padding:8px;font-size:13px}}
+th{{background:#f4f6f8;text-align:left}} code{{font-family:monospace;font-size:12px}}
+.ok{{color:#0f7b3f}} .bad{{color:#b00020}} h2{{margin-top:2rem}}
 </style></head><body>
 <h1>Forensic case report</h1>
 <p><strong>{escape(str(case['title']))}</strong> · Examiner: {escape(str(case['examiner']))}</p>

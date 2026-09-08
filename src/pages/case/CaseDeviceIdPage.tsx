@@ -128,6 +128,17 @@ export function CaseDeviceIdPage() {
         </div>
       )}
 
+      {(selectedEvidence?.media_type === "video_clip" ||
+        selectedEvidence?.media_type === "logical_export") && (
+        <div className="rounded-md border border-[var(--border-subtle)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
+          This is an exported clip, not a forensic disk image — there is no
+          recorder filesystem to identify or deleted footage to recover. It can
+          still be hashed, played back, run through Findings, and cross-camera
+          traced. Identification below only checks for a vendor container
+          signature.
+        </div>
+      )}
+
       {evidence.length === 0 ? (
         <section className="visily-card p-8 text-[13px] text-[var(--text-secondary)]">
           No evidence yet.{" "}

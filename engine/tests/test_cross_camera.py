@@ -8,7 +8,7 @@ from pathlib import Path
 
 os.environ["FORENSIC_WORKSTATION_DATA"] = tempfile.mkdtemp(prefix="forensic-ccam-")
 
-from engine.app.core.config import OEM_IMAGE_DIR, REID_MODEL_PATH  # noqa: E402
+from engine.app.core.config import OEM_IMAGE_DIR, REID_MODEL_PATH, YOLOX_MODEL_PATH  # noqa: E402
 from engine.app.core.db import init_db  # noqa: E402
 from engine.app.main import app  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -156,6 +156,52 @@ class CrossCameraCorrelationTests(unittest.TestCase):
         # identity's appearances at (or extremely near) the top.
         self.assertEqual(matches[0]["identity_id"], identity["id"])
         self.assertGreater(matches[0]["similarity"], 0.9)
+
+
+@unittest.skipUnless(
+    YOLOX_MODEL_PATH.exists() and REID_MODEL_PATH.exists(),
+    "detector/re-id model not present locally",
+)
+class CrossCameraEmptyResultTests(unittest.TestCase):
+    """A run that finds nobody must COMPLETE with an empty result, not fail —
+    otherwise the Overview / Job-log 'Failed jobs' counter is misleading."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        init_db()
+        cls.client = TestClient(app)
+
+    def test_no_trackable_people_completes_empty(self) -> None:
+        r = self.client.post(
+            "/api/v1/cases",
+            json={"name": "Cross-camera: empty", "examiner_name": "Examiner"},
+        )
+        case_id = r.json()["id"]
+        # A synthetic Dahua specimen's recovered "video" is fabricated H.264 with
+        # no detectable people — the correlation pass will find zero tracklets.
+        acquired = self.client.post(
+            f"/api/v1/cases/{case_id}/devices/acquire/synthetic",
+            json={"actor": "Examiner", "vendor": "dahua"},
+        )
+        self.assertEqual(acquired.status_code, 200, acquired.text)
+        device_id = acquired.json()["evidence"]["id"]
+        rec = self.client.post(f"/api/v1/devices/{device_id}/recover", json={"actor": "Examiner"})
+        _poll_job(self.client, rec.json()["job"]["id"])
+
+        sources = self.client.get(f"/api/v1/cases/{case_id}/cross-camera/sources").json()
+        keys = [s["key"] for s in sources["sources"]]
+        self.assertTrue(keys, "expected at least one recovered source")
+
+        run = self.client.post(
+            f"/api/v1/cases/{case_id}/cross-camera/runs",
+            json={"actor": "Examiner", "source_keys": keys, "fps": 1, "max_frames_per_source": 20},
+        )
+        self.assertEqual(run.status_code, 200, run.text)
+        status = _poll_job(self.client, run.json()["job_id"], timeout_s=120)
+        self.assertEqual(status["status"], "completed", status)
+        detail = self.client.get(f"/api/v1/cross-camera/runs/{run.json()['run_id']}").json()
+        self.assertEqual(detail["summary"]["identities"], 0)
+        self.assertEqual(detail.get("status", "completed"), "completed")
 
 
 if __name__ == "__main__":

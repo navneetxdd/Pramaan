@@ -138,17 +138,20 @@ def recover_filesystem(image_path: Path, *, max_entries: int = 256) -> list[Reco
                 if file_obj is None:
                     continue
                 size = min(int(meta.size or 0), 8 * 1024 * 1024)
-                offset = int(meta.addr) * fs.info.block_size if meta.addr else 0
                 if size <= 0:
                     if not is_deleted:
                         continue
                     data = b""
                 else:
-                    data = file_obj.read_random(0, min(size, 4096))
+                    # The full recovered content, as pytsk3 reads it from the
+                    # (still-unallocated) clusters. This is what the recovery job
+                    # writes to the artifact — meta.addr is an inode address, not
+                    # a container byte offset, so it cannot be re-carved by range.
+                    data = file_obj.read_random(0, size)
             except Exception:
                 continue
 
-            magic = _classify_magic(data)
+            magic = _classify_magic(data[:512])
             if not is_deleted:
                 if not magic and Path(name).suffix.lower() not in VIDEO_EXTENSIONS:
                     continue
@@ -158,12 +161,14 @@ def recover_filesystem(image_path: Path, *, max_entries: int = 256) -> list[Reco
                 RecoveredSegment(
                     channel=None,
                     vendor="Generic",
-                    offset_start=offset,
-                    offset_end=offset + max(size, 1),
+                    # Artifact-relative: these bytes come from raw_bytes, not from
+                    # a byte range in the image. See run_recovery_job.
+                    offset_start=0,
+                    offset_end=max(len(data), 1),
                     frame_count=1,
                     confidence=0.84 if is_deleted else 0.72,
                     validation=validation,
-                    raw_bytes=data[:512],
+                    raw_bytes=data,
                 )
             )
             count += 1

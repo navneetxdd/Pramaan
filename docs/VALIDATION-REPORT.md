@@ -13,7 +13,7 @@ Pramaan is a SIH26150-oriented forensic workstation for CCTV/DVR evidence. This 
 | Honeywell end-to-end (recover → timeline → analytics) | **Pass** | `test_e2e_honeywell.py` |
 | Hikvision HIKBTREE index → H.264 NAL extraction | **Pass (emulated image only)** | `test_hikvision_fs.py`, `test_e2e_hikvision.py`; see [Hikvision validation methodology](#hikvision-validation-methodology) |
 | E01 decode for identify/structure/bytes | **Pass** | `image_io.open_evidence_readonly` + pyewf; structure probe uses decoded bytes |
-| NIST nps-2009-canon2-gen6.E01 | **Pass** | pyewf + pytsk3 FAT16 undelete → **6** deleted root entries (`test_canon2_real_recovery.py`) |
+| NIST nps-2009-canon2-gen6.E01 | **Pass** | pyewf + pytsk3 FAT16 undelete → **6** deleted root entries listed; app `generic_tier2` run writes all 6 (4 with recovered content, 2 zero-size markers) (`test_canon2_real_recovery.py`) |
 | Real Dahua `.dav` (PRONOM sample) | **Fetch-on-demand** | `fetch_validation_assets.py --real-dvr`; `test_canon2_real_recovery.py::DahuaRealDavTests` when present |
 | Public DVR **disk images** | **Unavailable** | No authoritative Dahua/Hikvision/Honeywell disk images on Digital Corpora or CFReDS |
 
@@ -73,7 +73,7 @@ citable public source. See `docs/reference/hikvision_fs.md` §4 and §11.
 
 ## Real-media claims (run after `--real-fs` / `--real-dvr`)
 
-1. **Canon2 E01**: `recover_filesystem` on `nps-2009-canon2-gen6.E01` returns **6** segments tagged `filesystem_deleted_inode` (DCIM, $FAT*, volume label). Use **`generic_tier2`** adapter in the Recover UI.
+1. **Canon2 E01**: `recover_filesystem` on `nps-2009-canon2-gen6.E01` returns **6** segments tagged `filesystem_deleted_inode` (DCIM, $FAT*, volume label). Use **`generic_tier2`** adapter in the Recover UI. The recovery job writes all 6 artifacts from the bytes pytsk3 read directly (4 carry recovered file/metadata content, 2 are zero-size deleted entries written as 1-byte markers). These segments' offsets are inode addresses, not container byte ranges — they are written from `raw_bytes`, not re-carved by offset; any segment whose offset falls outside the image is skipped and counted in `segments_skipped_out_of_bounds` (surfaced in the Recovery telemetry).
 2. **Real Dahua `.dav`**: When fetched, `DahuaRealDavTests` validates ≥10 segments and slice/IDR NALs in the first unwrapped chunk.
 
 ## AI analytics

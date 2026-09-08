@@ -47,6 +47,14 @@ def _write_bounded_artifact(
     return hash_file(destination)
 
 
+def _write_raw_artifact(destination: Path, data: bytes) -> tuple[str, str]:
+    """Write bytes a parser already recovered (e.g. pytsk3 undelete) straight to
+    the artifact. Used when the segment's offsets are not container byte offsets."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(data)
+    return hash_file(destination)
+
+
 def _confidence_label(value: float, validation: str) -> str:
     if validation in {"dual_signature_4", "dual_signature"} and value >= 0.85:
         return "high"
@@ -164,30 +172,42 @@ async def run_recovery_job(
         for seq_index, seg in enumerate(sorted(segments, key=lambda item: item.offset_start)):
             if seg.offset_end <= seg.offset_start:
                 continue
-            if seg.offset_start < 0 or seg.offset_end > media_size:
-                skipped_oob += 1
-                logger.warning(
-                    "Skipping recovered range [%s, %s) outside %s-byte logical source %s",
-                    seg.offset_start,
-                    seg.offset_end,
-                    media_size,
-                    image_path.name,
-                )
-                continue
             suffix = ".h264" if seg.codec == "h264" else ".bin"
             artifact_path = artifact_dir / f"{job_id}_{seq_index:06d}{suffix}"
-            try:
+            # Filesystem-undelete segments carry the recovered bytes in raw_bytes;
+            # their offsets are inode addresses, not container ranges, so they are
+            # written directly rather than re-carved from the image.
+            fs_recovered = (
+                str(seg.validation or "").startswith("filesystem_")
+                and bool(seg.raw_bytes)
+            )
+            if fs_recovered:
                 output_md5, output_sha256 = await asyncio.to_thread(
-                    _write_bounded_artifact,
-                    image_path,
-                    artifact_path,
-                    seg.offset_start,
-                    seg.offset_end,
+                    _write_raw_artifact, artifact_path, seg.raw_bytes
                 )
-            except ValueError as exc:
-                skipped_oob += 1
-                logger.warning("Skipping unrecovered range for %s: %s", image_path.name, exc)
-                continue
+            else:
+                if seg.offset_start < 0 or seg.offset_end > media_size:
+                    skipped_oob += 1
+                    logger.warning(
+                        "Skipping recovered range [%s, %s) outside %s-byte logical source %s",
+                        seg.offset_start,
+                        seg.offset_end,
+                        media_size,
+                        image_path.name,
+                    )
+                    continue
+                try:
+                    output_md5, output_sha256 = await asyncio.to_thread(
+                        _write_bounded_artifact,
+                        image_path,
+                        artifact_path,
+                        seg.offset_start,
+                        seg.offset_end,
+                    )
+                except ValueError as exc:
+                    skipped_oob += 1
+                    logger.warning("Skipping unrecovered range for %s: %s", image_path.name, exc)
+                    continue
             conf = _confidence_label(seg.confidence, seg.validation)
             row = insert_sequence(
                 device_id,

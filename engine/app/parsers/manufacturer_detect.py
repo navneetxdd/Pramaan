@@ -93,7 +93,7 @@ FILESYSTEM_MARKERS = [
     (b"FAT32   ", "FAT32 volume"),
     (b"\x55\xaa", "MBR boot signature @510"),
     (b"DHFS4.1", "Dahua DHFS partition marker"),
-    (b"DHFS4", "Dahua DHFS4 index"),
+    (b"DHFS4", "Dahua DHFS4 signature (no index parser — DHAV frame carve only)"),
     (b"HIKBTREE", "Hikvision B-tree index"),
     (b"WFS0.4", "WFS 0.4 (common Indian OEM FAT variant)"),
 ]
