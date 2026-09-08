@@ -410,11 +410,13 @@ export function CaseTimelinePage() {
                 },
                 {
                   key: "export",
-                  header: "",
+                  header: "Export",
                   cell: (seg) => (
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={`Export recording from channel ${seg.channel ?? "?"} as a video file`}
+                      title="Export this recording as a video file"
                       onClick={() => void handleExport(seg.id)}
                     >
                       <Download className="h-4 w-4" />

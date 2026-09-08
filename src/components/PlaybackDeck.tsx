@@ -82,7 +82,10 @@ function parseSegmentEnd(
       const parsed = Date.parse(raw);
       if (!Number.isNaN(parsed)) return parsed;
     }
-    return start;
+    // No end timestamp (a carve has none). Give it a nominal one-minute span so
+    // the playhead can still land on it and it can be played back; a zero-width
+    // segment is never hittable and shows a permanent "no segment at playhead".
+    return start + 60_000;
   }
   if (seg.offset_end != null) return seg.offset_end;
   const byteLen = seg.byte_length ?? 1;
@@ -269,11 +272,19 @@ export function PlaybackDeck({
         const end = parseSegmentEnd(seg, start, useTime);
         let fromMs: number | undefined;
         let toMs: number | undefined;
-        if (useTime) {
+        if (useTime && end - start > SCRUB_WINDOW_MS) {
           const relPlayhead = effectivePlayhead - start;
           const bucket = Math.floor(relPlayhead / SCRUB_WINDOW_MS);
           fromMs = Math.max(0, bucket * SCRUB_WINDOW_MS);
           toMs = Math.min(end - start, fromMs + SCRUB_WINDOW_MS * 2);
+        }
+        // A carve or a sub-window-length segment has no meaningful scrub range
+        // (end === start for a single DHAV frame bracket). Export the whole
+        // segment instead of asking for a zero-length window, which 400s and
+        // leaves the lane showing "no segment at playhead".
+        if (fromMs != null && toMs != null && toMs <= fromMs) {
+          fromMs = undefined;
+          toMs = undefined;
         }
 
         const cacheKey = exportCacheKey(seg.id, fromMs, toMs);

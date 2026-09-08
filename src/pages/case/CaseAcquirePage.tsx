@@ -596,15 +596,8 @@ export function CaseAcquirePage() {
             </p>
 
             <p className="text-[11px] text-[var(--text-secondary)]">
-              Drop E01, DD, or IMG files in{" "}
-              <span className="mono">{oemDropLabel}</span>
-              {oemDropLabel.startsWith("$") ? null : (
-                <>
-                  {" "}
-                  or set <span className="mono">PRAMAAN_OEM_IMAGE_DIR</span>
-                </>
-              )}
-              .
+              Copy E01, DD, or IMG files into {oemDropLabel} and they appear
+              here for registration.
             </p>
 
             {oemImages.length === 0 ? (
