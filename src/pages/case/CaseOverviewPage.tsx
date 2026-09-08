@@ -273,7 +273,9 @@ export function CaseOverviewPage() {
                               : "text-[var(--status-info)]"
                         }
                       >
-                        {job.status}
+                        {job.status
+                          ? job.status[0].toUpperCase() + job.status.slice(1)
+                          : "Unknown"}
                       </span>
                     </span>
                   </li>

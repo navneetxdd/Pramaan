@@ -129,6 +129,8 @@ export function CaseAcquirePage() {
 
     if (resumeRes.status === "fulfilled") {
       setResumable(resumeRes.value.devices as ResumableDevice[]);
+    } else {
+      setResumable([]);
     }
 
     if (oemRes.status === "fulfilled") {
