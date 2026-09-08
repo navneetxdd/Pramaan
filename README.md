@@ -71,11 +71,11 @@ flowchart LR
    (E01, DD, IMG, RAW, BIN) or a signed case export (`.zip` from another Pramaan
    workstation). Import verifies the manifest signature and every file hash
    before the case opens.
-2. **Acquire evidence.** Upload a file, pull from the OEM drop folder, run
-   physical imaging, or use optional logical network acquire
-   (`PRAMAAN_ALLOW_LOGICAL_ACQUIRE=1`). MD5 and SHA-256 are computed on ingest
-   and written to a sidecar. The three acquisition source lists load
-   independently; one failing does not blank the others.
+2. **Acquire evidence.** Upload a file, register a file dropped into the
+   operator's incoming folder, run disk imaging from a path, or use optional
+   logical network acquire (`PRAMAAN_ALLOW_LOGICAL_ACQUIRE=1`). MD5 and SHA-256
+   are computed on ingest and written to a sidecar. The acquisition source
+   lists load independently; one failing does not blank the others.
 3. **Identify.** Review vendor hits, signal strength, filesystem hints, and the
    recovery method the engine routed to. A byte-signature match is a routing
    hint, not proof. Recorder model, serial, and firmware are not available from
@@ -90,8 +90,10 @@ flowchart LR
    filesystem-undelete run states its root-directory scope on screen.
 5. **Timeline and playback.** Multi-channel timeline that always states its time
    basis on screen: recorder clock with any calibrated drift, or byte-offset
-   order when no clock was recovered. MP4 export when FFmpeg is present. Each
-   playback lane reports a readable reason when a segment will not play.
+   order when no clock was recovered. Recovered recordings play in the lanes and
+   export to MP4 (or raw H.264 without FFmpeg); the same export sits on each
+   segment in the Recovery inspector. Each lane reports a readable reason when a
+   segment will not play.
 6. **Findings.** Optional foreground-motion, scene-change, face-candidate, and
    object analytics plus bounding-box proximity flags. Object findings are
    limited to investigative classes (person, vehicle, bag, and similar) and
@@ -99,7 +101,10 @@ flowchart LR
    asserted as fact.
 7. **Cross-camera trace.** Correlate the same person across every recovered
    channel and imported clip in the case, by appearance and by face when a face
-   is large enough in frame. Upload a reference photo to search a completed run.
+   is large enough in frame. Each grouping carries a match-confidence badge
+   (strong / review / weak) from how tightly its appearances resemble each
+   other, and a plain-language movement line on the recorder clock. Upload a
+   reference photo to search a completed run. Leads only, human review required.
 8. **Custody.** Append-only SHA-256 hash chain with evidence-digest binding.
    When the chain is broken, the first failing row is shown on Overview and
    highlighted on the Custody page.
@@ -328,7 +333,7 @@ npm run dev            # terminal 2, then open http://localhost:5173
 | Variable | Purpose |
 |----------|---------|
 | `FORENSIC_WORKSTATION_DATA` | Root data directory |
-| `PRAMAAN_OEM_IMAGE_DIR` | OEM image drop folder (default `validation_data/oem`) |
+| `PRAMAAN_OEM_IMAGE_DIR` | Operator drop folder for seized media (default `<data dir>/incoming`, empty on a fresh install) |
 | `PRAMAAN_API_TOKEN` | Optional API auth token |
 | `PRAMAAN_ALLOW_LOGICAL_ACQUIRE` | Set `1` to enable logical network acquisition |
 | `FORENSIC_FFMPEG` | FFmpeg path for MP4 export |
@@ -358,8 +363,8 @@ python scripts/validation/build_oem_disk_fixtures.py
 python scripts/validation/test_public_media.py   # engine on :8787
 ```
 
-Settings, then **Validation datasets**, can fetch individual manifest entries
-without the CLI.
+Settings, then **AI models**, can fetch individual manifest entries without the
+CLI.
 
 **CI.** GitHub Actions runs the engine tests (Linux, Windows, macOS), the
 frontend build, an API smoke test, the PyInstaller sidecar build, and the Tauri
