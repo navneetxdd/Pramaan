@@ -283,6 +283,13 @@ async def run_recovery_job(
                     logger.warning("Skipping unrecovered range for %s: %s", image_path.name, exc)
                     continue
             conf = _confidence_label(seg.confidence, seg.validation)
+            kind = classify_artifact_kind(seg.validation)
+            seg_evidence = dict(seg.validation_evidence or {})
+            if kind == "carve" and not seg_evidence.get("allocation_state"):
+                # A stream carve has no filesystem allocation map. Say so
+                # explicitly; a blank allocation state reads as "allocated,
+                # checked" in the recovery table and the segment inspector.
+                seg_evidence["allocation_state"] = "carve (no allocation map)"
             row = insert_sequence(
                 device_id,
                 channel=int(seg.channel or 0),
@@ -305,10 +312,10 @@ async def run_recovery_job(
                 parser_version=seg.parser_version,
                 recovery_job_id=job_id,
                 signature_evidence=seg.signature_evidence,
-                validation_evidence=seg.validation_evidence,
+                validation_evidence=seg_evidence,
             )
             stored += 1
-            kind_counts[classify_artifact_kind(seg.validation)] += 1
+            kind_counts[kind] += 1
             evidence_rows.append(
                 {
                     "sequence_id": row["id"],

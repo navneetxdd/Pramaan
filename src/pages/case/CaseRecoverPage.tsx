@@ -46,6 +46,7 @@ function AllocationCell({ state }: { state: AllocationState }) {
     deleted: { glyph: "✕", color: "var(--status-danger)" },
     recording: { glyph: "●", color: "var(--status-info)" },
     allocated: { glyph: "✓", color: "var(--status-success)" },
+    carve: { glyph: "◆", color: "var(--text-tertiary)" },
     unknown: { glyph: "?", color: "var(--text-tertiary)" },
   };
   const { glyph, color } = style[state];
@@ -394,19 +395,14 @@ export function CaseRecoverPage() {
   const partialCount = useMemo(() => countPartial(segments), [segments]);
 
   // The allocation summary noun is "recordings". When the engine reported that
-  // this recovery mixed recordings with carves or filesystem-undelete
-  // fragments, that noun is wrong, so the header uses a kind-aware summary
-  // instead. Only triggers when at least one row carries an engine kind.
+  // this recovery contains carves or filesystem-undelete fragments, that noun
+  // is wrong, so the header uses a kind-aware summary instead. A run that is
+  // all recordings keeps the allocation summary (deleted / in progress /
+  // partial nuance is meaningful there).
   const kindCounts = useMemo(() => countSegmentKinds(segments), [segments]);
-  const kindsAreMixed = useMemo(() => {
+  const useKindSummary = useMemo(() => {
     if (!segments.some((s) => s.artifact_kind != null)) return false;
-    return (
-      [
-        kindCounts.recording,
-        kindCounts.carve,
-        kindCounts.filesystem_undelete,
-      ].filter((n) => n > 0).length > 1
-    );
+    return kindCounts.carve > 0 || kindCounts.filesystem_undelete > 0;
   }, [segments, kindCounts]);
 
   const allocationByRow = useMemo(() => {
@@ -909,7 +905,7 @@ export function CaseRecoverPage() {
                   <span className="text-[11px] text-[var(--text-secondary)]">
                     {visibleSegments.length !== segments.length
                       ? `${visibleSegments.length} of ${segments.length} shown`
-                      : kindsAreMixed
+                      : useKindSummary
                         ? summariseSegmentKinds(kindCounts)
                         : summariseAllocations(
                             segments.length,

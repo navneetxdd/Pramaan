@@ -9,7 +9,12 @@ import type { Segment } from "@/lib/api";
  * is reported as `unknown` rather than guessed as allocated — a wrong
  * "allocated" would understate what was recovered.
  */
-export type AllocationState = "allocated" | "deleted" | "recording" | "unknown";
+export type AllocationState =
+  | "allocated"
+  | "deleted"
+  | "recording"
+  | "carve"
+  | "unknown";
 
 /** Validation levels that mean "deleted" for vendors without allocation_state. */
 const DELETED_VALIDATIONS = new Set([
@@ -38,7 +43,13 @@ export function allocationOf(segment: Segment): AllocationState {
     if (value.startsWith("deleted")) return "deleted";
     if (value.startsWith("recording")) return "recording";
     if (value.startsWith("allocated")) return "allocated";
+    if (value.startsWith("carve")) return "carve";
   }
+
+  // A stream carve has no filesystem allocation map. Guessing allocated or
+  // deleted from the validation vocabulary would claim knowledge the carver
+  // never had, so it is reported as a carve with no allocation state.
+  if (segment.artifact_kind === "carve") return "carve";
 
   const validation = segment.validation ?? "";
   if (DELETED_VALIDATIONS.has(validation)) return "deleted";
@@ -54,6 +65,8 @@ export function allocationLabel(state: AllocationState): string {
       return "Recording";
     case "allocated":
       return "Allocated";
+    case "carve":
+      return "Carve (no allocation map)";
     default:
       return "Unknown";
   }
@@ -81,6 +94,7 @@ export function countAllocations(segments: Segment[]): AllocationCounts {
     allocated: 0,
     deleted: 0,
     recording: 0,
+    carve: 0,
     unknown: 0,
   };
   for (const segment of segments) counts[allocationOf(segment)] += 1;
@@ -97,6 +111,7 @@ export function summariseAllocations(
   const extras: string[] = [];
   if (counts.deleted > 0) extras.push(`${counts.deleted} deleted`);
   if (counts.recording > 0) extras.push(`${counts.recording} in progress`);
+  if (counts.carve > 0) extras.push(`${counts.carve} carve`);
   // Counted separately from the allocation states above because it is a
   // different axis: a partial recording is usually also allocated, so it must
   // not be presented as a fourth kind of allocation.
