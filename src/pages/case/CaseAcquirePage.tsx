@@ -116,23 +116,25 @@ export function CaseAcquirePage() {
   }, [workspace?.case.examiner_name]);
 
   const loadSources = useCallback(async () => {
-    try {
-      const diskResp = await api.listImagingDisks();
+    // Each source is independent. One endpoint failing (imaging disks needs
+    // privileges, the OEM drop folder may be missing) must not blank the
+    // others.
+    const [disksRes, resumeRes, oemRes] = await Promise.allSettled([
+      api.listImagingDisks(),
+      api.listResumableAcquisitions(caseId),
+      api.listOemImages(),
+    ]);
 
-      setDisks(diskResp.disks);
+    setDisks(disksRes.status === "fulfilled" ? disksRes.value.disks : []);
 
-      const resumeResp = await api.listResumableAcquisitions(caseId);
+    if (resumeRes.status === "fulfilled") {
+      setResumable(resumeRes.value.devices as ResumableDevice[]);
+    }
 
-      setResumable(resumeResp.devices as ResumableDevice[]);
-
-      const oemResp = await api.listOemImages();
-
-      setOemImages(oemResp.images);
-
-      setOemDropLabel(oemResp.label);
-    } catch {
-      setDisks([]);
-
+    if (oemRes.status === "fulfilled") {
+      setOemImages(oemRes.value.images);
+      setOemDropLabel(oemRes.value.label);
+    } else {
       setOemImages([]);
     }
   }, [caseId]);

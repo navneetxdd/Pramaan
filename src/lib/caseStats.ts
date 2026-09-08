@@ -139,6 +139,24 @@ export function summariseSegmentKinds(counts: SegmentKindCounts): string {
   return parts.join(" · ");
 }
 
+const JOB_KIND_LABELS: Record<string, string> = {
+  recovery: "Recovery",
+  ai_analytics: "Findings analytics",
+  cross_camera: "Cross-camera trace",
+  acquisition: "Acquisition",
+  physical_imaging: "Physical imaging",
+  dataset_fetch: "Validation dataset fetch",
+  tool_verification: "Parser verification",
+  export: "Segment export",
+};
+
+/** Human label for a job kind. The Overview activity list shows every kind, not
+ * just recovery, so the examiner sees analytics, export and imaging work too. */
+export function jobKindLabel(kind?: string | null): string {
+  if (!kind) return "Job";
+  return JOB_KIND_LABELS[kind] ?? kind.replace(/_/g, " ");
+}
+
 export function failedJobCount(jobs: RecoveryJob[]): number {
   return jobs.filter((j) => j.status === "failed" || j.status === "error")
     .length;

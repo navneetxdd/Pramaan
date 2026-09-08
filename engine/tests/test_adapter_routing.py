@@ -73,6 +73,26 @@ class AdapterRoutingTests(unittest.TestCase):
         self.assertEqual(leaked, [], f"filesystem-only image leaked vendor-parser tiers: {leaked}")
         self.assertEqual(report.get("recommended_adapter"), "generic_tier2")
 
+    def test_signature_only_hit_is_marked_as_such(self) -> None:
+        # The Dahua builder specimen also carries a CP Plus token plus the DHAV
+        # family signature CP Plus requires. That hit must come back at
+        # capability_tier experimental_parser but validation_scope
+        # signature_match_only, so the Overview "Vendor identified" metric can
+        # exclude it: a family byte match is a routing hint, not an
+        # identification.
+        from engine.app.verification.builder_specimen import write_builder_specimen
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "dahua.bin"
+            write_builder_specimen(path)
+            report = identify_image(path)
+        hits = report.get("hits") or []
+        cpplus = next((h for h in hits if h.get("vendor") == "CP Plus"), None)
+        self.assertIsNotNone(cpplus, "CP Plus token + DHAV signature should produce a hit")
+        assert cpplus is not None
+        self.assertEqual(cpplus["capability_tier"], "experimental_parser")
+        self.assertEqual(cpplus["validation_scope"], "signature_match_only")
+
     def test_capability_registry_is_explicit_about_evidence_scope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "tplink.bin"

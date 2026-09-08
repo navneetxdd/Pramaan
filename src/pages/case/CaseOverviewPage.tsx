@@ -13,6 +13,7 @@ import type { ChainLinkState } from "@/components/forensic/ChainLinkIndicator";
 import {
   failedJobCount,
   jobDisplayProgress,
+  jobKindLabel,
   parseJobStats,
   recoveredSegmentsByKind,
   runningJobs,
@@ -88,19 +89,22 @@ export function CaseOverviewPage() {
   // fragments never reads as a recording count.
   const segmentKinds = recoveredSegmentsByKind(jobs);
   const flagged = failedJobCount(jobs);
-  // A vendor hit means a vendor-specific parser matched (Dahua, Hikvision,
-  // Honeywell). A generic MBR/FAT/NTFS signature on a disk image carries
-  // capability_tier "filesystem_recovery" and routes to generic_tier2. That is
-  // filesystem undelete, not vendor identification, and is not counted here.
+  // A vendor hit means a validated vendor parser matched (Dahua, Hikvision,
+  // Honeywell). A generic MBR/FAT/NTFS signature routes to generic_tier2, and a
+  // family-signature-only match (CP Plus, Uniview) is a routing hint, not an
+  // identification. Neither is counted here.
   const hasVendorHit = (e: (typeof evidence)[number]) =>
     (e.identification?.hits ?? []).some(isVendorParserHit);
   const vendorHit = evidence.filter(hasVendorHit).length;
   const identifyRan = evidence.filter((e) => e.identification != null).length;
-  const noVendorHit = identifyRan - vendorHit;
+  const noValidatedParser = identifyRan - vendorHit;
   const identifyPending = evidence.length - identifyRan;
   const sortedJobs = jobs
     .filter((j) => j.kind === "recovery")
     .sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""));
+  const jobActivity = [...jobs]
+    .sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""))
+    .slice(0, 12);
 
   return (
     <div className="mx-auto flex max-w-[1440px] flex-col gap-4">
@@ -129,8 +133,8 @@ export function CaseOverviewPage() {
           value={`${vendorHit} of ${evidence.length}`}
           hint={
             identifyPending > 0
-              ? `${noVendorHit} no vendor signature, ${identifyPending} not yet identified`
-              : `${noVendorHit} no vendor signature`
+              ? `${noValidatedParser} no validated parser, ${identifyPending} not yet identified`
+              : `${noValidatedParser} no validated parser`
           }
           icon={Shield}
           tone={vendorHit > 0 ? "success" : undefined}
@@ -237,6 +241,46 @@ export function CaseOverviewPage() {
                 : custodyActionLabel(e.action),
             }))}
           />
+
+          <section className="visily-card">
+            <div className="visily-card-header">
+              <span className="visily-card-title">Job activity</span>
+            </div>
+            {jobActivity.length === 0 ? (
+              <p className="p-4 text-[13px] text-[var(--text-secondary)]">
+                No jobs run yet.
+              </p>
+            ) : (
+              <ul className="divide-y divide-[var(--border-subtle)]">
+                {jobActivity.map((job) => (
+                  <li
+                    key={job.id}
+                    className="flex items-center justify-between gap-3 px-4 py-2 text-[12px]"
+                  >
+                    <span className="font-medium text-[var(--text-primary)]">
+                      {jobKindLabel(job.kind)}
+                    </span>
+                    <span className="flex items-center gap-3">
+                      <span className="mono text-[11px] text-[var(--text-tertiary)]">
+                        {(job.started_at ?? "").replace("T", " ").slice(0, 19)}
+                      </span>
+                      <span
+                        className={
+                          job.status === "completed"
+                            ? "text-[var(--status-success)]"
+                            : job.status === "failed" || job.status === "error"
+                              ? "text-[var(--status-danger)]"
+                              : "text-[var(--status-info)]"
+                        }
+                      >
+                        {job.status}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       </div>
 

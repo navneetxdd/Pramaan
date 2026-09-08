@@ -59,12 +59,23 @@ export const VENDOR_PARSER_TIERS = new Set([
   "experimental_parser",
 ]);
 
+/** Validation scopes that mean "the family byte signature matched, but no
+ * validated parser ran for it" (CP Plus, Uniview). A hit like that is a routing
+ * hint, not a vendor identification, so it must not count toward the Overview
+ * "Vendor identified" tally the way filesystem_recovery once did. */
+const SIGNATURE_ONLY_SCOPES = new Set(["signature_match_only"]);
+
 export function isVendorParserHit(hit: {
   capability_tier?: string | null;
+  validation_scope?: string | null;
 }): boolean {
-  return (
-    hit.capability_tier != null && VENDOR_PARSER_TIERS.has(hit.capability_tier)
-  );
+  if (hit.capability_tier == null || !VENDOR_PARSER_TIERS.has(hit.capability_tier)) {
+    return false;
+  }
+  if (hit.validation_scope != null && SIGNATURE_ONLY_SCOPES.has(hit.validation_scope)) {
+    return false;
+  }
+  return true;
 }
 
 export function capabilityTierLabel(tier: string): string {
