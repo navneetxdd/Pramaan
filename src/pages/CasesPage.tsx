@@ -152,7 +152,7 @@ export function CasesPage() {
     const kind = classifyImportFile(importFile);
     if (kind === "unknown") {
       toast.error(
-        "Unsupported file — use E01, DD, IMG, RAW, BIN, or a signed case export (.zip)",
+        "Unsupported file. Use E01, DD, IMG, RAW, BIN, or a signed case export (.zip)",
       );
       return;
     }
@@ -172,7 +172,7 @@ export function CasesPage() {
         await api.acquire(created.id, importHandler.trim(), importFile);
         pushRecentCase(created.id);
         toast.success(
-          "Evidence ingested — parsers will identify the source format",
+          "Evidence ingested. Parsers will identify the source format",
         );
         setImportDialogOpen(false);
         resetImportDialog();
@@ -186,7 +186,7 @@ export function CasesPage() {
         );
         if (!result.imported) {
           toast.success(
-            `Bundle verified — signature valid, ${result.files_verified} file` +
+            `Bundle verified. Signature valid, ${result.files_verified} file` +
               `${result.files_verified === 1 ? "" : "s"} match their recorded hashes.` +
               (result.already_present_locally
                 ? " This case already exists on this workstation."
@@ -197,7 +197,7 @@ export function CasesPage() {
           resetImportDialog();
         } else {
           toast.success(
-            `Case restored — ${result.files_verified} files verified`,
+            `Case restored. ${result.files_verified} files verified`,
           );
           setImportDialogOpen(false);
           resetImportDialog();
@@ -407,8 +407,8 @@ export function CasesPage() {
             <p className="text-[13px] text-[var(--text-secondary)]">
               Disk images (E01, DD, IMG, RAW, BIN) are normalized by the engine
               on ingest. A <span className="mono text-[12px]">.zip</span> is
-              only for signed case exports from another Pramaan workstation —
-              not arbitrary archives.
+              only for signed case exports from another Pramaan workstation, not
+              arbitrary archives.
             </p>
             <div className="mt-4 space-y-4">
               <div className="space-y-1.5">
@@ -478,7 +478,7 @@ export function CasesPage() {
                     onChange={(e) => setVerifyOnly(e.target.checked)}
                   />
                   <span>
-                    Verify only — check the signature and every file's hash
+                    Verify only: check the signature and every file's hash
                     without importing. Use this to confirm an export is intact,
                     including on the workstation that made it.
                   </span>

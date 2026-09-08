@@ -94,7 +94,7 @@ export function AppHeader() {
               >
                 {cases.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name.slice(0, 40)} — {c.examiner_name}
+                    {c.name.slice(0, 40)} · {c.examiner_name}
                   </option>
                 ))}
               </select>

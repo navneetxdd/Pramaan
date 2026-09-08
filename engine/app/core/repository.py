@@ -749,7 +749,7 @@ def import_case_bundle_rows(
     with get_db() as conn:
         existing = conn.execute("SELECT id FROM cases WHERE id = ?", (case_row["id"],)).fetchone()
         if existing:
-            raise ValueError("Case ID already exists — import under a new bundle or delete the existing case")
+            raise ValueError("Case ID already exists. Import under a new bundle or delete the existing case.")
 
         conn.execute(
             """

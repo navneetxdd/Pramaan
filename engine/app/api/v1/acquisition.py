@@ -66,7 +66,7 @@ def _source_path_from_device(device: dict) -> str:
                 return str(meta["source_path"])
         except json.JSONDecodeError:
             pass
-    raise HTTPException(status_code=400, detail="Source path missing — cannot resume this acquisition")
+    raise HTTPException(status_code=400, detail="Source path missing. Cannot resume this acquisition.")
 
 
 def _validate_source_type(source_path: str, source_type: str) -> None:

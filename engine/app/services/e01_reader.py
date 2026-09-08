@@ -26,7 +26,7 @@ def pyewf_available() -> bool:
 
 def open_e01_readonly(path: Path):
     if not pyewf_available():
-        raise RuntimeError("E01 support requires pyewf — install pyewf or provide raw/DD image")
+        raise RuntimeError("E01 support requires pyewf. Install pyewf or provide a raw/DD image.")
     assert _pyewf is not None
     filenames = _pyewf.glob(str(path))
     handle = _pyewf.handle()

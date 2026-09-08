@@ -143,7 +143,7 @@ async def run_imaging_job(
     try:
         if _is_e01(source_path):
             if not pyewf_available():
-                raise RuntimeError("E01 imaging requires pyewf — use raw/DD or install pyewf")
+                raise RuntimeError("E01 imaging requires pyewf. Use raw/DD or install pyewf.")
             e01_handle = open_e01_readonly(Path(source_path))
             total_size = e01_size(e01_handle)
         else:

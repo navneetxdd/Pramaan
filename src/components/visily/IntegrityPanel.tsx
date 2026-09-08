@@ -8,8 +8,6 @@ import {
 type IntegrityPanelProps = {
   state: ChainLinkState;
   lastAudit?: string;
-  witnessHash?: string;
-  witnessLabel?: string;
   /** Database id of the first custody row that fails verification, when the
    * chain is broken. Shown so the examiner sees the break point here, not only
    * on the Custody page. */
@@ -20,8 +18,6 @@ type IntegrityPanelProps = {
 export function IntegrityPanel({
   state,
   lastAudit,
-  witnessHash,
-  witnessLabel = "Chain tip hash",
   brokenRowId,
   onVerify,
 }: IntegrityPanelProps) {
@@ -62,11 +58,6 @@ export function IntegrityPanel({
         {lastAudit ? (
           <p className="mono text-[11px] text-[var(--text-tertiary)]">
             Last audit: {lastAudit}
-          </p>
-        ) : null}
-        {witnessHash ? (
-          <p className="mono truncate text-[10px] text-[var(--text-secondary)]">
-            {witnessLabel}: {witnessHash.slice(0, 16)}…
           </p>
         ) : null}
         {onVerify ? (

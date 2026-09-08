@@ -84,7 +84,7 @@ export function StatusBar() {
       <div className="flex min-w-0 items-center gap-3 text-[11px]">
         {online === false ? (
           <span className="font-medium text-[var(--status-danger)]">
-            Engine not running — start Pramaan or run python run.py
+            Engine not running. Restart Pramaan.
           </span>
         ) : caseName ? (
           <>

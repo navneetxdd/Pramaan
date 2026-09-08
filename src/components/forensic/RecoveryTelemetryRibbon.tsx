@@ -136,7 +136,7 @@ export function RecoveryTelemetryRibbon({
           accent={partial > 0}
           title={
             assessesPartial
-              ? "Recordings whose data block was partly overwritten — only the bytes inside the entry's own window are reported as recovered"
+              ? "Recordings whose data block was partly overwritten. Only the bytes inside the entry's own window are reported as recovered."
               : "This parser does not assess whether a recording's bytes are all still present, so no completeness claim is made either way"
           }
         />

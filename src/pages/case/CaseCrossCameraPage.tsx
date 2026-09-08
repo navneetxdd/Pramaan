@@ -85,13 +85,13 @@ function matchQuality(
   if (cohesion >= 0.7)
     return {
       short: "Review",
-      label: "Likely — review",
+      label: "Likely match, review",
       cls: "bg-amber-50 text-amber-900 ring-amber-600/30",
       hint: `Moderately similar (cohesion ${c}). Confirm by eye before relying on it.`,
     };
   return {
     short: "Weak",
-    label: "Weak — verify",
+    label: "Weak match, verify",
     cls: "bg-rose-50 text-rose-900 ring-rose-600/30",
     hint: `Appearances differ (cohesion ${c}). This group may merge two look-alike people.`,
   };
@@ -284,7 +284,7 @@ function MovementNarrative({ detail }: { detail: CrossCameraIdentityDetail }) {
     return (
       <p className="mt-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
         Seen on {model.camCount} cameras through most of {model.first}–
-        {model.last}. Overlapping views, so there is no single-camera path — use
+        {model.last}. Overlapping views, so there is no single-camera path. Use
         the timeline below.
       </p>
     );
@@ -567,7 +567,7 @@ function FindPanel({
         <p className="max-w-md text-[11px] leading-relaxed text-[var(--text-tertiary)]">
           {mode === "appearance"
             ? "Matches clothing and body shape. Works at normal surveillance distance."
-            : "Matches only frames where the person's face is large and roughly front-facing — uncommon on wide-angle CCTV."}
+            : "Matches only frames where the person's face is large and roughly front-facing. Uncommon on wide-angle CCTV."}
         </p>
       </div>
 
@@ -632,7 +632,7 @@ function FindPanel({
             Compared against {result.appearances_comparable} of{" "}
             {result.appearances_total} appearances
             {mode === "face" && result.appearances_comparable === 0
-              ? " — no appearance in this run had a usable face."
+              ? ". No appearance in this run had a usable face."
               : "."}
           </p>
           {result.matches.length === 0 ? (
@@ -840,7 +840,7 @@ export function CaseCrossCameraPage() {
       <PageHeader
         kicker="Correlation"
         title="Cross-camera trace"
-        subtitle="Find the same person across every recovered channel and imported clip in this case. One offline batch pass over footage already held as evidence."
+        subtitle="Find the same person across recovered channels and imported clips. One offline pass, nothing leaves the workstation."
       />
 
       <div className="flex min-h-0 flex-1">

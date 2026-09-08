@@ -32,7 +32,6 @@ import {
 export function CaseOverviewPage() {
   const { caseId, workspace } = useCaseContext();
   const [custody, setCustody] = useState<ChainLinkState>("checking");
-  const [chainTip, setChainTip] = useState<string | null>(null);
   const [brokenRowId, setBrokenRowId] = useState<number | null>(null);
   const [liveJobState, setLiveJobState] = useState<
     Record<string, { progress: number; message: string }>
@@ -43,7 +42,6 @@ export function CaseOverviewPage() {
       .custodyStatus(caseId)
       .then((s) => {
         setCustody(s.intact ? "intact" : "broken");
-        setChainTip(s.tip_hash ?? null);
         setBrokenRowId(s.first_broken_row_id);
       })
       .catch(() => setCustody("unknown"));
@@ -115,7 +113,10 @@ export function CaseOverviewPage() {
         description={record.notes?.trim() || "No case notes."}
         meta={[
           { label: "Case handler", value: record.examiner_name },
-          { label: "Case ID", value: record.id.slice(0, 18) },
+          {
+            label: "Case reference",
+            value: record.id.slice(0, 8).toUpperCase(),
+          },
         ]}
         primaryAction={{ label: "Run identification", to: "device-id" }}
         secondaryAction={{ label: "Open report", to: "report" }}
@@ -221,12 +222,10 @@ export function CaseOverviewPage() {
                     .slice(0, 19)
                 : "No events yet"
             }
-            witnessHash={chainTip ?? undefined}
             brokenRowId={brokenRowId}
             onVerify={() =>
               void api.custodyStatus(caseId).then((s) => {
                 setCustody(s.intact ? "intact" : "broken");
-                setChainTip(s.tip_hash ?? null);
                 setBrokenRowId(s.first_broken_row_id);
               })
             }

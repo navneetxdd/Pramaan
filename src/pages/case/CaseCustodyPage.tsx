@@ -40,7 +40,7 @@ export function CaseCustodyPage() {
       <PageHeader
         kicker="Audit trail"
         title="Chain of custody"
-        subtitle="Append-only custody log with hash-linked verification for this case."
+        subtitle="Append-only, hash-linked custody log."
         actions={
           <Badge
             variant={

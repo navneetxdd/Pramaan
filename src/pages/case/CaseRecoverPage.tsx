@@ -229,7 +229,7 @@ function IncompleteIndexBanner({
       </span>
       <div className="min-w-0 text-[12px] leading-relaxed">
         <p className="font-semibold text-[var(--status-warning)]">
-          Damaged index — this inventory may be incomplete
+          Damaged index. This inventory may be incomplete.
         </p>
         <p className="mt-0.5 text-[var(--text-secondary)]">
           The recorder&rsquo;s index could not be followed to its documented
@@ -280,7 +280,7 @@ function PartialResultBanner({
       </span>
       <div className="min-w-0 text-[12px] leading-relaxed">
         <p className="font-semibold text-[var(--status-warning)]">
-          Incomplete recovery — this is not a full result set
+          Incomplete recovery. This is not a full result set.
         </p>
         <p className="mt-0.5 text-[var(--text-secondary)]">
           The last recovery run for this evidence image was{" "}
@@ -660,7 +660,7 @@ export function CaseRecoverPage() {
           // t=250ms with all 5). Reporting "cancelled" here would tell the
           // examiner a scan had stopped while it was still running and writing.
           // So confirm the job's real terminal state before saying anything.
-          setPhase("Cancel requested — confirming the engine stopped…");
+          setPhase("Cancel requested. Confirming the engine stopped…");
           void confirmCancellation(activeJobId)
             .then(async (outcome) => {
               if (cancelledByUnmount) return;
@@ -668,7 +668,7 @@ export function CaseRecoverPage() {
                 const result = await api.getJob(activeJobId);
                 setSegments(result.segments);
                 toast.warning(
-                  `Too late to cancel — the run finished with ${result.segments.length} sequences`,
+                  `Too late to cancel. The run finished with ${result.segments.length} sequences`,
                   { duration: 10_000 },
                 );
               } else {
@@ -725,13 +725,13 @@ export function CaseRecoverPage() {
     }
     if (isClip) {
       toast.error(
-        "This evidence is an exported clip — there is no recorder filesystem to recover",
+        "This evidence is an exported clip. There is no recorder filesystem to recover.",
       );
       return;
     }
     if (!effectiveAdapter) {
       toast.error(
-        "Identification could not determine a parser — pick one under Advanced",
+        "Identification could not determine a parser. Pick one under Advanced.",
       );
       setAdvancedOpen(true);
       return;
@@ -907,8 +907,8 @@ export function CaseRecoverPage() {
                     </>
                   ) : (
                     <span className="text-[var(--status-warning)]">
-                      Identification could not determine a parser for this image
-                      — select one manually.
+                      Identification could not determine a parser for this
+                      image. Select one manually.
                     </span>
                   )}
                 </p>
@@ -1199,7 +1199,7 @@ export function CaseRecoverPage() {
                     variant="destructive"
                     size="sm"
                     disabled={cancelling || !activeJobId}
-                    title="Asks the engine to stop. A scan already near completion may still finish — the result is confirmed before anything is reported."
+                    title="Asks the engine to stop. A scan already near completion may still finish; the result is confirmed before anything is reported."
                     onClick={() => void handleCancel()}
                   >
                     {cancelling ? "Requesting stop…" : "Request cancel"}

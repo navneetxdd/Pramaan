@@ -436,7 +436,7 @@ export function CaseAcquirePage() {
       <PageHeader
         kicker="Step 1 · Preservation"
         title="Acquire evidence"
-        subtitle="Image or register read-only copies. Source media is never modified; hashes are verified before the catalog."
+        subtitle="Image or register read-only copies. Source media is never modified."
       />
       <ol className="flex flex-wrap gap-2 px-5">
         {STEPS.map((label, idx) => (
@@ -609,7 +609,8 @@ export function CaseAcquirePage() {
 
             {oemImages.length === 0 ? (
               <p className="text-[11px] text-[var(--text-tertiary)]">
-                No images found — run fetch script or copy media there.
+                No images in the drop folder yet. Copy disk images there and
+                they appear here.
               </p>
             ) : (
               <ul className="space-y-1">
@@ -667,7 +668,7 @@ export function CaseAcquirePage() {
               {hashState === "mismatch" && hashMismatch ? (
                 <div className="rounded-lg border border-[var(--status-danger)] bg-[var(--surface-2)] p-3 font-mono text-[11px]">
                   <p className="mb-2 font-sans text-[12px] font-semibold text-[var(--status-danger)]">
-                    Hash mismatch — do not treat this evidence as verified
+                    Hash mismatch. Do not treat this evidence as verified
                   </p>
                   {hashMismatch.expected_sha256 ? (
                     <>
@@ -741,8 +742,8 @@ export function CaseAcquirePage() {
               </p>
 
               <p className="mt-2 max-w-sm text-[13px] text-[var(--text-secondary)]">
-                Choose a source on the left — upload, image a path, or register
-                a file from the operator drop folder.
+                Choose a source on the left: upload, image a path, or register a
+                file from the operator drop folder.
               </p>
             </div>
           )}

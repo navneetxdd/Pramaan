@@ -628,7 +628,7 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
             target_type="case",
             target_id=case_id,
         )
-    message = result.get("message") or f"Offline analytics complete — {created} investigative lead(s)"
+    message = result.get("message") or f"Offline analytics complete. {created} investigative lead(s)."
     await job_manager.update(job_id, status="completed", progress=100, message=message, result=result)
     persist_job(
         job_id,

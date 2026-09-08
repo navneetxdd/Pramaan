@@ -135,7 +135,7 @@ def download_file(
             playable_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=422,
-                detail="Recovered segment has no decodable video frames — the carved "
+                detail="Recovered segment has no decodable video frames. The carved "
                 "byte range is not a continuous, playable elementary stream.",
             )
         return StreamingResponse(

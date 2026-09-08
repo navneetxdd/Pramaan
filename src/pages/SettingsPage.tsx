@@ -104,8 +104,8 @@ export function SettingsPage() {
             Validation datasets
           </p>
           <p className="mt-0.5 text-[12px] text-[var(--text-tertiary)]">
-            Public corpora and reference samples — fetched on demand, verified
-            by SHA-256 in manifest.
+            Public corpora and reference samples, fetched on demand and verified
+            against a SHA-256 manifest.
           </p>
         </div>
         <div className="max-h-64 overflow-y-auto rounded-md border border-[var(--border-subtle)]">

@@ -396,7 +396,7 @@ export function PlaybackDeck({
         </p>
         <p className="mx-auto mt-2 max-w-md text-[13px] text-[var(--text-secondary)]">
           Run recovery on Step 3 first. Playback appears here when sequences
-          with decodable video are indexed — generic disk images may only yield
+          with decodable video are indexed. Generic disk images may only yield
           filesystem or carve hits without a camera timeline.
         </p>
       </section>
@@ -418,7 +418,7 @@ export function PlaybackDeck({
           <p className="mono text-[11px] text-[var(--text-tertiary)]">
             {useTime
               ? formatPlayhead(effectivePlayhead, true)
-              : "byte-offset order — step through segments"}
+              : "Byte-offset order. Step through segments."}
           </p>
         </div>
         <div className="flex gap-2">
@@ -442,7 +442,7 @@ export function PlaybackDeck({
             title={
               useTime
                 ? undefined
-                : "Byte-offset mode — use Step to advance between segments"
+                : "Byte-offset mode. Use Step to advance between segments."
             }
           >
             {playing ? (
@@ -473,7 +473,7 @@ export function PlaybackDeck({
                 <span>{channel.label}</span>
                 {deleted ? (
                   <span className="font-semibold uppercase tracking-wide text-[var(--status-warning)]">
-                    Recovered — unreferenced
+                    Recovered, unreferenced
                   </span>
                 ) : null}
                 {laneGaps[channel.channel] ? (

@@ -57,11 +57,7 @@ export function CaseReportPage() {
       <PageHeader
         kicker="Case deliverable"
         title="Forensic report"
-        subtitle={
-          fingerprint
-            ? `Live HTML preview of the signed forensic report. Signature: ${fingerprint.slice(0, 24)}… · self-signed integrity only`
-            : "Live HTML preview of the signed forensic report."
-        }
+        subtitle="Live preview of the signed report. Export as HTML or PDF."
         actions={
           <>
             <Button asChild variant="secondary">
@@ -148,6 +144,17 @@ export function CaseReportPage() {
                   ).slice(0, 19)}
                 </dd>
               </div>
+              {fingerprint ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--text-tertiary)]">Signature</dt>
+                  <dd
+                    className="mono truncate"
+                    title={`${fingerprint} (self-signed, integrity only)`}
+                  >
+                    {fingerprint.slice(0, 16)}…
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           ) : null}
         </section>

@@ -47,7 +47,7 @@ export function RecoveryChecksPanel({ segments }: { segments: Segment[] }) {
                   s === "strong"
                     ? "A filesystem/index structure was parsed for this segment"
                     : s === "weak"
-                      ? "Signature evidence only — no structure parsed"
+                      ? "Signature evidence only, no structure parsed"
                       : "No usable parser evidence"
                 }
               >

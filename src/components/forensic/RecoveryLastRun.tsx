@@ -156,7 +156,7 @@ export function RecoveryLastRun({
         <p className="text-[11px] text-[var(--status-warning)]">
           {skippedOob} recovered range
           {skippedOob === 1 ? "" : "s"} fell outside the image&apos;s logical
-          bounds and {skippedOob === 1 ? "was" : "were"} not written — the
+          bounds and {skippedOob === 1 ? "was" : "were"} not written. The
           filesystem-recovery path reports inode addresses, not container byte
           offsets, for these entries.
         </p>

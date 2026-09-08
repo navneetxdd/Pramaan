@@ -12,7 +12,7 @@ function CaseLayoutInner() {
   useEffect(() => {
     if (!notFound || !caseId) return;
     removeRecentCase(caseId);
-    toastErrorOnce("case-not-found", "Case not found — returning to registry");
+    toastErrorOnce("case-not-found", "Case not found. Returning to registry.");
     navigate("/cases", { replace: true });
   }, [notFound, caseId, navigate]);
 

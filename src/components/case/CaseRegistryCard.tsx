@@ -63,7 +63,7 @@ export function CaseRegistryCard({ item }: { item: CaseRegistryRow }) {
             <dd className="font-medium text-[var(--text-primary)]">
               {hasEvidence
                 ? `${item.evidence_count} item${item.evidence_count === 1 ? "" : "s"} · ${formatBytes(item.total_bytes)}`
-                : "None yet — start at Acquisition"}
+                : "None yet. Start at Acquisition"}
             </dd>
           </div>
         </div>

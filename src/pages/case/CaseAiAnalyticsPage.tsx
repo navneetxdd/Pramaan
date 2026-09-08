@@ -132,7 +132,7 @@ export function CaseAiAnalyticsPage() {
       <PageHeader
         kicker="Investigative leads"
         title="Findings"
-        subtitle="Five pipelines: foreground motion, scene change, face candidate, YOLOX object candidate, and person-object proximity. Leads only, none asserted as fact."
+        subtitle="Motion, scene change, face, object and proximity detection. Investigative leads only, not verified evidence."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">

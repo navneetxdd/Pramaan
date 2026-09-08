@@ -137,7 +137,7 @@ export function CaseDeviceIdPage() {
       <PageHeader
         kicker="Step 2 · Identification"
         title="Device & format analysis"
-        subtitle="Signature scan and partition layout. Selects the recovery adapter. Routing hints only until field-validated."
+        subtitle="Signature scan and partition layout. Picks the recovery adapter for the next step."
         actions={
           <Button
             disabled={!deviceId || scanning}

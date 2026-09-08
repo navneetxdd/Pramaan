@@ -823,7 +823,7 @@ def search_person(run_id: str, query_image: bytes, *, mode: str = "appearance", 
             raise RuntimeError("Face models unavailable on the engine host")
         q = _face_embed(img, None)
         if q is None:
-            raise ValueError("No face found in the reference photo — try a closer, front-facing image")
+            raise ValueError("No face found in the reference photo. Try a closer, front-facing image.")
         floor = FACE_MATCH_COS
     else:
         if _load_reid() is None:
