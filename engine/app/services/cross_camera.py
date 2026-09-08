@@ -208,8 +208,12 @@ def _sample(video_path: Path, fps: float, max_frames: int) -> Iterator[tuple[int
             if not ok:
                 break
             if idx % stride == 0:
-                pos = float(cap.get(cv2.CAP_PROP_POS_MSEC) or 0)
-                offset_ms = int(pos if pos > 0 else (idx / src_fps) * 1000)
+                # Offset from the decoded frame index over the source rate. This
+                # is always real and monotonic. CAP_PROP_POS_MSEC returns 0 for
+                # every frame on some backends (notably transcoded carve output),
+                # which would collapse an identity's first_seen/last_seen span to
+                # zero.
+                offset_ms = int(round((idx / src_fps) * 1000.0))
                 yield offset_ms, frame
                 emitted += 1
             idx += 1

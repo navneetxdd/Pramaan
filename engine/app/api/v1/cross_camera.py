@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from engine.app.core.job_manager import job_manager
 from engine.app.core.repository import get_case, persist_job
@@ -19,6 +19,21 @@ class CorrelateRequest(BaseModel):
     fps: float = Field(default=cross_camera.DEFAULT_FPS, ge=0.2, le=6.0)
     match_sensitivity: float = Field(default=0.5, ge=0.0, le=1.0)
     max_frames_per_source: int = Field(default=cross_camera.DEFAULT_MAX_FRAMES, ge=20, le=2000)
+
+    @field_validator("actor")
+    @classmethod
+    def _actor_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("actor must not be blank")
+        return value
+
+    @field_validator("source_keys")
+    @classmethod
+    def _source_keys_not_blank(cls, value: list[str]) -> list[str]:
+        cleaned = [key.strip() for key in value if key and key.strip()]
+        if not cleaned:
+            raise ValueError("source_keys must contain at least one non-empty key")
+        return cleaned
 
 
 class SaveStillRequest(BaseModel):

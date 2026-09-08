@@ -83,6 +83,18 @@ class CrossCameraSourcesTests(unittest.TestCase):
         r = self.client.get("/api/v1/cases/does-not-exist/cross-camera/sources")
         self.assertEqual(r.status_code, 404)
 
+    def test_blank_actor_or_empty_source_keys_rejected_with_422(self) -> None:
+        case_id = self._new_case("Cross-camera: request validation")
+        for payload in (
+            {"actor": "   ", "source_keys": ["cam-1"]},
+            {"actor": "Examiner", "source_keys": ["", "  "]},
+            {"actor": "Examiner"},
+        ):
+            r = self.client.post(
+                f"/api/v1/cases/{case_id}/cross-camera/runs", json=payload
+            )
+            self.assertEqual(r.status_code, 422, f"{payload} -> {r.status_code} {r.text}")
+
 
 @unittest.skipUnless(
     REID_MODEL_PATH.exists() and DEMO_CAM_A.exists(),
@@ -132,6 +144,24 @@ class CrossCameraCorrelationTests(unittest.TestCase):
         body = run.json()
         self.assertGreater(body["summary"]["identities"], 0)
         self.assertGreater(body["summary"]["detections"], 0)
+
+    def test_identities_carry_a_real_time_span(self) -> None:
+        run = self.client.get(f"/api/v1/cross-camera/runs/{self.run_id}").json()
+        self.assertTrue(run["identities"], "expected at least one identity")
+        spans = []
+        for ident in run["identities"]:
+            self.assertGreaterEqual(ident["last_seen_ms"], ident["first_seen_ms"])
+            detail = self.client.get(
+                f"/api/v1/cross-camera/identities/{ident['id']}"
+            ).json()
+            offsets = {a["offset_ms"] for a in detail["appearances"]}
+            self.assertTrue(offsets, "identity has no appearances with offsets")
+            spans.append(ident["last_seen_ms"] - ident["first_seen_ms"])
+        # A multi-appearance run must not report every identity as a zero-length
+        # instant; that was the symptom of the offset bug.
+        self.assertGreater(
+            max(spans), 0, "every identity collapsed to a zero-length time span"
+        )
 
     def test_search_ranks_a_crop_of_itself_highest(self) -> None:
         run = self.client.get(f"/api/v1/cross-camera/runs/{self.run_id}").json()
