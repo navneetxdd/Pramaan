@@ -48,6 +48,25 @@ export function integrityLabel(state: IntegrityState): string {
   }
 }
 
+/** Capability tiers that represent a vendor-specific parser match (Dahua DHAV,
+ * Hikvision HIKBTREE, Honeywell). A generic MBR/FAT/NTFS/ext signature routed to
+ * generic_tier2 carries capability_tier "filesystem_recovery" or
+ * "acquisition_generic_only". Those mean filesystem undelete or generic carving,
+ * not vendor identification, and must never be counted as one. Mirrors
+ * VENDOR_PARSER_TIERS in engine/app/parsers/manufacturer_detect.py. */
+export const VENDOR_PARSER_TIERS = new Set([
+  "validated_parser",
+  "experimental_parser",
+]);
+
+export function isVendorParserHit(hit: {
+  capability_tier?: string | null;
+}): boolean {
+  return (
+    hit.capability_tier != null && VENDOR_PARSER_TIERS.has(hit.capability_tier)
+  );
+}
+
 export function capabilityTierLabel(tier: string): string {
   switch (tier) {
     case "validated_parser":

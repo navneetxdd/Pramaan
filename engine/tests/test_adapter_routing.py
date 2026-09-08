@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from engine.app.parsers.manufacturer_detect import identify_image
+from engine.app.parsers.manufacturer_detect import VENDOR_PARSER_TIERS, identify_image
 from engine.app.verification.honeywell_specimen import write_honeywell_specimen
 from engine.app.verification.lab_specimen import write_lab_specimen
 
@@ -53,6 +53,25 @@ class AdapterRoutingTests(unittest.TestCase):
             uniview_only.write_bytes(b"UNIVIEW" + b"\x00" * 4096)
             uniview_hits = identify_image(uniview_only).get("hits") or []
             self.assertFalse(any(hit["vendor"] == "Uniview" for hit in uniview_hits))
+
+    def test_filesystem_only_image_is_not_vendor_identification(self) -> None:
+        # A disk image (E01, dd) whose only signatures are an MBR and a FAT
+        # volume label is filesystem-undelete territory, not a vendor match.
+        # The Overview "Vendor identified" metric counts a hit only when its
+        # capability_tier is in VENDOR_PARSER_TIERS, so this image must produce
+        # carve hits but none at a vendor-parser tier, and route to generic.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "disk.img"
+            blob = bytearray(b"\x00" * 8192)
+            blob[510:512] = b"\x55\xaa"
+            blob[1024:1032] = b"FAT32   "
+            path.write_bytes(bytes(blob))
+            report = identify_image(path)
+        hits = report.get("hits") or []
+        self.assertTrue(hits, "filesystem markers should still produce carve hits")
+        leaked = [h.get("capability_tier") for h in hits if h.get("capability_tier") in VENDOR_PARSER_TIERS]
+        self.assertEqual(leaked, [], f"filesystem-only image leaked vendor-parser tiers: {leaked}")
+        self.assertEqual(report.get("recommended_adapter"), "generic_tier2")
 
     def test_capability_registry_is_explicit_about_evidence_scope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

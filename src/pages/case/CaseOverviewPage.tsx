@@ -21,6 +21,7 @@ import { formatBytes } from "@/lib/utils";
 import {
   custodyActionLabel,
   integrityLabel,
+  isVendorParserHit,
   recoveryAdapterLabel,
   resolveIntegrityState,
 } from "@/lib/integrity";
@@ -78,14 +79,12 @@ export function CaseOverviewPage() {
   const totalBytes = evidence.reduce((sum, e) => sum + e.size_bytes, 0);
   const segmentTotal = totalRecoveredSegments(jobs);
   const flagged = failedJobCount(jobs);
-  // A vendor hit means a vendor-specific parser matched, not a generic
-  // filesystem signature. Generic FAT/E01 detection routing to generic_tier2
-  // is not vendor identification and must not be counted as such.
+  // A vendor hit means a vendor-specific parser matched (Dahua, Hikvision,
+  // Honeywell). A generic MBR/FAT/NTFS signature on a disk image carries
+  // capability_tier "filesystem_recovery" and routes to generic_tier2. That is
+  // filesystem undelete, not vendor identification, and is not counted here.
   const hasVendorHit = (e: (typeof evidence)[number]) =>
-    (e.identification?.hits ?? []).some(
-      (h) =>
-        h.capability_tier && h.capability_tier !== "acquisition_generic_only",
-    );
+    (e.identification?.hits ?? []).some(isVendorParserHit);
   const vendorHit = evidence.filter(hasVendorHit).length;
   const identifyRan = evidence.filter((e) => e.identification != null).length;
   const noVendorHit = identifyRan - vendorHit;

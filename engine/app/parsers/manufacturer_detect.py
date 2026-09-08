@@ -100,6 +100,13 @@ FILESYSTEM_MARKERS = [
 
 H264_NAL_TYPES = {0x67, 0x68, 0x65, 0x41, 0x61, 0x27, 0x28}
 
+# Capability tiers that count as a vendor-specific parser identification.
+# Every other tier (acquisition_generic_only, filesystem_recovery, unset) is
+# generic handling and must not be reported to an examiner as "vendor
+# identified". The frontend mirrors this set in src/lib/integrity.ts
+# (VENDOR_PARSER_TIERS) and both must stay in sync.
+VENDOR_PARSER_TIERS = frozenset({"validated_parser", "experimental_parser"})
+
 
 @dataclass
 class VendorHit:
