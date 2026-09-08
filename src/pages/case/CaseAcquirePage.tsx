@@ -238,7 +238,7 @@ export function CaseAcquirePage() {
 
     setHashState("pending");
 
-    setWorking("Block imaging (read-only source)…");
+    setWorking("Disk imaging (read-only source)…");
 
     try {
       const started = await api.acquirePhysical(caseId, {
@@ -432,11 +432,11 @@ export function CaseAcquirePage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="mx-auto flex max-w-[1440px] flex-col gap-3 pb-8">
       <PageHeader
         kicker="Step 1 · Preservation"
         title="Acquire evidence"
-        subtitle="Image or register read-only copies. Source media is never modified — hashes are verified before the catalog."
+        subtitle="Image or register read-only copies. Source media is never modified; hashes are verified before the catalog."
       />
       <ol className="flex flex-wrap gap-2 px-5">
         {STEPS.map((label, idx) => (
@@ -453,8 +453,8 @@ export function CaseAcquirePage() {
         ))}
       </ol>
 
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(260px,300px)_1fr_minmax(220px,260px)]">
-        <section className="visily-card min-h-0 space-y-4 overflow-y-auto p-4">
+      <div className="grid gap-3 lg:grid-cols-[minmax(260px,300px)_1fr_minmax(220px,260px)] lg:items-start">
+        <section className="visily-card space-y-4 p-4">
           <div>
             <p className="visily-card-title text-[11px]">
               Who is performing this step?
@@ -523,7 +523,7 @@ export function CaseAcquirePage() {
             style={{ borderColor: "var(--border-subtle)" }}
           >
             <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
-              Block imaging
+              Disk imaging
             </p>
 
             <Input
@@ -748,7 +748,7 @@ export function CaseAcquirePage() {
           )}
         </section>
 
-        <aside className="visily-card flex min-h-0 flex-col">
+        <aside className="visily-card flex flex-col">
           <div className="visily-card-header">
             <span className="visily-card-title">This case</span>
 
@@ -757,7 +757,7 @@ export function CaseAcquirePage() {
             </span>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          <div className="max-h-[520px] overflow-y-auto p-2">
             {queueItems.length === 0 ? (
               <p className="p-3 text-[12px] text-[var(--text-tertiary)]">
                 Evidence items appear here after acquisition.

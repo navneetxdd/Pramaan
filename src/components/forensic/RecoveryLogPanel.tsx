@@ -31,7 +31,7 @@ function logTone(line: string): string {
 
 export function RecoveryLogPanel({ lines }: { lines: string[] }) {
   return (
-    <pre className="flex-1 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed">
+    <pre className="max-h-[360px] flex-1 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed">
       {lines.length === 0 ? (
         <span className="text-[var(--text-tertiary)]">
           Log output appears when a recovery job runs.

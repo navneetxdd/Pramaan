@@ -22,6 +22,11 @@ export function subscribeJobEvents(
   let closed = false;
   let es: EventSource | null = null;
   let retryMs = 800;
+  let failures = 0;
+  // A job that never streams (already finished, or the id is gone) would
+  // otherwise reconnect forever and hold an HTTP connection. Give up after a
+  // bounded number of consecutive failures.
+  const MAX_FAILURES = 6;
 
   function connect() {
     if (closed) return;
@@ -30,6 +35,7 @@ export function subscribeJobEvents(
 
     es.onopen = () => {
       retryMs = 800;
+      failures = 0;
       onOpen?.();
     };
 
@@ -54,6 +60,12 @@ export function subscribeJobEvents(
       es?.close();
       es = null;
       if (closed) return;
+      failures += 1;
+      if (failures >= MAX_FAILURES) {
+        cleanup();
+        onError?.(new Error("Job event stream unavailable"));
+        return;
+      }
       window.setTimeout(connect, retryMs);
       retryMs = Math.min(retryMs * 1.5, 5000);
     };

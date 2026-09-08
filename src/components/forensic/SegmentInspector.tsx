@@ -413,7 +413,7 @@ export function SegmentInspector({
   }
 
   return (
-    <section className="visily-card flex min-h-[384px] flex-col overflow-hidden">
+    <section className="visily-card flex flex-col">
       <div className="visily-card-header">
         <span className="visily-card-title">Segment inspector</span>
         {/* Identify the subject in the header, so the examiner knows what they
@@ -458,7 +458,7 @@ export function SegmentInspector({
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-3">
+      <div className="p-4">
         {tab === "metadata" ? (
           <div className="space-y-3">
             {/* Grouped key/value columns: related facts read across together

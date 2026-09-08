@@ -37,6 +37,13 @@ ALLOWED_ORIGINS = {
     "https://tauri.localhost",
     "tauri://localhost",
 }
+# Opt-in for a dev box where the default Vite port is taken. Comma-separated,
+# e.g. PRAMAAN_EXTRA_ORIGINS=http://127.0.0.1:5180. Never set in production.
+ALLOWED_ORIGINS |= {
+    origin.strip()
+    for origin in os.getenv("PRAMAAN_EXTRA_ORIGINS", "").split(",")
+    if origin.strip()
+}
 
 _API_TOKEN = os.getenv("PRAMAAN_API_TOKEN", "").strip()
 

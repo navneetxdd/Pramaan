@@ -333,6 +333,11 @@ export function CaseRecoverPage() {
   const { caseId, workspace, refresh } = useCaseContext();
   const [deviceId, setDeviceId] = useState("");
   const [actor, setActor] = useState(workspace?.case.examiner_name ?? "");
+  // workspace loads after first render; seed the examiner name once it arrives
+  // so the field is not left blank (it stays editable).
+  useEffect(() => {
+    if (workspace?.case.examiner_name) setActor(workspace.case.examiner_name);
+  }, [workspace?.case.examiner_name]);
   const [log, setLog] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
   // The recovery job this page is currently streaming. The SSE subscription is
@@ -778,7 +783,7 @@ export function CaseRecoverPage() {
     // On a short viewport the page scrolls rather than compressing panels to
     // zero height — a collapsed segments table is worse than a scrollbar.
     <TooltipProvider delayDuration={250} skipDelayDuration={300}>
-      <div className="recovery-shell flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
+      <div className="recovery-shell mx-auto flex max-w-[1440px] flex-col gap-4 pb-8">
         {/* shrink-0 + overflow-visible: .visily-card clips, and as a flex child this
           card was compressing, so the expanded Advanced panel was cut in half. */}
         <section className="visily-card flex shrink-0 flex-wrap items-end gap-3 overflow-visible p-4">
@@ -1010,7 +1015,7 @@ export function CaseRecoverPage() {
               <VirtualTable
                 rows={visibleSegments}
                 rowHeight={48}
-                maxHeight={288}
+                maxHeight={560}
                 minWidth={880}
                 emptyMessage={
                   query.trim()
@@ -1182,11 +1187,11 @@ export function CaseRecoverPage() {
           </div>
 
           <div className="flex min-w-0 flex-col gap-3">
-            <section className="visily-card overflow-auto p-4">
+            <section className="visily-card p-4">
               <p className="visily-card-title mb-3">Checks passed</p>
               <RecoveryChecksPanel segments={segments} />
             </section>
-            <section className="visily-card flex min-h-[240px] flex-col overflow-hidden">
+            <section className="visily-card flex flex-col overflow-hidden">
               <div className="visily-card-header">
                 <span className="visily-card-title">Engine log</span>
                 {isRecovering ? (
@@ -1204,10 +1209,7 @@ export function CaseRecoverPage() {
               {isRecovering ? (
                 <RecoveryProgress percent={progress} phase={phase} />
               ) : null}
-              <div
-                ref={logRef}
-                className="flex min-h-[240px] flex-1 flex-col overflow-hidden"
-              >
+              <div ref={logRef} className="flex min-h-[200px] flex-col">
                 {log.length > 0 || isRecovering ? (
                   <RecoveryLogPanel lines={log} />
                 ) : (

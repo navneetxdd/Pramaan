@@ -29,6 +29,11 @@ export function CaseAiAnalyticsPage() {
     if (devices[0] && !deviceId) setDeviceId(devices[0].id);
   }, [devices, deviceId]);
 
+  // Seed the examiner name once the workspace arrives (stays editable).
+  useEffect(() => {
+    if (workspace?.case.examiner_name) setActor(workspace.case.examiner_name);
+  }, [workspace?.case.examiner_name]);
+
   useEffect(() => {
     if (!deviceId) return;
     void api
