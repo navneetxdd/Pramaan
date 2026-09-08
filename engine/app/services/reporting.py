@@ -77,12 +77,61 @@ _ADAPTER_LABELS = {
     "needs_selection": "Adapter not selected",
 }
 
+# Structural markers the engine stores in recovered_sequences.validation_level.
+# Mirrors DELETED_VALIDATIONS / ALLOCATED_VALIDATIONS / STRUCTURAL_VALIDATIONS in
+# src/lib/allocation.ts so the court report and the live app say the same word.
+_DELETED_MARKERS = {
+    "hikbtree_deleted_entry",
+    "honeywell_expired_index",
+    "filesystem_deleted_inode",
+    "slack_recovered",
+    "unreferenced_carve",
+    "h264_nal_tail",
+}
+_ALLOCATED_MARKERS = {
+    "hikbtree_indexed",
+    "honeywell_index_4",
+    "honeywell_format_carve_4",
+    "hkvi_block_4",
+    "hkvi_block",
+}
+_STRUCTURAL_MARKERS = {"dual_signature", "dual_signature_4"}
+
 
 def _label(value: object, table: dict[str, str], fallback: str = "—") -> str:
     text = str(value).strip() if value not in (None, "") else ""
     if not text:
         return fallback
     return table.get(text, text.replace("_", " "))
+
+
+def _allocation_label(sequence: dict) -> str:
+    """Human allocation state for one recovered segment, mirroring allocationOf()
+    in src/lib/allocation.ts: prefer the engine's own allocation_state, fall back
+    to the validation-marker vocabulary, never guess 'allocated'."""
+    evidence = sequence.get("validation_evidence") or {}
+    raw = evidence.get("allocation_state")
+    if isinstance(raw, str):
+        value = raw.lower()
+        for prefix, text in (
+            ("deleted", "Deleted"),
+            ("recording", "In-progress recording"),
+            ("allocated", "Allocated"),
+            ("carve", "Carve (no allocation map)"),
+            ("structural", "Structurally complete (no allocation map)"),
+        ):
+            if value.startswith(prefix):
+                return text
+    marker = str(sequence.get("validation_level") or "").strip()
+    if marker in _DELETED_MARKERS:
+        return "Deleted / unreferenced"
+    if marker in _STRUCTURAL_MARKERS:
+        return "Structurally complete (no allocation map)"
+    if marker in _ALLOCATED_MARKERS:
+        return "Allocated (live index entry)"
+    if marker == "hikbtree_recording":
+        return "In-progress recording"
+    return marker.replace("_", " ") if marker else "Unclassified"
 
 
 def _custody_action_label(action: str) -> str:
@@ -232,7 +281,7 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
     )
     recovery_rows = "".join(
         f"<tr><td><code>{escape(str(item.get('job_id', item.get('device_id', ''))[:12]))}…</code></td>"
-        f"<td>{escape(str(item.get('status', 'current')))}</td>"
+        f"<td>{escape('Catalogued' if item.get('summary_type') == 'current_sequences' else str(item.get('status', '—')))}</td>"
         f"<td>{escape(str(item.get('vendor') or '—'))}</td><td>{escape(_label(item.get('adapter'), _ADAPTER_LABELS))}</td>"
         f"<td>{int(item['segment_count'])}</td></tr>"
         for item in report["recovery_summary"]
@@ -243,7 +292,7 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
         for event in report["custody_events"][:50]
     )
     lead_rows = "".join(
-        f"<tr><td>{escape(str(lead.get('finding_type') or '—'))}</td>"
+        f"<tr><td>{escape(str(lead.get('finding_type') or '—').replace('_', ' '))}</td>"
         f"<td>{escape(str(lead.get('label') or '—'))}</td>"
         f"<td>{int(lead.get('frame_offset_ms') or 0)}</td>"
         f"<td>{escape(format(lead['confidence'], '.2f') if lead.get('confidence') is not None else '—')}</td>"
@@ -273,15 +322,16 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
             )
         drift = float(device.get("drift_offset_seconds") or 0)
         timeline_notes.append(
-            f"Device {escape(device['id'][:12])}… drift {drift:+.1f}s · adapter {escape(str(device.get('detected_engine') or 'unknown'))}"
+            f"Device {escape(device['id'][:12])}… drift {drift:+.1f}s · adapter "
+            f"{escape(_label(device.get('detected_engine'), _ADAPTER_LABELS, 'unknown'))}"
         )
         for sequence in list_sequences(device["id"]):
             provenance_rows += (
                 f"<tr><td>{escape(str(sequence.get('channel')))}</td>"
                 f"<td><code>{escape(str(sequence.get('byte_start')))}</code></td>"
                 f"<td><code>{escape(str(sequence.get('byte_end')))}</code></td>"
-                f"<td>{escape(str(sequence.get('parser_name') or '—'))}</td>"
-                f"<td>{escape(str(sequence.get('validation_level') or '—'))}</td>"
+                f"<td>{escape(_label(sequence.get('parser_name'), _ADAPTER_LABELS, '—'))}</td>"
+                f"<td>{escape(_allocation_label(sequence))}</td>"
                 f"<td><code>{escape(str(sequence.get('output_sha256', '')[:16]))}…</code></td></tr>"
             )
     chain_ok = report["custody_chain_valid"]["ok"]
@@ -308,7 +358,7 @@ th{{background:#f4f6f8;text-align:left}} code{{font-family:monospace;font-size:1
 <table><tr><th>Vendor</th><th>Adapter</th><th>Tier</th><th>Scope</th></tr>{capability_rows or '<tr><td colspan="4">No identification hits recorded.</td></tr>'}</table>
 <h2>Timeline normalization</h2><p>{timeline_section}</p>
 <h2>Recovery summary</h2><table><tr><th>Job/Device</th><th>Status</th><th>Vendor</th><th>Adapter</th><th>Segments</th></tr>{recovery_rows}</table>
-<h2>Segment provenance</h2><table><tr><th>Ch</th><th>Byte start</th><th>Byte end</th><th>Parser</th><th>Validation</th><th>Artifact SHA-256</th></tr>{provenance_rows or '<tr><td colspan="6">No recovered sequences.</td></tr>'}</table>
+<h2>Segment provenance</h2><table><tr><th>Ch</th><th>Byte start</th><th>Byte end</th><th>Parser</th><th>Allocation</th><th>Artifact SHA-256</th></tr>{provenance_rows or '<tr><td colspan="6">No recovered sequences.</td></tr>'}</table>
 <h2>Investigative leads (examiner-selected)</h2>
 <p>Leads marked INCLUDED by the examiner. These are analytical hints only — not verified evidence.</p>
 <table><tr><th>Type</th><th>Label</th><th>Offset (ms)</th><th>Confidence</th><th>Finding ID</th></tr>{lead_rows or '<tr><td colspan="5">No examiner-selected leads.</td></tr>'}</table>
@@ -427,6 +477,8 @@ def _custody_legacy(entry: dict) -> dict:
         "case_id": entry["target_id"],
         "actor": entry["actor"],
         "action": entry["action"],
-        "detail": entry.get("evidence_digest") or entry.get("target_type"),
+        # target_type is always "case" for these rows; showing it adds a column
+        # of noise. Keep the evidence digest when there is one, else nothing.
+        "detail": entry.get("evidence_digest") or "",
         "created_at": entry["timestamp_utc"],
     }
