@@ -105,6 +105,15 @@ def _label(value: object, table: dict[str, str], fallback: str = "—") -> str:
     return table.get(text, text.replace("_", " "))
 
 
+def _clip_offset(ms: object) -> str:
+    """Milliseconds into a recovered clip as m:ss."""
+    try:
+        total = max(0, int(ms or 0)) // 1000
+    except (TypeError, ValueError):
+        return "0:00"
+    return f"{total // 60}:{total % 60:02d}"
+
+
 def _allocation_label(sequence: dict) -> str:
     """Human allocation state for one recovered segment, mirroring allocationOf()
     in src/lib/allocation.ts: prefer the engine's own allocation_state, fall back
@@ -144,7 +153,11 @@ def _custody_action_label(action: str) -> str:
 
 
 def _recovery_summary(case_id: str) -> list[dict]:
-    summary: list[dict] = []
+    """One row per device: the sequences currently in the catalog, plus the
+    recovery run that produced them. A device is the unit here — earlier this
+    returned a job row *and* a device row per device, which double-counted the
+    same sequences in `total_segments_recovered` and in the report table."""
+    recovery_jobs: list[dict] = []
     for job in list_jobs_for_case(case_id):
         if job.get("kind") != "recovery":
             continue
@@ -154,28 +167,23 @@ def _recovery_summary(case_id: str) -> list[dict]:
                 result = json.loads(result)
             except json.JSONDecodeError:
                 result = {}
-        adapter = result.get("adapter")
-        segment_count = int(result.get("segments_found") or 0)
-        if not adapter and segment_count == 0:
-            continue
-        summary.append(
-            {
-                "job_id": job["id"],
-                "status": job["status"],
-                "vendor": result.get("vendor"),
-                "adapter": adapter,
-                "segment_count": segment_count,
-                "segment_evidence": result.get("evidence", []),
-            }
-        )
+        recovery_jobs.append({**job, "_result": result})
+
+    summary: list[dict] = []
     for device in list_devices(case_id):
         sequences = list_sequences(device["id"])
+        device_jobs = [j for j in recovery_jobs if j.get("device_id") == device["id"]]
+        last_job = device_jobs[-1] if device_jobs else None
         summary.append(
             {
                 "summary_type": "current_sequences",
                 "device_id": device["id"],
-                "vendor": device.get("declared_brand"),
-                "adapter": device.get("detected_engine"),
+                "job_id": last_job["id"] if last_job else None,
+                "status": last_job["status"] if last_job else "no recovery run",
+                "vendor": device.get("declared_brand")
+                or (last_job["_result"].get("vendor") if last_job else None),
+                "adapter": device.get("detected_engine")
+                or (last_job["_result"].get("adapter") if last_job else None),
                 "segment_count": len(sequences),
                 "segment_evidence": [
                     {
@@ -279,9 +287,13 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
         if logical_only
         else ""
     )
+    def _recovery_id(item: dict) -> str:
+        ref = item.get("job_id") or item.get("device_id") or ""
+        return f"{str(ref)[:12]}…" if ref else "—"
+
     recovery_rows = "".join(
-        f"<tr><td><code>{escape(str(item.get('job_id', item.get('device_id', ''))[:12]))}…</code></td>"
-        f"<td>{escape('Catalogued' if item.get('summary_type') == 'current_sequences' else str(item.get('status', '—')))}</td>"
+        f"<tr><td><code>{escape(_recovery_id(item))}</code></td>"
+        f"<td>{escape(str(item.get('status') or 'no recovery run').replace('_', ' ').capitalize())}</td>"
         f"<td>{escape(str(item.get('vendor') or '—'))}</td><td>{escape(_label(item.get('adapter'), _ADAPTER_LABELS))}</td>"
         f"<td>{int(item['segment_count'])}</td></tr>"
         for item in report["recovery_summary"]
@@ -294,8 +306,8 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
     lead_rows = "".join(
         f"<tr><td>{escape(str(lead.get('finding_type') or '—').replace('_', ' '))}</td>"
         f"<td>{escape(str(lead.get('label') or '—'))}</td>"
-        f"<td>{int(lead.get('frame_offset_ms') or 0)}</td>"
-        f"<td>{escape(format(lead['confidence'], '.2f') if lead.get('confidence') is not None else '—')}</td>"
+        f"<td>{escape(_clip_offset(lead.get('frame_offset_ms')))}</td>"
+        f"<td>{escape((format(lead['confidence'], '.2f') + (' (low)' if lead['confidence'] < 0.6 else '')) if lead.get('confidence') is not None else '—')}</td>"
         f"<td><code>{escape(str(lead.get('finding_id', ''))[:12])}…</code></td></tr>"
         for lead in report.get("investigative_leads", [])
     )
@@ -303,6 +315,7 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
     timeline_notes: list[str] = []
     provenance_rows = ""
     coverage = "No evidence attached."
+    _seen_routes: set[tuple[str, str]] = set()
     for device in devices:
         trace_raw = device.get("detection_trace_json")
         trace: dict = {}
@@ -314,6 +327,10 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
         coverage = trace.get("coverage_note") or "Identification is marker-based routing, not field validation."
         hits = trace.get("hits") or []
         for hit in hits[:8]:
+            route = (str(hit.get("vendor", "")), str(hit.get("adapter", "")))
+            if route in _seen_routes:
+                continue
+            _seen_routes.add(route)
             capability_rows += (
                 f"<tr><td>{escape(str(hit.get('vendor', '—')))}</td>"
                 f"<td>{escape(_label(hit.get('adapter'), _ADAPTER_LABELS))}</td>"
@@ -338,32 +355,54 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
     broken_row = report["custody_chain_valid"].get("first_broken_row_id")
     chain_detail = "INTACT" if chain_ok else f"BROKEN at custody row {broken_row}"
     timeline_section = "<br/>".join(timeline_notes) if timeline_notes else "Byte-offset ordering only; no recorder clock recovered."
+    adapters_used = sorted({
+        _label(item.get("adapter"), _ADAPTER_LABELS)
+        for item in report["recovery_summary"]
+        if item.get("adapter")
+    })
+    scope_line = (
+        f"Recovery in this case used: {', '.join(adapters_used)}. "
+        if adapters_used
+        else ""
+    ) + "The table below lists every parser the identification scan considered for this evidence."
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/><title>Forensic Report — {escape(str(case['title']))}</title>
 <style>
 body{{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#ffffff;color:#111418}}
-table{{border-collapse:collapse;width:100%;margin:1rem 0}} th,td{{border:1px solid #d7dbe0;padding:8px;font-size:13px}}
+table{{border-collapse:collapse;width:100%;margin:1rem 0}} th,td{{border:1px solid #d7dbe0;padding:8px;font-size:13px;vertical-align:top}}
 th{{background:#f4f6f8;text-align:left}} code{{font-family:monospace;font-size:12px}}
 .ok{{color:#0f7b3f}} .bad{{color:#b00020}} h2{{margin-top:2rem}}
+.meta{{margin:0.15rem 0;font-size:13px}} .meta b{{display:inline-block;min-width:9rem}}
+.signoff{{margin-top:2.5rem;padding-top:1rem;border-top:1px solid #d7dbe0;font-size:13px}}
+.signoff .line{{display:inline-block;border-bottom:1px solid #111418;min-width:16rem;margin:0 0.5rem}}
 </style></head><body>
 <h1>Forensic case report</h1>
-<p><strong>{escape(str(case['title']))}</strong> · Examiner: {escape(str(case['examiner']))}</p>
-<p>Custody chain: <span class="{'ok' if chain_ok else 'bad'}">{escape(chain_detail)}</span></p>
-<p>Version: {escape(str(report['app_version']))}</p>
+<p class="meta"><b>Case</b>{escape(str(case['title']))}</p>
+{f'<p class="meta"><b>Reference</b>{escape(str(case["reference"]))}</p>' if case.get('reference') else ''}
+<p class="meta"><b>Examiner</b>{escape(str(case['examiner']))}</p>
+<p class="meta"><b>Custody chain</b><span class="{'ok' if chain_ok else 'bad'}">{escape(chain_detail)}</span></p>
+<p class="meta"><b>Report generated</b>{escape(str(report['generated_at'])[:19].replace('T', ' '))} UTC</p>
+<p class="meta"><b>Tool</b>Pramaan {escape(str(report['app_version']))}</p>
 {builder_banner}
 {logical_banner}
 <h2>Evidence</h2><table><tr><th>File</th><th>SHA-256</th><th>MD5</th><th>Bytes</th><th>Acquisition</th><th>Write blocker</th></tr>{rows}</table>
 <h2>Capability &amp; validation scope</h2>
+<p>{escape(scope_line)}</p>
 <p>{escape(coverage)}</p>
 <table><tr><th>Vendor</th><th>Adapter</th><th>Tier</th><th>Scope</th></tr>{capability_rows or '<tr><td colspan="4">No identification hits recorded.</td></tr>'}</table>
 <h2>Timeline normalization</h2><p>{timeline_section}</p>
-<h2>Recovery summary</h2><table><tr><th>Job/Device</th><th>Status</th><th>Vendor</th><th>Adapter</th><th>Segments</th></tr>{recovery_rows}</table>
+<h2>Recovery summary</h2><table><tr><th>Recovery run</th><th>Status</th><th>Vendor</th><th>Adapter</th><th>Segments in catalog</th></tr>{recovery_rows}</table>
 <h2>Segment provenance</h2><table><tr><th>Ch</th><th>Byte start</th><th>Byte end</th><th>Parser</th><th>Allocation</th><th>Artifact SHA-256</th></tr>{provenance_rows or '<tr><td colspan="6">No recovered sequences.</td></tr>'}</table>
 <h2>Investigative leads (examiner-selected)</h2>
-<p>Leads marked INCLUDED by the examiner. These are analytical hints only — not verified evidence.</p>
-<table><tr><th>Type</th><th>Label</th><th>Offset (ms)</th><th>Confidence</th><th>Finding ID</th></tr>{lead_rows or '<tr><td colspan="5">No examiner-selected leads.</td></tr>'}</table>
+<p>Leads marked INCLUDED by the examiner. These are analytical hints only, not verified evidence.</p>
+<table><tr><th>Type</th><th>Label</th><th>Into clip</th><th>Confidence</th><th>Finding ID</th></tr>{lead_rows or '<tr><td colspan="5">No examiner-selected leads.</td></tr>'}</table>
 <h2>Custody ledger</h2><table><tr><th>Time</th><th>Action</th><th>Actor</th><th>Detail</th></tr>{custody_rows}</table>
-<p>{escape(str(report['methodology']))}</p>
+<h2>Methodology</h2><p>{escape(str(report['methodology']))}</p>
+<div class="signoff">
+<p>The examiner named above certifies that the acquisition, recovery and analysis
+recorded here were carried out as described, and that the custody chain is as stated.</p>
+<p style="margin-top:1.5rem">Examiner signature <span class="line">&nbsp;</span> Date <span class="line">&nbsp;</span></p>
+</div>
 </body></html>"""
 
 
@@ -405,11 +444,11 @@ def build_pdf_report(case_id: str, *, require_intact_chain: bool = True) -> tupl
         line(f"  {ev['filename']} · SHA-256 {ev['sha256'][:32]}…")
     leads = report.get("investigative_leads") or []
     if leads:
-        line("Investigative leads (examiner-selected — not verified evidence):", "Helvetica-Bold", 11)
+        line("Investigative leads (examiner-selected, not verified evidence):", "Helvetica-Bold", 11)
         for lead in leads[:20]:
             label = lead.get("label") or lead.get("finding_type") or "lead"
             line(
-                f"  {label} @ {lead.get('frame_offset_ms', 0)} ms"
+                f"  {label} at {_clip_offset(lead.get('frame_offset_ms'))} into clip"
                 f" conf={lead.get('confidence', '—')}"
             )
     pdf.save()

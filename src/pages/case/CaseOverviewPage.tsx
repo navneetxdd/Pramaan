@@ -124,7 +124,7 @@ export function CaseOverviewPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <DashboardStat
-          label="Evidence items"
+          label="Evidence"
           value={String(evidence.length)}
           icon={HardDrive}
           tone="info"
@@ -141,11 +141,8 @@ export function CaseOverviewPage() {
           tone={vendorHit > 0 ? "success" : undefined}
         />
         <DashboardStat
-          label={segmentKinds ? "Recordings recovered" : "Recovered artifacts"}
-          value={(segmentKinds
-            ? segmentKinds.recording
-            : segmentTotal
-          ).toLocaleString()}
+          label="Segments recovered"
+          value={segmentTotal.toLocaleString()}
           hint={
             segmentKinds
               ? summariseSegmentKinds(segmentKinds)

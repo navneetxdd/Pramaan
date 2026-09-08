@@ -118,9 +118,10 @@ export function RecoveryTelemetryRibbon({
     <div className="rec-ribbon flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-2 text-[11px]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <Stat
-          label="Recordings"
+          label="Segments"
           value={String(segments.length)}
           accent={segments.length > 0}
+          title="Recovered segments in the catalog: recordings, carves and filesystem-undelete fragments together"
         />
         <Divider />
         <Stat

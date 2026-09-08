@@ -12,6 +12,12 @@ import { useActivity } from "@/context/ActivityContext";
 import { DashboardStat } from "@/components/visily/DashboardStat";
 import { PageHeader } from "@/components/visily/PageHeader";
 
+/** Position of a frame inside its recovered clip, as m:ss. */
+function fmtClipOffset(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 export function CaseAiAnalyticsPage() {
   const { caseId, workspace, refresh } = useCaseContext();
   const [actor, setActor] = useState(workspace?.case.examiner_name ?? "");
@@ -246,9 +252,9 @@ export function CaseAiAnalyticsPage() {
               },
               {
                 key: "offset",
-                header: "Offset",
+                header: "Into clip",
                 className: "mono",
-                cell: (f) => `${f.frame_offset_ms}ms`,
+                cell: (f) => fmtClipOffset(f.frame_offset_ms),
               },
               { key: "label", header: "Label", cell: (f) => f.label ?? "—" },
               {

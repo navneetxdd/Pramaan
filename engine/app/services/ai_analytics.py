@@ -181,7 +181,17 @@ def _sampled_frames(video_path: Path) -> Iterator[tuple[int, object]]:
                 break
             if frame_index % stride == 0:
                 reported_ms = float(capture.get(cv2.CAP_PROP_POS_MSEC) or 0)
-                offset_ms = int(reported_ms if reported_ms > 0 else (frame_index / source_fps) * 1000)
+                computed_ms = (frame_index / source_fps) * 1000
+                # A repackaged clip can carry the recorder's wall-clock as its
+                # PTS, so CAP_PROP_POS_MSEC comes back as an epoch (~1.7e12).
+                # frame_offset_ms must be an offset *into this clip*, so fall
+                # back to the decoded-frame count whenever the reported value is
+                # not a plausible in-clip position.
+                offset_ms = int(
+                    reported_ms
+                    if 0 < reported_ms < 7 * 24 * 3600 * 1000
+                    else computed_ms
+                )
                 yield offset_ms, frame
             frame_index += 1
     finally:
