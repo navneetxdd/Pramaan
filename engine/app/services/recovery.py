@@ -16,6 +16,7 @@ from engine.app.core.repository import (
     persist_job,
 )
 from engine.app.core.hashing import hash_file
+from engine.app.parsers.image_io import evidence_size, open_evidence_readonly
 from engine.app.parsers.manufacturer_detect import detect_vendors
 from engine.app.parsers.registry import bootstrap_defaults, get
 
@@ -29,12 +30,13 @@ def _write_bounded_artifact(
     byte_start: int,
     byte_end: int,
 ) -> tuple[str, str]:
-    source_size = source.stat().st_size
+    # E01/EWF: validate and copy against logical media size, not container bytes.
+    source_size = evidence_size(source)
     if byte_start < 0 or byte_end <= byte_start or byte_end > source_size:
         raise ValueError(f"Invalid recovered byte range [{byte_start}, {byte_end}) for {source_size}-byte source")
     destination.parent.mkdir(parents=True, exist_ok=True)
     remaining = byte_end - byte_start
-    with source.open("rb") as src, destination.open("wb") as dst:
+    with open_evidence_readonly(source) as src, destination.open("wb") as dst:
         src.seek(byte_start)
         while remaining:
             chunk = src.read(min(COPY_CHUNK_SIZE, remaining))
@@ -155,20 +157,37 @@ async def run_recovery_job(
             )
 
         stored = 0
+        skipped_oob = 0
         evidence_rows: list[dict] = []
         artifact_dir = case_storage_dir(case_id) / "sequences"
+        media_size = evidence_size(image_path)
         for seq_index, seg in enumerate(sorted(segments, key=lambda item: item.offset_start)):
             if seg.offset_end <= seg.offset_start:
                 continue
+            if seg.offset_start < 0 or seg.offset_end > media_size:
+                skipped_oob += 1
+                logger.warning(
+                    "Skipping recovered range [%s, %s) outside %s-byte logical source %s",
+                    seg.offset_start,
+                    seg.offset_end,
+                    media_size,
+                    image_path.name,
+                )
+                continue
             suffix = ".h264" if seg.codec == "h264" else ".bin"
             artifact_path = artifact_dir / f"{job_id}_{seq_index:06d}{suffix}"
-            output_md5, output_sha256 = await asyncio.to_thread(
-                _write_bounded_artifact,
-                image_path,
-                artifact_path,
-                seg.offset_start,
-                seg.offset_end,
-            )
+            try:
+                output_md5, output_sha256 = await asyncio.to_thread(
+                    _write_bounded_artifact,
+                    image_path,
+                    artifact_path,
+                    seg.offset_start,
+                    seg.offset_end,
+                )
+            except ValueError as exc:
+                skipped_oob += 1
+                logger.warning("Skipping unrecovered range for %s: %s", image_path.name, exc)
+                continue
             conf = _confidence_label(seg.confidence, seg.validation)
             row = insert_sequence(
                 device_id,
@@ -231,6 +250,7 @@ async def run_recovery_job(
             "case_id": case_id,
             "device_id": device_id,
             "segments_found": stored,
+            "segments_skipped_out_of_bounds": skipped_oob,
             "adapter": adapter_key,
             "vendor": vendors[0].vendor if vendors else "Generic",
             "app_version": APP_VERSION,

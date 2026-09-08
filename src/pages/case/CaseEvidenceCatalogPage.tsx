@@ -16,18 +16,15 @@ import {
   totalRecoveredSegments,
 } from "@/lib/caseStats";
 import type { EvidenceRecord } from "@/lib/api";
-import { HardDrive, FlaskConical, Database } from "lucide-react";
+import { HardDrive, Database } from "lucide-react";
 
 const categoryIcons = {
   disk: HardDrive,
-  specimen: FlaskConical,
   block: Database,
 };
 
 function inferCategory(item: EvidenceRecord): keyof typeof categoryIcons {
   const method = (item.acquisition_method || "").toLowerCase();
-  if (method.includes("synthetic") || method.includes("specimen"))
-    return "specimen";
   if (method.includes("physical") || item.media_type?.includes("physical"))
     return "block";
   return "disk";
@@ -48,7 +45,6 @@ function statusBadgeClass(status: string) {
 }
 
 function categoryLabel(cat: keyof typeof categoryIcons) {
-  if (cat === "specimen") return "lab specimen";
   if (cat === "block") return "block image";
   return "disk image";
 }
@@ -79,12 +75,6 @@ export function CaseEvidenceCatalogPage() {
             id: "disk",
             label: "Disk image",
             count: evidence.filter((e) => inferCategory(e) === "disk").length,
-          },
-          {
-            id: "specimen",
-            label: "Lab specimen",
-            count: evidence.filter((e) => inferCategory(e) === "specimen")
-              .length,
           },
           {
             id: "block",
@@ -121,11 +111,12 @@ export function CaseEvidenceCatalogPage() {
         options: [
           {
             id: "dvr",
-            label: "DVR/NVR image",
+            label: "Video clip / logical export",
             count: evidence.filter(
               (e) =>
-                e.media_type?.includes("dvr") ||
-                /\.(dav|mp4|avi)$/i.test(e.filename) ||
+                e.media_type === "video_clip" ||
+                e.media_type === "logical_export" ||
+                /\.(dav|mp4|avi|mkv|ts)$/i.test(e.filename) ||
                 e.acquisition_method?.includes("logical"),
             ).length,
           },
@@ -171,9 +162,10 @@ export function CaseEvidenceCatalogPage() {
           if (t === "e01") return item.filename.match(/\.(e01|001)$/i);
           if (t === "dvr")
             return (
-              item.media_type?.includes("dvr") ||
-              item.filename.includes("dvr") ||
-              item.filename.includes("specimen")
+              item.media_type === "video_clip" ||
+              item.media_type === "logical_export" ||
+              /\.(dav|mp4|avi|mkv|ts)$/i.test(item.filename) ||
+              Boolean(item.acquisition_method?.includes("logical"))
             );
           return false;
         });

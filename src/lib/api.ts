@@ -61,6 +61,12 @@ export type IdentificationReport = {
   supported_oems_in_ps: string[];
   oem_capabilities?: OemCapability[];
   coverage_note: string;
+  lab_provenance?: {
+    kind: string;
+    stamp: string;
+    message: string;
+    is_lab_specimen: boolean;
+  } | null;
 };
 
 export type EvidenceRecord = {
@@ -80,6 +86,12 @@ export type EvidenceRecord = {
   verification_status?: string;
   identification?: IdentificationReport | null;
   identification_json?: string | null;
+  lab_provenance?: {
+    kind: string;
+    stamp: string;
+    message: string;
+    is_lab_specimen: boolean;
+  } | null;
 };
 
 export type CustodyEvent = {
@@ -311,7 +323,7 @@ export const api = {
       }>;
     }>("/api/v1/signing/history"),
 
-  getCase: (caseId: string) =>
+  getCase: (caseId: string, options?: { signal?: AbortSignal }) =>
     request<{
       case: CaseRecord;
       evidence: EvidenceRecord[];
@@ -323,7 +335,9 @@ export const api = {
         first_broken_row_id: number | null;
         tip_hash?: string | null;
       };
-    }>(`/api/v1/cases/${caseId}/workspace`),
+    }>(`/api/v1/cases/${caseId}/workspace`, {
+      signal: options?.signal,
+    }),
 
   acquire: (caseId: string, actor: string, file: File) => {
     const form = new FormData();

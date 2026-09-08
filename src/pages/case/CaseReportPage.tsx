@@ -36,6 +36,13 @@ export function CaseReportPage() {
   }, [caseId]);
 
   const evidenceCount = workspace?.evidence.length ?? 0;
+  const hasLabSpecimen = Boolean(
+    workspace?.evidence.some((e) => e.lab_provenance?.is_lab_specimen),
+  );
+  const labBanner =
+    workspace?.evidence.find((e) => e.lab_provenance?.is_lab_specimen)
+      ?.lab_provenance?.message ??
+    "Lab specimen — fabricated, NOT a real acquisition";
   const jobCount =
     workspace?.jobs.filter((j) => j.status === "completed").length ?? 0;
   const custodyCount = workspace?.custody.length ?? 0;
@@ -74,6 +81,15 @@ export function CaseReportPage() {
           </>
         }
       />
+
+      {hasLabSpecimen ? (
+        <div
+          role="alert"
+          className="rounded-md border border-[var(--status-danger)] px-3 py-2 text-[13px] text-[var(--status-danger)]"
+        >
+          {labBanner}
+        </div>
+      ) : null}
 
       <div className="grid min-h-[560px] gap-3 lg:grid-cols-[240px_1fr]">
         <section className="visily-card p-3">

@@ -249,6 +249,10 @@ def identify_image(image_path: Path, sample_bytes: int = 64 * 1024 * 1024) -> di
     else:
         recommended = "needs_selection"
 
+    from engine.app.services.evidence_provenance import detect_lab_provenance
+
+    lab_provenance = detect_lab_provenance(image_path)
+
     return {
         "image_size_bytes": size,
         "sample_bytes": sample_len,
@@ -273,6 +277,7 @@ def identify_image(image_path: Path, sample_bytes: int = 64 * 1024 * 1024) -> di
             "Honeywell has a fixture-tested experimental parser. When identification is inconclusive, select an "
             "adapter manually on Recovery."
         ),
+        "lab_provenance": lab_provenance,
     }
 
 

@@ -116,6 +116,18 @@ export function CaseDeviceIdPage() {
         }
       />
 
+      {(selectedEvidence?.lab_provenance?.is_lab_specimen ||
+        report?.lab_provenance?.is_lab_specimen) && (
+        <div
+          role="alert"
+          className="rounded-md border border-[var(--status-danger)] bg-[var(--status-danger-soft,transparent)] px-3 py-2 text-[13px] text-[var(--status-danger)]"
+        >
+          {selectedEvidence?.lab_provenance?.message ||
+            report?.lab_provenance?.message ||
+            "Lab specimen — fabricated, NOT a real acquisition"}
+        </div>
+      )}
+
       {evidence.length === 0 ? (
         <section className="visily-card p-8 text-[13px] text-[var(--text-secondary)]">
           No evidence yet.{" "}

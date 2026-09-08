@@ -156,6 +156,22 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
     case = report["case"]
     devices = list_devices(case_id)
     logical_only = any((device.get("acquisition_method") == "logical_network") for device in devices)
+    from engine.app.services.evidence_provenance import LAB_SPECIMEN_BANNER, detect_lab_provenance
+
+    lab_notices: list[str] = []
+    for device in devices:
+        path = Path(device["image_path"])
+        if not path.exists():
+            continue
+        provenance = detect_lab_provenance(path)
+        if provenance:
+            lab_notices.append(f"{path.name}: {provenance['message']}")
+    lab_banner = (
+        f"<p style='color:#b00020;border:1px solid #b00020;padding:8px;'><strong>{escape(LAB_SPECIMEN_BANNER)}</strong>"
+        f"<br/>{escape(' · '.join(lab_notices))}</p>"
+        if lab_notices
+        else ""
+    )
     rows = "".join(
         f"<tr><td>{escape(str(ev['filename']))}</td><td><code>{escape(str(ev['sha256'][:16]))}…</code></td>"
         f"<td><code>{escape(str((ev.get('md5') or '—')[:16]))}…</code></td><td>{int(ev['size_bytes'])}</td>"
@@ -239,6 +255,7 @@ th{{background:#161d30}} code{{font-family:monospace;font-size:12px}}
 <p><strong>{escape(str(case['title']))}</strong> · Examiner: {escape(str(case['examiner']))}</p>
 <p>Custody chain: <span class="{'ok' if chain_ok else 'bad'}">{escape(chain_detail)}</span></p>
 <p>Version: {escape(str(report['app_version']))}</p>
+{lab_banner}
 {logical_banner}
 <h2>Evidence</h2><table><tr><th>File</th><th>SHA-256</th><th>MD5</th><th>Bytes</th><th>Acquisition</th><th>Write blocker</th></tr>{rows}</table>
 <h2>Capability &amp; validation scope</h2>

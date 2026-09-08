@@ -110,6 +110,19 @@ async def create_lab_specimen(case_id: str, actor: str, vendor: str = "dahua") -
 
 
 OEM_EXTENSIONS = frozenset({".bin", ".dd", ".img", ".raw", ".e01", ".ex01", ".dav", ".mp4", ".avi", ".264", ".h264", ".mkv", ".ts"})
+VIDEO_CLIP_EXTENSIONS = frozenset({".dav", ".mp4", ".avi", ".264", ".h264", ".mkv", ".ts"})
+
+
+def infer_media_type(path: Path) -> str:
+    """Honest input class: clips are not forensic disk images."""
+    suffix = path.suffix.lower()
+    if suffix in {".e01", ".ex01"}:
+        return "ewf_image"
+    if suffix in VIDEO_CLIP_EXTENSIONS:
+        return "video_clip"
+    if suffix in {".bin", ".dd", ".img", ".raw"}:
+        return "disk_image"
+    return "logical_export"
 
 
 def list_oem_images() -> list[dict]:
@@ -165,12 +178,20 @@ def _device_as_evidence(device: dict) -> dict:
     path = Path(device["image_path"])
     import json
 
+    from engine.app.parsers.image_io import evidence_size
+    from engine.app.services.evidence_provenance import detect_lab_provenance
+
     identification = None
     if device.get("detection_trace_json"):
         try:
             identification = json.loads(device["detection_trace_json"])
         except json.JSONDecodeError:
             identification = None
+    try:
+        size_bytes = evidence_size(path) if path.exists() else 0
+    except Exception:
+        size_bytes = path.stat().st_size if path.exists() else 0
+    provenance = detect_lab_provenance(path) if path.exists() else None
     return {
         "id": device["id"],
         "case_id": device["case_id"],
@@ -178,8 +199,8 @@ def _device_as_evidence(device: dict) -> dict:
         "storage_path": device["image_path"],
         "sha256": device["image_sha256"],
         "md5": device["image_md5"],
-        "size_bytes": path.stat().st_size if path.exists() else 0,
-        "media_type": "disk_image",
+        "size_bytes": size_bytes,
+        "media_type": infer_media_type(path),
         "acquired_at": device["acquired_at"],
         "acquisition_status": device.get("acquisition_status", "complete"),
         "acquisition_method": device.get("acquisition_method"),
@@ -189,4 +210,5 @@ def _device_as_evidence(device: dict) -> dict:
         "verification_status": device.get("verification_status", "pending"),
         "identification": identification,
         "identification_json": device.get("detection_trace_json"),
+        "lab_provenance": provenance,
     }

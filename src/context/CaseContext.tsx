@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -16,6 +17,8 @@ import {
   type RecoveryJob,
 } from "@/lib/api";
 import { isNotFound } from "@/lib/apiError";
+
+const WORKSPACE_FETCH_TIMEOUT_MS = 20_000;
 
 type CaseWorkspace = {
   case: CaseRecord;
@@ -41,23 +44,65 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const workspaceRef = useRef<CaseWorkspace | null>(null);
+  const caseIdRef = useRef(caseId);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    workspaceRef.current = workspace;
+  }, [workspace]);
+
+  useEffect(() => {
+    caseIdRef.current = caseId;
+  }, [caseId]);
 
   const refresh = useCallback(
     async (options?: { silent?: boolean }) => {
       if (!caseId) return;
+
+      abortRef.current?.abort();
+      const requestAbort = new AbortController();
+      abortRef.current = requestAbort;
+
+      let timedOut = false;
+      const timer = window.setTimeout(() => {
+        timedOut = true;
+        requestAbort.abort();
+      }, WORKSPACE_FETCH_TIMEOUT_MS);
+
       if (!options?.silent) {
         setLoading(true);
         setError(null);
         setNotFound(false);
       }
+
       try {
-        const data = await api.getCase(caseId);
+        const data = await api.getCase(caseId, { signal: requestAbort.signal });
+        if (caseIdRef.current !== caseId) return;
         setWorkspace(data);
+        workspaceRef.current = data;
         if (!options?.silent) {
           setError(null);
           setNotFound(false);
         }
       } catch (err) {
+        if (caseIdRef.current !== caseId) return;
+        const aborted =
+          (err instanceof DOMException && err.name === "AbortError") ||
+          (err instanceof Error && err.name === "AbortError");
+        if (aborted) {
+          // Intentional cancel (nav/unmount) — do not paint a timeout error.
+          if (!timedOut) return;
+          if (!options?.silent) {
+            setError(
+              "Timed out loading case workspace. Retry from the case list.",
+            );
+            if (!workspaceRef.current) {
+              setWorkspace(null);
+            }
+          }
+          return;
+        }
         const missing = isNotFound(err);
         if (missing) setNotFound(true);
         if (!options?.silent) {
@@ -68,10 +113,19 @@ export function CaseProvider({ children }: { children: ReactNode }) {
                 ? err.message
                 : "Failed to load case",
           );
-          setWorkspace(null);
+          // Keep last-good workspace so soft-nav does not stick on
+          // "Loading…" / "0 B evidence" after a hitch.
+          if (missing || !workspaceRef.current) {
+            setWorkspace(null);
+            workspaceRef.current = null;
+          }
         }
       } finally {
-        if (!options?.silent) setLoading(false);
+        window.clearTimeout(timer);
+        if (abortRef.current === requestAbort) abortRef.current = null;
+        if (!options?.silent && caseIdRef.current === caseId) {
+          setLoading(false);
+        }
       }
     },
     [caseId],
@@ -80,9 +134,14 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!caseId) return;
     setWorkspace(null);
+    workspaceRef.current = null;
     setError(null);
     setNotFound(false);
+    setLoading(true);
     void refresh();
+    return () => {
+      abortRef.current?.abort();
+    };
   }, [caseId, refresh]);
 
   useEffect(() => {
