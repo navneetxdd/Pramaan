@@ -366,7 +366,7 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
         else ""
     ) + "The table below lists every parser the identification scan considered for this evidence."
     return f"""<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"/><title>Forensic Report — {escape(str(case['title']))}</title>
+<html lang="en"><head><meta charset="utf-8"/><title>Forensic report: {escape(str(case['title']))}</title>
 <style>
 body{{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#ffffff;color:#111418}}
 table{{border-collapse:collapse;width:100%;margin:1rem 0}} th,td{{border:1px solid #d7dbe0;padding:8px;font-size:13px;vertical-align:top}}
