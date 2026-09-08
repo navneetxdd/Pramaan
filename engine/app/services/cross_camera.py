@@ -56,6 +56,21 @@ FACE_MATCH_COS = 0.363          # SFace same-person cosine floor, ~99.80% accura
 
 VIDEO_SUFFIXES = {".mp4", ".avi", ".mkv", ".mov", ".mpg", ".mpeg", ".m4v", ".dav", ".ts", ".webm"}
 
+
+def _iso_to_epoch_ms(value: str | None) -> int | None:
+    """Recorder timestamp (ISO 8601) -> epoch milliseconds, or None if unparseable.
+    A naive timestamp is read as UTC: the recorder clock is the reference and the
+    report states that basis explicitly."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp() * 1000)
+
 _reid_net = None
 _reid_checked = False
 _face = None                    # (detector, recognizer) once loaded
@@ -230,6 +245,7 @@ class _Det:
     source_label: str
     source_video: str
     offset_ms: int
+    recorded_epoch_ms: int | None
     box: dict
     conf: float
     emb: object  # np.ndarray (768,)
@@ -346,6 +362,7 @@ def list_sources(case_id: str) -> list[dict]:
             "label": f"Recovered channel {ch}",
             "kind": "recovered_channel",
             "segments": [s["output_path"] for s in seqs],
+            "segment_starts": [s.get("recorder_start_ts") for s in seqs],
             "clip_count": len(seqs),
         })
     # registered video evidence (live captures, network-pulled clips, directly imported video)
@@ -357,6 +374,7 @@ def list_sources(case_id: str) -> list[dict]:
                 "label": p.name,
                 "kind": "video_evidence",
                 "segments": [str(p)],
+                "segment_starts": [dev.get("recorder_start_ts")],
                 "clip_count": 1,
             })
     return out
@@ -421,11 +439,18 @@ async def run_correlation(
             )
             src_dets: list[_Det] = []
             budget = max_frames_per_source
-            for video in src["segments"]:
+            seg_starts = src.get("segment_starts") or []
+            for seg_index, video in enumerate(src["segments"]):
                 if budget <= 0:
                     break
+                seg_base_ms = _iso_to_epoch_ms(
+                    seg_starts[seg_index] if seg_index < len(seg_starts) else None
+                )
                 for offset_ms, frame in _sample(Path(video), fps, budget):
                     budget -= 1
+                    recorded_epoch_ms = (
+                        seg_base_ms + offset_ms if seg_base_ms is not None else None
+                    )
                     persons = [
                         (c, b) for (lbl, c, b) in _detect_objects(frame)
                         if lbl == "person" and c >= MIN_PERSON_CONF and int(b["h"]) >= MIN_BOX_PX
@@ -437,8 +462,8 @@ async def run_correlation(
                         x, y, w, h = int(box["x"]), int(box["y"]), int(box["w"]), int(box["h"])
                         crop = frame[max(0, y): y + h, max(0, x): x + w].copy()
                         face_emb = _face_embed(frame, box)
-                        src_dets.append(_Det(src["key"], src["label"], video, offset_ms, box,
-                                             float(conf), emb, crop, face_emb))
+                        src_dets.append(_Det(src["key"], src["label"], video, offset_ms,
+                                             recorded_epoch_ms, box, float(conf), emb, crop, face_emb))
             det_total += len(src_dets)
             all_tracklets.extend(_build_tracklets(src_dets))
 
@@ -483,19 +508,37 @@ async def run_correlation(
                 cv2.imwrite(str(rep_path), rep.crop)
                 first_ms = min(d.offset_ms for d in cl.dets)
                 last_ms = max(d.offset_ms for d in cl.dets)
+                epochs = [d.recorded_epoch_ms for d in cl.dets if d.recorded_epoch_ms is not None]
+                first_epoch_ms = min(epochs) if epochs else None
+                last_epoch_ms = max(epochs) if epochs else None
                 cams = {}
                 for d in cl.dets:
-                    cams.setdefault(d.source_label, {"key": d.source_key, "count": 0, "first_ms": d.offset_ms, "last_ms": d.offset_ms})
+                    cams.setdefault(d.source_label, {
+                        "key": d.source_key, "count": 0,
+                        "first_ms": d.offset_ms, "last_ms": d.offset_ms,
+                        "first_epoch_ms": d.recorded_epoch_ms, "last_epoch_ms": d.recorded_epoch_ms,
+                    })
                     e = cams[d.source_label]
                     e["count"] += 1
                     e["first_ms"] = min(e["first_ms"], d.offset_ms)
                     e["last_ms"] = max(e["last_ms"], d.offset_ms)
+                    if d.recorded_epoch_ms is not None:
+                        e["first_epoch_ms"] = (
+                            d.recorded_epoch_ms if e["first_epoch_ms"] is None
+                            else min(e["first_epoch_ms"], d.recorded_epoch_ms)
+                        )
+                        e["last_epoch_ms"] = (
+                            d.recorded_epoch_ms if e["last_epoch_ms"] is None
+                            else max(e["last_epoch_ms"], d.recorded_epoch_ms)
+                        )
                 conn.execute(
                     """INSERT INTO cross_camera_identities
                        (id, run_id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms,
+                        first_seen_epoch_ms, last_seen_epoch_ms,
                         rep_thumb_path, cameras_json, embedding, face_embedding)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (iid, run_id, f"Person {i}", len(cl.sources), len(cl.dets), first_ms, last_ms,
+                     first_epoch_ms, last_epoch_ms,
                      str(rep_path), json.dumps(cams), cl.centroid.astype(np.float32).tobytes(),
                      cl.face_centroid.tobytes() if cl.face_centroid is not None else None),
                 )
@@ -503,10 +546,11 @@ async def run_correlation(
                     conn.execute(
                         """INSERT INTO cross_camera_appearances
                            (id, identity_id, run_id, source_key, source_label, source_video, offset_ms,
-                            bbox_json, confidence, embedding, face_embedding)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                            recorded_epoch_ms, bbox_json, confidence, embedding, face_embedding)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (uuid.uuid4().hex, iid, run_id, d.source_key, d.source_label, d.source_video,
-                         d.offset_ms, json.dumps(d.box), d.conf, d.emb.astype(np.float32).tobytes(),
+                         d.offset_ms, d.recorded_epoch_ms, json.dumps(d.box), d.conf,
+                         d.emb.astype(np.float32).tobytes(),
                          d.face_emb.astype(np.float32).tobytes() if d.face_emb is not None else None),
                     )
                 identities_summary.append({
@@ -575,7 +619,8 @@ def get_run(run_id: str) -> dict | None:
         if not r:
             return None
         idents = conn.execute(
-            "SELECT id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms, cameras_json "
+            "SELECT id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms, "
+            "first_seen_epoch_ms, last_seen_epoch_ms, cameras_json "
             "FROM cross_camera_identities WHERE run_id=? ORDER BY camera_count DESC, appearance_count DESC",
             (run_id,),
         ).fetchall()
@@ -589,6 +634,8 @@ def get_run(run_id: str) -> dict | None:
                 "id": i["id"], "label": i["label"], "camera_count": i["camera_count"],
                 "appearance_count": i["appearance_count"],
                 "first_seen_ms": i["first_seen_ms"], "last_seen_ms": i["last_seen_ms"],
+                "first_seen_epoch_ms": i["first_seen_epoch_ms"],
+                "last_seen_epoch_ms": i["last_seen_epoch_ms"],
                 "cameras": json.loads(i["cameras_json"] or "{}"),
             }
             for i in idents
@@ -599,26 +646,31 @@ def get_run(run_id: str) -> dict | None:
 def get_identity(identity_id: str) -> dict | None:
     with get_db() as conn:
         i = conn.execute(
-            "SELECT id, run_id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms, cameras_json "
+            "SELECT id, run_id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms, "
+            "first_seen_epoch_ms, last_seen_epoch_ms, cameras_json "
             "FROM cross_camera_identities WHERE id=?",
             (identity_id,),
         ).fetchone()
         if not i:
             return None
         aps = conn.execute(
-            "SELECT id, source_key, source_label, offset_ms, bbox_json, confidence "
-            "FROM cross_camera_appearances WHERE identity_id=? ORDER BY source_label, offset_ms",
+            "SELECT id, source_key, source_label, offset_ms, recorded_epoch_ms, bbox_json, confidence "
+            "FROM cross_camera_appearances WHERE identity_id=? "
+            "ORDER BY recorded_epoch_ms IS NULL, recorded_epoch_ms, source_label, offset_ms",
             (identity_id,),
         ).fetchall()
     return {
         "id": i["id"], "run_id": i["run_id"], "label": i["label"],
         "camera_count": i["camera_count"], "appearance_count": i["appearance_count"],
         "first_seen_ms": i["first_seen_ms"], "last_seen_ms": i["last_seen_ms"],
+        "first_seen_epoch_ms": i["first_seen_epoch_ms"],
+        "last_seen_epoch_ms": i["last_seen_epoch_ms"],
         "cameras": json.loads(i["cameras_json"] or "{}"),
         "appearances": [
             {
                 "id": a["id"], "source_key": a["source_key"], "source_label": a["source_label"],
-                "offset_ms": a["offset_ms"], "bbox": json.loads(a["bbox_json"]),
+                "offset_ms": a["offset_ms"], "recorded_epoch_ms": a["recorded_epoch_ms"],
+                "bbox": json.loads(a["bbox_json"]),
                 "confidence": round(a["confidence"], 3),
             }
             for a in aps
@@ -735,7 +787,7 @@ def search_person(run_id: str, query_image: bytes, *, mode: str = "appearance", 
 
     with get_db() as conn:
         rows = conn.execute(
-            f"SELECT a.id, a.identity_id, a.source_label, a.offset_ms, a.confidence, a.{col} AS vec, i.label "
+            f"SELECT a.id, a.identity_id, a.source_label, a.offset_ms, a.recorded_epoch_ms, a.confidence, a.{col} AS vec, i.label "
             "FROM cross_camera_appearances a JOIN cross_camera_identities i ON i.id=a.identity_id "
             "WHERE a.run_id=?",
             (run_id,),
@@ -759,6 +811,7 @@ def search_person(run_id: str, query_image: bytes, *, mode: str = "appearance", 
         {
             "appearance_id": r["id"], "identity_id": r["identity_id"], "identity_label": r["label"],
             "source_label": r["source_label"], "offset_ms": r["offset_ms"],
+            "recorded_epoch_ms": r["recorded_epoch_ms"],
             "similarity": round(sim, 3),
         }
         for sim, r in scored[:top_k]

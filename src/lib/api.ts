@@ -907,6 +907,10 @@ export type CrossCameraCamera = {
   count: number;
   first_ms: number;
   last_ms: number;
+  // Recorder wall-clock epoch ms; null when the source has no recorder time
+  // (an imported clip with no start timestamp).
+  first_epoch_ms: number | null;
+  last_epoch_ms: number | null;
 };
 
 export type CrossCameraIdentitySummary = {
@@ -916,6 +920,8 @@ export type CrossCameraIdentitySummary = {
   appearance_count: number;
   first_seen_ms: number;
   last_seen_ms: number;
+  first_seen_epoch_ms: number | null;
+  last_seen_epoch_ms: number | null;
   cameras: Record<string, CrossCameraCamera>;
 };
 
@@ -929,6 +935,7 @@ export type CrossCameraAppearance = {
   source_key: string;
   source_label: string;
   offset_ms: number;
+  recorded_epoch_ms: number | null;
   bbox: { x: number; y: number; w: number; h: number };
   confidence: number;
 };
@@ -944,6 +951,7 @@ export type CrossCameraMatch = {
   identity_label: string;
   source_label: string;
   offset_ms: number;
+  recorded_epoch_ms: number | null;
   similarity: number;
 };
 

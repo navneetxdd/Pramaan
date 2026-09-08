@@ -12,7 +12,7 @@ from typing import Any, Iterator
 from engine.app.core.config import APP_VERSION, WORK_DIR
 
 DATABASE_PATH = WORK_DIR / "forensic.db"
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 _LOCK = threading.Lock()
 
@@ -283,6 +283,8 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
               appearance_count INTEGER NOT NULL,
               first_seen_ms INTEGER NOT NULL,
               last_seen_ms INTEGER NOT NULL,
+              first_seen_epoch_ms INTEGER,
+              last_seen_epoch_ms INTEGER,
               rep_thumb_path TEXT,
               cameras_json TEXT NOT NULL,
               embedding BLOB
@@ -295,6 +297,7 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
               source_label TEXT NOT NULL,
               source_video TEXT NOT NULL,
               offset_ms INTEGER NOT NULL,
+              recorded_epoch_ms INTEGER,
               bbox_json TEXT NOT NULL,
               confidence REAL NOT NULL,
               embedding BLOB
@@ -307,6 +310,16 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     if current < 10:
         _add_columns(conn, "cross_camera_appearances", {"face_embedding": "BLOB"})
         _add_columns(conn, "cross_camera_identities", {"face_embedding": "BLOB"})
+    if current < 11:
+        # Wall-clock recorder time for each detection, so the movement timeline
+        # reads in real hours and minutes instead of a per-clip offset that
+        # collapses to 0:00 on sub-second carve segments.
+        _add_columns(conn, "cross_camera_appearances", {"recorded_epoch_ms": "INTEGER"})
+        _add_columns(
+            conn,
+            "cross_camera_identities",
+            {"first_seen_epoch_ms": "INTEGER", "last_seen_epoch_ms": "INTEGER"},
+        )
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 

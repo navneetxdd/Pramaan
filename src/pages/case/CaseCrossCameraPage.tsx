@@ -29,6 +29,39 @@ function fmtClock(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+// Timestamps are the recorder's own clock (stored UTC, no drift correction) —
+// the reference the rest of the workstation uses. Render them in UTC, never the
+// examiner's local zone, so a date never silently shifts under a reviewer.
+/** Recorder clock, date + HH:MM:SS (24h, UTC) for one detection. */
+function fmtWall(epochMs: number | null | undefined): string {
+  if (epochMs == null) return "time not recovered";
+  return new Date(epochMs).toLocaleString("en-GB", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+/** Recorder clock, time only (HH:MM:SS, UTC) — for dense axis labels. */
+function fmtWallShort(epochMs: number | null | undefined): string {
+  if (epochMs == null) return "—";
+  return new Date(epochMs).toLocaleTimeString("en-GB", {
+    timeZone: "UTC",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function nPeople(n: number): string {
+  return `${n} ${n === 1 ? "person" : "people"}`;
+}
+
 /* ------------------------------------------------------------------ setup */
 function SetupSection({
   sources,
@@ -166,6 +199,55 @@ function SetupSection({
 /* --------------------------------------------------------------- timeline */
 const TICKS = [0, 0.25, 0.5, 0.75, 1];
 
+/** Chronological camera-to-camera movement in one plain sentence: the answer an
+ * investigator actually wants ("where did they go, and when"). One step per
+ * change of camera, in time order. */
+function MovementNarrative({
+  detail,
+  useWall,
+}: {
+  detail: CrossCameraIdentityDetail;
+  useWall: boolean;
+}) {
+  const steps = useMemo(() => {
+    const sorted = [...detail.appearances].sort(
+      (a, b) =>
+        (a.recorded_epoch_ms ?? a.offset_ms) -
+        (b.recorded_epoch_ms ?? b.offset_ms),
+    );
+    const out: { cam: string; epoch: number | null; offset: number }[] = [];
+    for (const a of sorted) {
+      if (out.length && out[out.length - 1].cam === a.source_label) continue;
+      out.push({
+        cam: a.source_label,
+        epoch: a.recorded_epoch_ms ?? null,
+        offset: a.offset_ms,
+      });
+    }
+    return out;
+  }, [detail]);
+
+  if (steps.length < 2) return null;
+
+  return (
+    <p className="mt-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+      {steps.map((s, i) => (
+        <span key={`${s.cam}-${i}`}>
+          {i > 0 ? (
+            <span className="mx-1 text-[var(--text-tertiary)]">&rarr;</span>
+          ) : null}
+          <span className="font-medium text-[var(--text-primary)]">
+            {s.cam}
+          </span>{" "}
+          <span className="tabular-nums text-[var(--text-tertiary)]">
+            {useWall ? fmtWall(s.epoch) : fmtClock(s.offset)}
+          </span>
+        </span>
+      ))}
+    </p>
+  );
+}
+
 function MovementTimeline({
   detail,
   selectedId,
@@ -175,8 +257,23 @@ function MovementTimeline({
   selectedId: string | null;
   onPick: (a: CrossCameraAppearance) => void;
 }) {
-  const first = detail.first_seen_ms;
-  const span = Math.max(1, detail.last_seen_ms - first);
+  // Prefer recorder wall-clock: the movement timeline only means something in
+  // real hours and minutes. Fall back to the per-clip relative offset when no
+  // source in this identity carried a recovered recorder timestamp.
+  const useWall =
+    detail.first_seen_epoch_ms != null && detail.last_seen_epoch_ms != null;
+  const axisOf = (a: CrossCameraAppearance) =>
+    useWall
+      ? (a.recorded_epoch_ms ?? detail.first_seen_epoch_ms ?? 0)
+      : a.offset_ms;
+  const first = useWall
+    ? (detail.first_seen_epoch_ms as number)
+    : detail.first_seen_ms;
+  const last = useWall
+    ? (detail.last_seen_epoch_ms as number)
+    : detail.last_seen_ms;
+  const span = Math.max(1, last - first);
+  const fmtAxis = (v: number) => (useWall ? fmtWallShort(v) : fmtClock(v));
 
   const lanes = useMemo(() => {
     const byCam = new Map<string, CrossCameraAppearance[]>();
@@ -194,6 +291,8 @@ function MovementTimeline({
         Movement across cameras
       </p>
 
+      <MovementNarrative detail={detail} useWall={useWall} />
+
       {/* time axis */}
       <div className="mt-3 flex items-end gap-3">
         <span className="w-36 shrink-0" />
@@ -204,7 +303,7 @@ function MovementTimeline({
               className="absolute top-0 -translate-x-1/2 text-[10px] tabular-nums text-[var(--text-tertiary)]"
               style={{ left: `${f * 100}%` }}
             >
-              {fmtClock(first + f * span)}
+              {fmtAxis(first + f * span)}
             </span>
           ))}
         </div>
@@ -234,14 +333,18 @@ function MovementTimeline({
                   <button
                     key={a.id}
                     type="button"
-                    title={`${cam} · ${fmtClock(a.offset_ms)} · detection ${a.confidence.toFixed(2)}`}
+                    title={`${cam} · ${
+                      useWall
+                        ? fmtWall(a.recorded_epoch_ms)
+                        : fmtClock(a.offset_ms)
+                    } · detection ${a.confidence.toFixed(2)}`}
                     onClick={() => onPick(a)}
                     className={`absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border transition-colors ${
                       active
                         ? "z-10 border-[var(--accent-600)] bg-[var(--accent-500)] ring-2 ring-[var(--accent-500)]/30"
                         : "border-[var(--accent-600)]/40 bg-[var(--accent-500)]/60 hover:bg-[var(--accent-500)]"
                     }`}
-                    style={{ left: `${((a.offset_ms - first) / span) * 100}%` }}
+                    style={{ left: `${((axisOf(a) - first) / span) * 100}%` }}
                   />
                 );
               })}
@@ -253,6 +356,9 @@ function MovementTimeline({
       <p className="mt-3 text-[11px] text-[var(--text-tertiary)]">
         Each dot is one detection. Click one to open the frame and save it as
         evidence.
+        {useWall
+          ? " Times are the recorder clock (UTC), pinned to each recovered segment."
+          : " No recorder timestamp survived recovery; times are offsets within each clip."}
       </p>
     </div>
   );
@@ -309,7 +415,10 @@ function FrameInspector({
         src={api.crossCameraCropUrl(appearance.id, true)}
       />
       <p className="mt-2 text-[12px] text-[var(--text-secondary)]">
-        {appearance.source_label} &middot; {fmtClock(appearance.offset_ms)}{" "}
+        {appearance.source_label} &middot;{" "}
+        {appearance.recorded_epoch_ms != null
+          ? fmtWall(appearance.recorded_epoch_ms)
+          : fmtClock(appearance.offset_ms)}{" "}
         <span className="text-[var(--text-tertiary)]">
           (detection {appearance.confidence.toFixed(2)})
         </span>
@@ -478,7 +587,10 @@ function FindPanel({
                       {m.source_label}
                     </p>
                     <p className="text-[var(--text-tertiary)]">
-                      {fmtClock(m.offset_ms)} &middot; {m.identity_label}
+                      {m.recorded_epoch_ms != null
+                        ? fmtWall(m.recorded_epoch_ms)
+                        : fmtClock(m.offset_ms)}{" "}
+                      &middot; {m.identity_label}
                     </p>
                     <div className="h-1 rounded-full bg-[var(--surface-3)]">
                       <div
@@ -628,7 +740,7 @@ export function CaseCrossCameraPage() {
       setModels(src.models);
       setRuns(runList.runs);
       toast.success(
-        `${d.summary.identities ?? 0} people, ${d.summary.cross_camera_identities ?? 0} on 2+ cameras`,
+        `${nPeople(d.summary.identities ?? 0)}, ${d.summary.cross_camera_identities ?? 0} on 2+ cameras`,
       );
     } catch (e) {
       toast.dismiss("ccam-progress");
@@ -697,7 +809,7 @@ export function CaseCrossCameraPage() {
                           >
                             {new Date(r.created_at).toLocaleString()} &middot;{" "}
                             {r.status === "completed"
-                              ? `${r.summary.identities ?? 0} people`
+                              ? nPeople(r.summary.identities ?? 0)
                               : r.status}
                           </button>
                         </li>
@@ -743,8 +855,9 @@ export function CaseCrossCameraPage() {
                               {it.appearance_count} seen
                             </p>
                             <p className="text-[10px] tabular-nums text-[var(--text-tertiary)]">
-                              {fmtClock(it.first_seen_ms)}&ndash;
-                              {fmtClock(it.last_seen_ms)}
+                              {it.first_seen_epoch_ms != null
+                                ? `${fmtWallShort(it.first_seen_epoch_ms)}–${fmtWallShort(it.last_seen_epoch_ms)}`
+                                : `${fmtClock(it.first_seen_ms)}–${fmtClock(it.last_seen_ms)}`}
                             </p>
                           </div>
                           {it.camera_count >= 2 ? (
@@ -782,7 +895,7 @@ export function CaseCrossCameraPage() {
                   </button>
                 ))}
                 <span className="ml-auto py-3 text-[12px] tabular-nums text-[var(--text-tertiary)]">
-                  {sum?.identities ?? 0} people &middot;{" "}
+                  {nPeople(sum?.identities ?? 0)} &middot;{" "}
                   {sum?.cross_camera_identities ?? 0} on 2+ cameras &middot;{" "}
                   {sum?.detections ?? 0} detections
                   {typeof sum?.appearances_with_face === "number"
@@ -823,9 +936,18 @@ export function CaseCrossCameraPage() {
                               .join(", ")}
                           </p>
                           <p className="mt-0.5 text-[12px] tabular-nums text-[var(--text-tertiary)]">
-                            {fmtClock(detail.first_seen_ms)} &rarr;{" "}
-                            {fmtClock(detail.last_seen_ms)} &middot;{" "}
-                            {detail.appearance_count} detections across{" "}
+                            {detail.first_seen_epoch_ms != null ? (
+                              <>
+                                {fmtWall(detail.first_seen_epoch_ms)} &rarr;{" "}
+                                {fmtWallShort(detail.last_seen_epoch_ms)}
+                              </>
+                            ) : (
+                              <>
+                                {fmtClock(detail.first_seen_ms)} &rarr;{" "}
+                                {fmtClock(detail.last_seen_ms)}
+                              </>
+                            )}{" "}
+                            &middot; {detail.appearance_count} detections across{" "}
                             {detail.camera_count} camera
                             {detail.camera_count === 1 ? "" : "s"}
                           </p>
