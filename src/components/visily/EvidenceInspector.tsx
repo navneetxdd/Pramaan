@@ -1,7 +1,7 @@
 import { HardDrive, Clock, MapPin } from "lucide-react";
 import type { CustodyEvent, EvidenceRecord } from "@/lib/api";
 import { formatBytes, shortHash } from "@/lib/utils";
-import { custodyActionLabel } from "@/lib/integrity";
+import { custodyActionLabel, recoveryAdapterLabel } from "@/lib/integrity";
 
 type EvidenceInspectorProps = {
   item: EvidenceRecord | null;
@@ -31,7 +31,7 @@ export function EvidenceInspector({
     .filter((e) => !e.image_id || e.image_id === item.id)
     .slice(-4)
     .reverse();
-  const oem = item.identification?.recommended_adapter;
+  const adapter = item.identification?.recommended_adapter;
 
   return (
     <aside className="visily-inspector">
@@ -77,14 +77,14 @@ export function EvidenceInspector({
               {(item.media_type || "disk image").replace(/_/g, " ")}
             </dd>
           </div>
-          {oem ? (
+          {adapter && adapter !== "needs_selection" ? (
             <div
               className="flex justify-between gap-2 border-b pb-2"
               style={{ borderColor: "var(--border-subtle)" }}
             >
-              <dt className="text-[var(--text-tertiary)]">Adapter</dt>
-              <dd className="mono text-[11px] text-[var(--text-primary)]">
-                {oem}
+              <dt className="text-[var(--text-tertiary)]">Recovery method</dt>
+              <dd className="text-[11px] text-[var(--text-primary)]">
+                {recoveryAdapterLabel(adapter)}
               </dd>
             </div>
           ) : null}

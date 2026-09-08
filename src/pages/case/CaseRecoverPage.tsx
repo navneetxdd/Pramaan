@@ -17,7 +17,7 @@ import { VirtualTable } from "@/components/ui/virtual-table";
 import { subscribeJobEvents } from "@/lib/sse";
 import { useActivity } from "@/context/ActivityContext";
 import { cn, formatBytes } from "@/lib/utils";
-import { formatTimestampSource } from "@/lib/integrity";
+import { formatTimestampSource, recoveryAdapterLabel } from "@/lib/integrity";
 import {
   allocationDetail,
   allocationLabel,
@@ -800,11 +800,14 @@ export function CaseRecoverPage() {
             <Input value={actor} onChange={(e) => setActor(e.target.value)} />
           </div>
           <div className="min-w-[220px]">
-            <label className="label">Recovery parser</label>
+            <label className="label">Recovery method</label>
             <div className="flex h-[34px] items-center gap-2">
               {effectiveAdapter ? (
-                <span className="mono text-[13px] font-medium text-[var(--text-primary)]">
-                  {effectiveAdapter}
+                <span
+                  className="text-[13px] font-medium text-[var(--text-primary)]"
+                  title={effectiveAdapter}
+                >
+                  {recoveryAdapterLabel(effectiveAdapter)}
                 </span>
               ) : (
                 <span className="text-[13px] text-[var(--status-warning)]">

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { RecoveryJob, Segment } from "@/lib/api";
 import { countAllocations, countPlausibleChannels } from "@/lib/allocation";
 import { parseJobStats } from "@/lib/caseStats";
+import { recoveryAdapterLabel } from "@/lib/integrity";
 
 /**
  * What fills the engine log panel between runs.
@@ -141,9 +142,9 @@ export function RecoveryLastRun({
           </span>
         </span>
         <span className="text-[var(--text-tertiary)]">
-          parser{" "}
-          <span className="mono text-[var(--text-secondary)]">
-            {job.adapter ?? "—"}
+          method{" "}
+          <span className="text-[var(--text-secondary)]">
+            {job.adapter ? recoveryAdapterLabel(job.adapter) : "Not determined"}
           </span>
         </span>
         {job.error ? (

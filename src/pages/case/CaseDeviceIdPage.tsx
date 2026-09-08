@@ -3,7 +3,11 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useCaseContext } from "@/context/CaseContext";
 import { api, type IdentificationReport } from "@/lib/api";
-import { capabilityTierLabel, validationScopeLabel } from "@/lib/integrity";
+import {
+  capabilityTierLabel,
+  recoveryAdapterLabel,
+  validationScopeLabel,
+} from "@/lib/integrity";
 import { ConfidenceBadge } from "@/components/forensic/ConfidenceBadge";
 import { HexViewer } from "@/components/forensic/HexViewer";
 import { Button } from "@/components/ui/button";
@@ -83,7 +87,12 @@ export function CaseDeviceIdPage() {
 
       setReport(result);
 
-      toast.success(`Adapter: ${result.recommended_adapter}`);
+      toast.success(
+        result.recommended_adapter &&
+          result.recommended_adapter !== "needs_selection"
+          ? `Recovery method: ${recoveryAdapterLabel(result.recommended_adapter)}`
+          : "Identification complete. Select a recovery method on Recovery.",
+      );
 
       await refresh();
     } catch (err) {
@@ -259,9 +268,10 @@ export function CaseDeviceIdPage() {
                   ) : null}
                 </div>
 
-                {report?.recommended_adapter ? (
-                  <span className="rounded-md bg-[var(--accent-soft)] px-3 py-1 font-mono text-[12px] font-semibold text-[var(--accent-700)]">
-                    {report.recommended_adapter}
+                {report?.recommended_adapter &&
+                report.recommended_adapter !== "needs_selection" ? (
+                  <span className="rounded-md bg-[var(--accent-soft)] px-3 py-1 text-[12px] font-semibold text-[var(--accent-700)]">
+                    {recoveryAdapterLabel(report.recommended_adapter)}
                   </span>
                 ) : null}
               </div>
@@ -289,8 +299,8 @@ export function CaseDeviceIdPage() {
                             {hit.vendor}
                           </p>
 
-                          <p className="font-mono text-[11px] text-[var(--text-tertiary)]">
-                            {hit.adapter}
+                          <p className="text-[11px] text-[var(--text-tertiary)]">
+                            {recoveryAdapterLabel(hit.adapter)}
                           </p>
                         </div>
 
