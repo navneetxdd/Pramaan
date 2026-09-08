@@ -12,7 +12,7 @@ from typing import Any, Iterator
 from engine.app.core.config import APP_VERSION, WORK_DIR
 
 DATABASE_PATH = WORK_DIR / "forensic.db"
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 _LOCK = threading.Lock()
 
@@ -285,6 +285,7 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
               last_seen_ms INTEGER NOT NULL,
               first_seen_epoch_ms INTEGER,
               last_seen_epoch_ms INTEGER,
+              cohesion REAL,
               rep_thumb_path TEXT,
               cameras_json TEXT NOT NULL,
               embedding BLOB
@@ -320,6 +321,11 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             "cross_camera_identities",
             {"first_seen_epoch_ms": "INTEGER", "last_seen_epoch_ms": "INTEGER"},
         )
+    if current < 12:
+        # Cross-camera grouping cohesion: mean pairwise cosine of the tracklets
+        # merged into one identity. Surfaced as a match-quality badge so an
+        # examiner knows which groupings to trust and which to review by hand.
+        _add_columns(conn, "cross_camera_identities", {"cohesion": "REAL"})
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 

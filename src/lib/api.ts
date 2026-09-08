@@ -922,6 +922,10 @@ export type CrossCameraIdentitySummary = {
   last_seen_ms: number;
   first_seen_epoch_ms: number | null;
   last_seen_epoch_ms: number | null;
+  // Mean pairwise cosine of the tracks merged into this identity (0-1). Higher =
+  // the appearances resemble each other more; low = review the grouping by hand.
+  // 1.0 when the identity is a single track (one camera, no cross-source merge).
+  cohesion: number | null;
   cameras: Record<string, CrossCameraCamera>;
 };
 

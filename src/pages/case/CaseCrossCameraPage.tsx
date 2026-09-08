@@ -62,6 +62,41 @@ function nPeople(n: number): string {
   return `${n} ${n === 1 ? "person" : "people"}`;
 }
 
+type MatchTier = { short: string; label: string; cls: string; hint: string };
+
+/** Confidence in a cross-camera grouping, from its cohesion score. Only shown
+ * once a person was linked across 2+ cameras — that is the merge a reviewer
+ * needs a signal for. Single-camera identities return null. */
+function matchQuality(
+  cohesion: number | null,
+  cameraCount: number,
+): MatchTier | null {
+  if (cameraCount < 2 || cohesion == null) return null;
+  const c = cohesion.toFixed(2);
+  // Calibrated on known multi-camera footage: a clean single-person group scores
+  // ~0.9+; a group that merged two similarly-dressed people lands ~0.75.
+  if (cohesion >= 0.88)
+    return {
+      short: "Strong",
+      label: "Strong match",
+      cls: "bg-emerald-50 text-emerald-800 ring-emerald-600/20",
+      hint: `Appearances across cameras are highly similar (cohesion ${c}).`,
+    };
+  if (cohesion >= 0.7)
+    return {
+      short: "Review",
+      label: "Likely — review",
+      cls: "bg-amber-50 text-amber-900 ring-amber-600/30",
+      hint: `Moderately similar (cohesion ${c}). Confirm by eye before relying on it.`,
+    };
+  return {
+    short: "Weak",
+    label: "Weak — verify",
+    cls: "bg-rose-50 text-rose-900 ring-rose-600/30",
+    hint: `Appearances differ (cohesion ${c}). This group may merge two look-alike people.`,
+  };
+}
+
 /* ------------------------------------------------------------------ setup */
 function SetupSection({
   sources,
@@ -199,39 +234,67 @@ function SetupSection({
 /* --------------------------------------------------------------- timeline */
 const TICKS = [0, 0.25, 0.5, 0.75, 1];
 
-/** Chronological camera-to-camera movement in one plain sentence: the answer an
- * investigator actually wants ("where did they go, and when"). One step per
- * change of camera, in time order. */
-function MovementNarrative({
-  detail,
-  useWall,
-}: {
-  detail: CrossCameraIdentityDetail;
-  useWall: boolean;
-}) {
-  const steps = useMemo(() => {
-    const sorted = [...detail.appearances].sort(
-      (a, b) =>
-        (a.recorded_epoch_ms ?? a.offset_ms) -
-        (b.recorded_epoch_ms ?? b.offset_ms),
-    );
-    const out: { cam: string; epoch: number | null; offset: number }[] = [];
+const NARRATIVE_WINDOW_MS = 5000; // group detections into 5s windows
+const NARRATIVE_MAX_STEPS = 12; // cap the printed path
+const NARRATIVE_MAX_CHANGES = 15; // above this it is simultaneous coverage, not a path
+
+/** Chronological camera-to-camera movement in one plain line: the answer an
+ * investigator wants ("where did they go, and when"). Detections are bucketed
+ * into short time windows and each window's dominant camera is taken, so a
+ * person standing in overlapping camera views does not produce hundreds of
+ * one-second flips. When there is no single-camera path (all cameras see the
+ * person at once for most of the clip) a summary line is shown instead. */
+function MovementNarrative({ detail }: { detail: CrossCameraIdentityDetail }) {
+  const model = useMemo(() => {
+    const at = (a: CrossCameraAppearance) => a.recorded_epoch_ms ?? a.offset_ms;
+    const sorted = [...detail.appearances].sort((a, b) => at(a) - at(b));
+    if (sorted.length === 0) return null;
+
+    // dominant camera per fixed time window
+    const windows = new Map<number, Map<string, number>>();
     for (const a of sorted) {
-      if (out.length && out[out.length - 1].cam === a.source_label) continue;
-      out.push({
-        cam: a.source_label,
-        epoch: a.recorded_epoch_ms ?? null,
-        offset: a.offset_ms,
-      });
+      const w = Math.floor(at(a) / NARRATIVE_WINDOW_MS);
+      const tally = windows.get(w) ?? new Map<string, number>();
+      tally.set(a.source_label, (tally.get(a.source_label) ?? 0) + 1);
+      windows.set(w, tally);
     }
-    return out;
+    const wall = detail.first_seen_epoch_ms != null;
+    const steps: { cam: string; label: string }[] = [];
+    let changes = 0;
+    for (const w of [...windows.keys()].sort((x, y) => x - y)) {
+      const tally = windows.get(w)!;
+      const cam = [...tally.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      if (steps.length && steps[steps.length - 1].cam === cam) continue;
+      changes += 1;
+      const t = w * NARRATIVE_WINDOW_MS;
+      steps.push({ cam, label: wall ? fmtWall(t) : fmtClock(t) });
+    }
+    const first = wall
+      ? fmtWall(detail.first_seen_epoch_ms)
+      : fmtClock(detail.first_seen_ms);
+    const last = wall
+      ? fmtWallShort(detail.last_seen_epoch_ms)
+      : fmtClock(detail.last_seen_ms);
+    return { steps, changes, camCount: detail.camera_count, first, last };
   }, [detail]);
 
-  if (steps.length < 2) return null;
+  if (!model || model.steps.length < 2) return null;
 
+  if (model.changes > NARRATIVE_MAX_CHANGES) {
+    return (
+      <p className="mt-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+        Seen on {model.camCount} cameras through most of {model.first}–
+        {model.last}. Overlapping views, so there is no single-camera path — use
+        the timeline below.
+      </p>
+    );
+  }
+
+  const shown = model.steps.slice(0, NARRATIVE_MAX_STEPS);
+  const extra = model.steps.length - shown.length;
   return (
     <p className="mt-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-      {steps.map((s, i) => (
+      {shown.map((s, i) => (
         <span key={`${s.cam}-${i}`}>
           {i > 0 ? (
             <span className="mx-1 text-[var(--text-tertiary)]">&rarr;</span>
@@ -240,10 +303,16 @@ function MovementNarrative({
             {s.cam}
           </span>{" "}
           <span className="tabular-nums text-[var(--text-tertiary)]">
-            {useWall ? fmtWall(s.epoch) : fmtClock(s.offset)}
+            {s.label}
           </span>
         </span>
       ))}
+      {extra > 0 ? (
+        <span className="text-[var(--text-tertiary)]">
+          {" "}
+          &middot; +{extra} more camera change{extra === 1 ? "" : "s"}
+        </span>
+      ) : null}
     </p>
   );
 }
@@ -291,7 +360,7 @@ function MovementTimeline({
         Movement across cameras
       </p>
 
-      <MovementNarrative detail={detail} useWall={useWall} />
+      <MovementNarrative detail={detail} />
 
       {/* time axis */}
       <div className="mt-3 flex items-end gap-3">
@@ -708,25 +777,37 @@ export function CaseCrossCameraPage() {
         actor,
         ...opts,
       });
-      await new Promise<void>((resolve, reject) => {
-        const unsubscribe = subscribeJobEvents(job_id, {
-          onEvent: (e) => {
-            if (e.message) toast.message(e.message, { id: "ccam-progress" });
-            if (e.status === "completed") {
-              unsubscribe();
-              resolve();
-            }
-            if (e.status === "failed") {
-              unsubscribe();
-              reject(new Error(e.error ?? "Correlation failed"));
-            }
-          },
-          onError: (err) => {
-            unsubscribe();
-            reject(err);
-          },
-        });
+      // SSE drives the progress toast only. The run row is the source of truth
+      // for done/failed, so a dropped SSE connection during a multi-minute run
+      // never fails a correlation that actually finished.
+      const unsubscribe = subscribeJobEvents(job_id, {
+        onEvent: (e) => {
+          if (e.message) toast.message(e.message, { id: "ccam-progress" });
+        },
+        onError: () => {},
       });
+      try {
+        const deadline = Date.now() + 25 * 60_000;
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 2500));
+          let status: CrossCameraRun["status"] | null = null;
+          let runErr: string | null = null;
+          try {
+            const poll = await api.crossCameraRun(run_id);
+            status = poll.status;
+            runErr = poll.error;
+          } catch {
+            /* transient — keep polling until the deadline */
+          }
+          if (status === "completed") break;
+          if (status === "failed")
+            throw new Error(runErr ?? "Correlation failed");
+          if (Date.now() > deadline)
+            throw new Error("Correlation is taking longer than expected");
+        }
+      } finally {
+        unsubscribe();
+      }
       toast.dismiss("ccam-progress");
       const d = await api.crossCameraRun(run_id);
       setActiveRun(d);
@@ -860,11 +941,28 @@ export function CaseCrossCameraPage() {
                                 : `${fmtClock(it.first_seen_ms)}–${fmtClock(it.last_seen_ms)}`}
                             </p>
                           </div>
-                          {it.camera_count >= 2 ? (
-                            <span className="shrink-0 rounded-full bg-[var(--accent-500)]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[var(--accent-600)]">
-                              2+
-                            </span>
-                          ) : null}
+                          {(() => {
+                            const q = matchQuality(
+                              it.cohesion,
+                              it.camera_count,
+                            );
+                            if (q)
+                              return (
+                                <span
+                                  title={q.hint}
+                                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ring-1 ${q.cls}`}
+                                >
+                                  {q.short}
+                                </span>
+                              );
+                            if (it.camera_count >= 2)
+                              return (
+                                <span className="shrink-0 rounded-full bg-[var(--accent-500)]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[var(--accent-600)]">
+                                  2+
+                                </span>
+                              );
+                            return null;
+                          })()}
                         </button>
                       </li>
                     );
@@ -951,6 +1049,25 @@ export function CaseCrossCameraPage() {
                             {detail.camera_count} camera
                             {detail.camera_count === 1 ? "" : "s"}
                           </p>
+                          {(() => {
+                            const q = matchQuality(
+                              detail.cohesion,
+                              detail.camera_count,
+                            );
+                            if (!q) return null;
+                            return (
+                              <p className="mt-2">
+                                <span
+                                  className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ring-1 ${q.cls}`}
+                                >
+                                  {q.label}
+                                </span>
+                                <span className="ml-2 text-[11px] text-[var(--text-tertiary)]">
+                                  {q.hint}
+                                </span>
+                              </p>
+                            );
+                          })()}
                         </div>
                       </div>
 
