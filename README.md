@@ -13,6 +13,28 @@ surveillance video evidence from recorders that use proprietary storage layouts.
 
 ---
 
+## Contents
+
+- [What Pramaan is, and is not](#what-pramaan-is-and-is-not)
+- [Examiner workflow](#examiner-workflow)
+  - [A typical case session](#a-typical-case-session)
+  - [Failure handling](#failure-handling)
+- [Architecture](#architecture)
+- [Recovered artifacts: kinds and allocation state](#recovered-artifacts-kinds-and-allocation-state)
+- [Vendor support matrix](#vendor-support-matrix)
+- [Validation scope](#validation-scope)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Validation and testing](#validation-and-testing)
+- [Desktop install and packaging](#desktop-install-and-packaging)
+- [Repository layout](#repository-layout)
+- [API](#api)
+- [Version bump](#version-bump)
+- [Third-party licenses (summary)](#third-party-licenses-summary)
+- [License](#license)
+
+---
+
 ## What Pramaan is, and is not
 
 **It is** a single workstation that unifies the steps an examiner would otherwise
@@ -138,30 +160,35 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-  subgraph desktop["Desktop shell (Tauri 2)"]
-    UI["React / Vite SPA<br/>light theme, /api/v1 client"]
+  subgraph desktop["Desktop shell, Tauri 2"]
+    UI["React and Vite SPA"]
   end
-  subgraph engine["Forensic engine (FastAPI, 127.0.0.1:8787)"]
-    API["/api/v1 REST + SSE"]
-    ACQ["Acquisition<br/>upload, OEM folder, imaging, logical"]
-    ID["Identification<br/>signature scan, adapter routing"]
-    REC["Recovery adapters<br/>dahua_dhav, hikvision, honeywell, generic_tier2"]
-    ANL["Analytics<br/>YOLOX, YuNet, SFace, re-id (optional)"]
-    CUS["Custody<br/>append-only SHA-256 chain"]
-    REP["Reporting<br/>JSON / HTML / PAdES PDF"]
+  subgraph engine["Forensic engine, FastAPI on loopback"]
+    API["REST API and SSE"]
+    ACQ["Acquisition"]
+    IDN["Identification"]
+    REC["Recovery adapters"]
+    ANL["Analytics, optional"]
+    CUS["Custody hash chain"]
+    REP["Reporting"]
   end
-  subgraph storage["Local persistence (FORENSIC_WORKSTATION_DATA)"]
+  subgraph storage["Local persistence"]
     DB["SQLite"]
-    ART["Case artifacts + hash sidecars"]
+    ART["Case artifacts and hash sidecars"]
     SIG["Signing material"]
   end
-  UI -->|"loopback only"| API
-  API --> ACQ & ID & REC & ANL & CUS & REP
+  UI -->|"127.0.0.1:8787"| API
+  API --> ACQ
+  API --> IDN
+  API --> REC
+  API --> ANL
+  API --> CUS
+  API --> REP
   ACQ --> ART
   REC --> ART
+  IDN --> DB
   CUS --> DB
   REP --> SIG
-  ID --> DB
 ```
 
 **Trust boundary.** The engine binds to loopback only and makes no outbound
