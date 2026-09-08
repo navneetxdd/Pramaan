@@ -100,6 +100,25 @@ export function CaseDeviceIdPage() {
 
   const selectedEvidence = evidence.find((e) => e.id === deviceId);
 
+  // A signature scan of an exported clip has no partition table and no recorder
+  // filesystem, so disk-level hints and the recovery hand-off do not apply.
+  const isClip =
+    selectedEvidence?.media_type === "video_clip" ||
+    selectedEvidence?.media_type === "logical_export";
+
+  // On a clip, drop the filesystem / MBR pseudo-hit: a two-byte 0x55AA match in
+  // an H.264 stream is not a partition table. Real container-signature vendor
+  // hits are kept.
+  const visibleHits = useMemo(() => {
+    const hits = report?.hits ?? [];
+    if (!isClip) return hits;
+    return hits.filter(
+      (h) =>
+        h.vendor !== "Filesystem" &&
+        h.capability_tier !== "filesystem_recovery",
+    );
+  }, [report, isClip]);
+
   return (
     <div className="flex flex-col gap-3">
       <PageHeader
@@ -251,15 +270,15 @@ export function CaseDeviceIdPage() {
                 <p className="mt-4 text-[13px] text-[var(--text-tertiary)]">
                   Run identification to see vendor hits and adapter routing.
                 </p>
-              ) : report.hits.length === 0 ? (
+              ) : visibleHits.length === 0 ? (
                 <p className="mt-4 text-[13px] text-[var(--text-tertiary)]">
-                  No vendor signature detected — this looks like generic or
-                  non-DVR footage. Select an adapter manually on Recovery, or
-                  continue with generic carving.
+                  {isClip
+                    ? "No vendor container signature in the sampled bytes. The clip can still be hashed, played back, and run through Findings and Cross-camera."
+                    : "No vendor signature detected. This looks like generic or non-DVR footage. Select an adapter manually on Recovery, or continue with generic carving."}
                 </p>
               ) : (
                 <ul className="mt-4 space-y-2">
-                  {report.hits.map((hit) => (
+                  {visibleHits.map((hit) => (
                     <li
                       key={`${hit.vendor}-${hit.adapter}`}
                       className="rounded-lg border border-[var(--border-subtle)] px-3 py-2"
@@ -315,8 +334,8 @@ export function CaseDeviceIdPage() {
                   style={{ borderColor: "var(--border-subtle)" }}
                 >
                   <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
-                    Coverage across all {report.oem_capabilities.length} vendors
-                    named in the problem statement
+                    Parser coverage across the {report.oem_capabilities.length}{" "}
+                    vendors this build recognises
                   </p>
                   <div className="mt-2 overflow-x-auto">
                     <table className="w-full text-[11px]">
@@ -352,11 +371,45 @@ export function CaseDeviceIdPage() {
               ) : null}
 
               {report ? (
+                <div
+                  className="mt-4 border-t pt-3"
+                  style={{ borderColor: "var(--border-subtle)" }}
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
+                    Recorder identity
+                  </p>
+                  <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px]">
+                    {(["Model", "Serial", "Firmware"] as const).map((field) => (
+                      <div key={field} className="contents">
+                        <dt className="text-[var(--text-tertiary)]">{field}</dt>
+                        <dd className="text-[var(--text-secondary)]">
+                          Not available from this image
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="mt-1.5 text-[10px] text-[var(--text-tertiary)]">
+                    A signature scan reads container and filesystem markers, not
+                    the recorder&rsquo;s device record.{" "}
+                    {visibleHits.length > 0 ||
+                    (!isClip && report.filesystem_hints.length > 0)
+                      ? "Identification here is based on the markers listed above."
+                      : "No vendor or filesystem marker was found in the sampled bytes."}
+                  </p>
+                </div>
+              ) : null}
+
+              {report && !isClip ? (
                 <Button asChild className="mt-4" variant="secondary">
                   <Link to={`/cases/${caseId}/recover`}>
                     Continue to recovery →
                   </Link>
                 </Button>
+              ) : report && isClip ? (
+                <p className="mt-4 text-[12px] text-[var(--text-secondary)]">
+                  Recovery does not apply to an exported clip. Hash it, play it
+                  back, run Findings, or trace it in Cross-camera.
+                </p>
               ) : null}
             </section>
 
@@ -373,7 +426,8 @@ export function CaseDeviceIdPage() {
                 </p>
               )}
 
-              {report?.filesystem_hints &&
+              {!isClip &&
+              report?.filesystem_hints &&
               report.filesystem_hints.length > 0 ? (
                 <div
                   className="mt-3 border-t pt-3"

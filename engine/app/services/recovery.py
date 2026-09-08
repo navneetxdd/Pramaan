@@ -359,6 +359,12 @@ async def run_recovery_job(
             "app_version": APP_VERSION,
             "evidence": evidence_rows,
         }
+        if kind_counts["filesystem_undelete"] > 0:
+            # The pytsk3 undelete pass reads the filesystem root directory only.
+            # Subdirectories are not walked and entries whose directory slot was
+            # reused are not recoverable here. Stated so a report and the UI can
+            # show the boundary rather than imply a full-disk undelete.
+            result["undelete_scope"] = "root_directory_only"
         await job_manager.update(job_id, status="completed", progress=100, message="Recovery complete", result=result)
         persist_job(
             job_id,

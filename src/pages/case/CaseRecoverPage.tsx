@@ -299,6 +299,35 @@ function PartialResultBanner({
   );
 }
 
+/**
+ * Capability boundary for the generic filesystem-undelete pass: it reads the
+ * filesystem root directory only. Rendered whenever the recovery produced a
+ * filesystem-undelete row, so the table cannot be read as a full-disk undelete.
+ */
+function UndeleteScopeBanner() {
+  return (
+    <div className="flex shrink-0 items-start gap-2.5 border-b border-[var(--border-subtle)] bg-[var(--surface-3)] px-4 py-3">
+      <span
+        aria-hidden="true"
+        className="mt-px shrink-0 text-[13px] leading-none text-[var(--text-tertiary)]"
+      >
+        i
+      </span>
+      <div className="min-w-0 text-[12px] leading-relaxed">
+        <p className="font-semibold text-[var(--text-primary)]">
+          Undelete scope: filesystem root directory only
+        </p>
+        <p className="mt-0.5 text-[var(--text-secondary)]">
+          The generic undelete pass walks the root directory of the mounted
+          filesystem. Subdirectories are not walked, and a deleted entry whose
+          directory slot has been reused is not recoverable here. Absence from
+          this table is not evidence that a file was never present.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function CaseRecoverPage() {
   const { caseId, workspace, refresh } = useCaseContext();
   const [deviceId, setDeviceId] = useState("");
@@ -337,6 +366,13 @@ export function CaseRecoverPage() {
     () => workspace?.evidence.find((e) => e.id === deviceId) ?? null,
     [workspace?.evidence, deviceId],
   );
+
+  // An exported clip or a logical file export has no recorder filesystem, so
+  // "recovery" on it would only re-carve the same bytes. The Recover action is
+  // disabled for these; hashing, playback, Findings and cross-camera still work.
+  const isClip =
+    selectedEvidence?.media_type === "video_clip" ||
+    selectedEvidence?.media_type === "logical_export";
 
   const recommendedAdapter =
     selectedEvidence?.identification?.recommended_adapter;
@@ -681,6 +717,12 @@ export function CaseRecoverPage() {
       toast.error("Select device and enter examiner");
       return;
     }
+    if (isClip) {
+      toast.error(
+        "This evidence is an exported clip — there is no recorder filesystem to recover",
+      );
+      return;
+    }
     if (!effectiveAdapter) {
       toast.error(
         "Identification could not determine a parser — pick one under Advanced",
@@ -777,8 +819,13 @@ export function CaseRecoverPage() {
             </div>
           </div>
           <Button
-            disabled={starting || !deviceId || isRecovering}
+            disabled={starting || !deviceId || isRecovering || isClip}
             onClick={() => void handleRecover()}
+            title={
+              isClip
+                ? "This evidence is an exported clip. There is no recorder filesystem to recover."
+                : undefined
+            }
           >
             {starting
               ? "Starting…"
@@ -786,6 +833,13 @@ export function CaseRecoverPage() {
                 ? "Recovery in progress…"
                 : "Run recovery"}
           </Button>
+          {isClip ? (
+            <p className="w-full text-[12px] text-[var(--text-secondary)]">
+              This is an exported clip. There is no recorder filesystem to
+              recover deleted footage from. Use Playback, Findings or
+              Cross-camera on this evidence instead.
+            </p>
+          ) : null}
 
           <div className="w-full">
             <button
@@ -886,6 +940,9 @@ export function CaseRecoverPage() {
               />
             </section>
             <section className="visily-card shrink-0 overflow-hidden">
+              {kindCounts.filesystem_undelete > 0 && !isRecovering ? (
+                <UndeleteScopeBanner />
+              ) : null}
               {partialResultStatus && !isRecovering ? (
                 <PartialResultBanner
                   status={partialResultStatus}

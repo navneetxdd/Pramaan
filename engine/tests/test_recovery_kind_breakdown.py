@@ -72,6 +72,9 @@ class RecoveryResultMetadataTests(unittest.TestCase):
         # recorder recording.
         self.assertEqual(kinds["filesystem_undelete"], result["segments_found"])
         self.assertEqual(kinds["recording"], 0)
+        # C16: a filesystem-undelete run states its scope so a report and the UI
+        # do not imply a full-disk undelete.
+        self.assertEqual(result.get("undelete_scope"), "root_directory_only")
 
     def test_carve_segments_carry_an_explicit_allocation_state(self) -> None:
         from engine.app.core.repository import list_sequences
