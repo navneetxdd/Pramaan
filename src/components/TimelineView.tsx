@@ -6,7 +6,27 @@ type TimelineViewProps = {
   selectedSegmentId: string | null;
   onSelect: (segmentId: string) => void;
   onSelectFinding?: (segmentId: string, findingId: string) => void;
+  /** From the engine timeline normalization block. Drives the always-visible
+   * time-basis line so the examiner can never read the bars without knowing
+   * whether the horizontal axis is a recorder clock or just byte order. */
+  rtcParsed?: boolean;
+  driftSeconds?: number;
 };
+
+function timeBasisText(
+  useTime: boolean,
+  rtcParsed: boolean | undefined,
+  driftSeconds: number | undefined,
+): string {
+  if (!useTime || rtcParsed === false) {
+    return "Byte-offset order per channel. No recorder clock was recovered, so bar positions are storage order, not wall-clock time.";
+  }
+  const drift =
+    driftSeconds && Math.abs(driftSeconds) >= 0.5
+      ? `calibrated drift ${driftSeconds > 0 ? "+" : ""}${driftSeconds.toFixed(1)}s applied`
+      : "no drift correction applied";
+  return `Recorder clock, ${drift}. Byte order is retained per channel.`;
+}
 
 function segmentSize(seg: TimelineChannel["segments"][0]) {
   return seg.byte_length ?? Math.max(seg.offset_end - seg.offset_start, 1);
@@ -75,6 +95,8 @@ export function TimelineView({
   selectedSegmentId,
   onSelect,
   onSelectFinding,
+  rtcParsed,
+  driftSeconds,
 }: TimelineViewProps) {
   if (channels.length === 0) {
     return (
@@ -95,13 +117,22 @@ export function TimelineView({
     ),
   );
 
+  const axisIsTime = useTime && rtcParsed !== false;
+
   return (
     <div className="space-y-3">
-      {!useTime ? (
-        <p className="rounded border border-[var(--border-subtle)] bg-[var(--surface-3)] px-3 py-2 font-mono text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
-          Byte-offset order (no recorder clock recovered)
-        </p>
-      ) : null}
+      <p
+        className={
+          axisIsTime
+            ? "rounded border border-[var(--border-subtle)] bg-[var(--surface-3)] px-3 py-2 text-[11px] text-[var(--text-secondary)]"
+            : "rounded border border-[var(--status-warning)] bg-[rgba(217,119,6,0.1)] px-3 py-2 text-[11px] text-[var(--text-secondary)]"
+        }
+      >
+        <span className="font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
+          Time basis
+        </span>{" "}
+        {timeBasisText(useTime, rtcParsed, driftSeconds)}
+      </p>
 
       {channels.map((channel) => {
         const sorted = [...channel.segments].sort(

@@ -28,7 +28,7 @@ _CUSTODY_ACTION_LABELS = {
     "evidence_acquisition_verification_failed": "Evidence verification failed",
     "ai_analytics_completed": "AI analytics completed",
     "ai_analytics_completed_with_warnings": "AI analytics completed (with warnings)",
-    "ai_analytics_skipped_unavailable": "AI analytics skipped — unavailable",
+    "ai_analytics_skipped_unavailable": "AI analytics skipped (unavailable)",
     "cross_camera_correlation_run": "Cross-camera correlation run",
     "cross_camera_still_saved": "Cross-camera still saved as evidence",
     "recovery_started": "Recovery started",
@@ -42,8 +42,9 @@ _CUSTODY_ACTION_LABELS = {
 
 
 def _custody_action_label(action: str) -> str:
-    """Mirrors src/lib/integrity.ts's custodyActionLabel — this report is read by
-    examiners and judges directly, not just the live app; keep both humanized."""
+    """Mirrors src/lib/integrity.ts's custodyActionLabel. This report is read by
+    examiners and the court directly, not just the live app; keep both
+    humanized."""
     code, _, detail = action.partition(":")
     label = _CUSTODY_ACTION_LABELS.get(code, code.replace("_", " "))
     return f"{label}: {detail}" if detail else label
@@ -139,8 +140,8 @@ def build_json_report(case_id: str, *, require_intact_chain: bool = True) -> dic
         # Hikvision data blocks hold raw H.264 Annex-B NAL units behind proprietary
         # picture-index headers, not MPEG-PS. See docs/reference/hikvision_fs.md §5.1.
         "methodology": (
-            "Tier 1 DHAV + HIKBTREE index to H.264 NAL extraction "
-            "+ Tier 2 filesystem/H.264 carve (SIH26150)"
+            "Tier 1 DHAV + HIKBTREE index to H.264 NAL extraction, "
+            "Tier 2 filesystem undelete and H.264 carve"
         ),
         "report_kind": "standard" if require_intact_chain else "integrity",
     }
@@ -156,20 +157,20 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
     case = report["case"]
     devices = list_devices(case_id)
     logical_only = any((device.get("acquisition_method") == "logical_network") for device in devices)
-    from engine.app.services.evidence_provenance import LAB_SPECIMEN_BANNER, detect_lab_provenance
+    from engine.app.services.evidence_provenance import BUILDER_IMAGE_BANNER, detect_acquisition_class
 
-    lab_notices: list[str] = []
+    builder_notices: list[str] = []
     for device in devices:
         path = Path(device["image_path"])
         if not path.exists():
             continue
-        provenance = detect_lab_provenance(path)
-        if provenance:
-            lab_notices.append(f"{path.name}: {provenance['message']}")
-    lab_banner = (
-        f"<p style='color:#b00020;border:1px solid #b00020;padding:8px;'><strong>{escape(LAB_SPECIMEN_BANNER)}</strong>"
-        f"<br/>{escape(' · '.join(lab_notices))}</p>"
-        if lab_notices
+        acquisition_class = detect_acquisition_class(path)
+        if acquisition_class:
+            builder_notices.append(f"{path.name}: {acquisition_class['message']}")
+    builder_banner = (
+        f"<p style='color:#b00020;border:1px solid #b00020;padding:8px;'><strong>{escape(BUILDER_IMAGE_BANNER)}</strong>"
+        f"<br/>{escape(' · '.join(builder_notices))}</p>"
+        if builder_notices
         else ""
     )
     rows = "".join(
@@ -246,16 +247,16 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/><title>Forensic Report — {escape(str(case['title']))}</title>
 <style>
-body{{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#0a0e1a;color:#eef1f8}}
-table{{border-collapse:collapse;width:100%;margin:1rem 0}} th,td{{border:1px solid #2e3a5c;padding:8px;font-size:13px}}
-th{{background:#161d30}} code{{font-family:monospace;font-size:12px}}
-.ok{{color:#3ba676}} .bad{{color:#d6584f}} h2{{margin-top:2rem}}
+body{{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#ffffff;color:#111418}}
+table{{border-collapse:collapse;width:100%;margin:1rem 0}} th,td{{border:1px solid #d7dbe0;padding:8px;font-size:13px}}
+th{{background:#f4f6f8;text-align:left}} code{{font-family:monospace;font-size:12px}}
+.ok{{color:#0f7b3f}} .bad{{color:#b00020}} h2{{margin-top:2rem}}
 </style></head><body>
 <h1>Forensic case report</h1>
 <p><strong>{escape(str(case['title']))}</strong> · Examiner: {escape(str(case['examiner']))}</p>
 <p>Custody chain: <span class="{'ok' if chain_ok else 'bad'}">{escape(chain_detail)}</span></p>
 <p>Version: {escape(str(report['app_version']))}</p>
-{lab_banner}
+{builder_banner}
 {logical_banner}
 <h2>Evidence</h2><table><tr><th>File</th><th>SHA-256</th><th>MD5</th><th>Bytes</th><th>Acquisition</th><th>Write blocker</th></tr>{rows}</table>
 <h2>Capability &amp; validation scope</h2>

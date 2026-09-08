@@ -13,19 +13,19 @@ from engine.app.parsers.filesystem_recovery import (
 from engine.app.parsers.generic_tier2 import GenericTier2Adapter
 from engine.app.parsers.honeywell import HoneywellAdapter
 from engine.app.parsers.schemas.honeywell import detect_honeywell_layout, validate_nal_header
-from engine.app.verification.honeywell_specimen import build_honeywell_lab_specimen
+from engine.app.verification.honeywell_specimen import build_honeywell_builder_specimen
 
 
 class HoneywellParserTests(unittest.TestCase):
     def test_specimen_layout_detected(self) -> None:
-        blob = build_honeywell_lab_specimen()
+        blob = build_honeywell_builder_specimen()
         layout = detect_honeywell_layout(blob)
         self.assertIsNotNone(layout)
         assert layout is not None
         self.assertTrue(layout.machine_data_found)
 
     def test_nal_headers_in_specimen(self) -> None:
-        blob = build_honeywell_lab_specimen()
+        blob = build_honeywell_builder_specimen()
         found = 0
         offset = 0
         while True:
@@ -41,7 +41,7 @@ class HoneywellParserTests(unittest.TestCase):
     def test_both_deletion_mechanisms(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "honeywell.bin"
-            path.write_bytes(build_honeywell_lab_specimen())
+            path.write_bytes(build_honeywell_builder_specimen())
             segments = HoneywellAdapter().scan(path)
         validations = {s.validation for s in segments}
         self.assertIn("honeywell_expired_index", validations)
@@ -51,7 +51,7 @@ class HoneywellParserTests(unittest.TestCase):
     def test_scan_does_not_use_whole_image_read_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "honeywell.bin"
-            path.write_bytes(build_honeywell_lab_specimen())
+            path.write_bytes(build_honeywell_builder_specimen())
             with patch.object(Path, "read_bytes", side_effect=AssertionError("whole-image read attempted")):
                 segments = HoneywellAdapter().scan(path)
         self.assertGreaterEqual(len(segments), 3)

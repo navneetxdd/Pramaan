@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import type { RecoveryJob, Segment } from "@/lib/api";
 import { countAllocations, countPlausibleChannels } from "@/lib/allocation";
+import { parseJobStats } from "@/lib/caseStats";
+import { recoveryAdapterLabel } from "@/lib/integrity";
 
 /**
  * What fills the engine log panel between runs.
@@ -100,6 +102,8 @@ export function RecoveryLastRun({
   const duration = formatDuration(job.started_at, job.completed_at);
   const when = formatWhen(job.completed_at ?? job.started_at);
   const tone = STATUS_TONE[job.status] ?? "var(--text-tertiary)";
+  const skippedOob =
+    parseJobStats(job.stats_json).segmentsSkippedOutOfBounds ?? 0;
 
   return (
     <div className="rec-idle flex flex-1 flex-col justify-center gap-4 p-5">
@@ -138,15 +142,25 @@ export function RecoveryLastRun({
           </span>
         </span>
         <span className="text-[var(--text-tertiary)]">
-          parser{" "}
-          <span className="mono text-[var(--text-secondary)]">
-            {job.adapter ?? "—"}
+          method{" "}
+          <span className="text-[var(--text-secondary)]">
+            {job.adapter ? recoveryAdapterLabel(job.adapter) : "Not determined"}
           </span>
         </span>
         {job.error ? (
           <span className="mono text-[var(--status-danger)]">{job.error}</span>
         ) : null}
       </div>
+
+      {skippedOob > 0 ? (
+        <p className="text-[11px] text-[var(--status-warning)]">
+          {skippedOob} recovered range
+          {skippedOob === 1 ? "" : "s"} fell outside the image&apos;s logical
+          bounds and {skippedOob === 1 ? "was" : "were"} not written — the
+          filesystem-recovery path reports inode addresses, not container byte
+          offsets, for these entries.
+        </p>
+      ) : null}
 
       <p className="text-[11px] text-[var(--text-tertiary)]">
         Engine output streams here live during the next run.

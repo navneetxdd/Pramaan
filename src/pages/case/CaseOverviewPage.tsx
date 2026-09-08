@@ -13,14 +13,19 @@ import type { ChainLinkState } from "@/components/forensic/ChainLinkIndicator";
 import {
   failedJobCount,
   jobDisplayProgress,
+  jobKindLabel,
   parseJobStats,
+  recoveredSegmentsByKind,
   runningJobs,
+  summariseSegmentKinds,
   totalRecoveredSegments,
 } from "@/lib/caseStats";
 import { formatBytes } from "@/lib/utils";
 import {
   custodyActionLabel,
   integrityLabel,
+  isVendorParserHit,
+  recoveryAdapterLabel,
   resolveIntegrityState,
 } from "@/lib/integrity";
 
@@ -28,6 +33,7 @@ export function CaseOverviewPage() {
   const { caseId, workspace } = useCaseContext();
   const [custody, setCustody] = useState<ChainLinkState>("checking");
   const [chainTip, setChainTip] = useState<string | null>(null);
+  const [brokenRowId, setBrokenRowId] = useState<number | null>(null);
   const [liveJobState, setLiveJobState] = useState<
     Record<string, { progress: number; message: string }>
   >({});
@@ -38,6 +44,7 @@ export function CaseOverviewPage() {
       .then((s) => {
         setCustody(s.intact ? "intact" : "broken");
         setChainTip(s.tip_hash ?? null);
+        setBrokenRowId(s.first_broken_row_id);
       })
       .catch(() => setCustody("unknown"));
   }, [caseId]);
@@ -76,17 +83,28 @@ export function CaseOverviewPage() {
   const { case: record, evidence, jobs, custody: events } = workspace;
   const totalBytes = evidence.reduce((sum, e) => sum + e.size_bytes, 0);
   const segmentTotal = totalRecoveredSegments(jobs);
+  // Recordings, carves and filesystem-undelete fragments are different findings.
+  // When the engine reported a per-kind split, show the recording count as the
+  // headline and the full split beneath it, so a pile of byte-scale FAT
+  // fragments never reads as a recording count.
+  const segmentKinds = recoveredSegmentsByKind(jobs);
   const flagged = failedJobCount(jobs);
-  const identified = evidence.filter(
-    (e) => e.identification?.recommended_adapter,
-  ).length;
-  const coveragePct =
-    evidence.length === 0
-      ? "—"
-      : `${Math.round((identified / evidence.length) * 100)}%`;
+  // A vendor hit means a validated vendor parser matched (Dahua, Hikvision,
+  // Honeywell). A generic MBR/FAT/NTFS signature routes to generic_tier2, and a
+  // family-signature-only match (CP Plus, Uniview) is a routing hint, not an
+  // identification. Neither is counted here.
+  const hasVendorHit = (e: (typeof evidence)[number]) =>
+    (e.identification?.hits ?? []).some(isVendorParserHit);
+  const vendorHit = evidence.filter(hasVendorHit).length;
+  const identifyRan = evidence.filter((e) => e.identification != null).length;
+  const noValidatedParser = identifyRan - vendorHit;
+  const identifyPending = evidence.length - identifyRan;
   const sortedJobs = jobs
     .filter((j) => j.kind === "recovery")
     .sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""));
+  const jobActivity = [...jobs]
+    .sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""))
+    .slice(0, 12);
 
   return (
     <div className="mx-auto flex max-w-[1440px] flex-col gap-4">
@@ -111,15 +129,27 @@ export function CaseOverviewPage() {
           tone="info"
         />
         <DashboardStat
-          label="OEM identified"
-          value={coveragePct}
-          hint={`${identified} of ${evidence.length} imaged`}
+          label="Vendor identified"
+          value={`${vendorHit} of ${evidence.length}`}
+          hint={
+            identifyPending > 0
+              ? `${noValidatedParser} no validated parser, ${identifyPending} not yet identified`
+              : `${noValidatedParser} no validated parser`
+          }
           icon={Shield}
-          tone="success"
+          tone={vendorHit > 0 ? "success" : undefined}
         />
         <DashboardStat
-          label="Recovered segments"
-          value={segmentTotal.toLocaleString()}
+          label={segmentKinds ? "Recordings recovered" : "Recovered artifacts"}
+          value={(segmentKinds
+            ? segmentKinds.recording
+            : segmentTotal
+          ).toLocaleString()}
+          hint={
+            segmentKinds
+              ? summariseSegmentKinds(segmentKinds)
+              : "open Recovery for the recording, carve and filesystem-undelete split"
+          }
           icon={ScanSearch}
         />
         <DashboardStat
@@ -151,7 +181,7 @@ export function CaseOverviewPage() {
               return (
                 <JobProgressCard
                   key={job.id}
-                  title={`${job.vendor ?? "Unknown OEM"} // ${job.adapter ?? "pending adapter"}`}
+                  title={`${job.vendor ?? "Vendor not identified"} · ${recoveryAdapterLabel(job.adapter)}`}
                   subtitle={
                     live?.message ??
                     (stats.segmentsFound != null
@@ -192,10 +222,12 @@ export function CaseOverviewPage() {
                 : "No events yet"
             }
             witnessHash={chainTip ?? undefined}
+            brokenRowId={brokenRowId}
             onVerify={() =>
               void api.custodyStatus(caseId).then((s) => {
                 setCustody(s.intact ? "intact" : "broken");
                 setChainTip(s.tip_hash ?? null);
+                setBrokenRowId(s.first_broken_row_id);
               })
             }
           />
@@ -209,6 +241,48 @@ export function CaseOverviewPage() {
                 : custodyActionLabel(e.action),
             }))}
           />
+
+          <section className="visily-card">
+            <div className="visily-card-header">
+              <span className="visily-card-title">Job activity</span>
+            </div>
+            {jobActivity.length === 0 ? (
+              <p className="p-4 text-[13px] text-[var(--text-secondary)]">
+                No jobs run yet.
+              </p>
+            ) : (
+              <ul className="divide-y divide-[var(--border-subtle)]">
+                {jobActivity.map((job) => (
+                  <li
+                    key={job.id}
+                    className="flex items-center justify-between gap-3 px-4 py-2 text-[12px]"
+                  >
+                    <span className="font-medium text-[var(--text-primary)]">
+                      {jobKindLabel(job.kind)}
+                    </span>
+                    <span className="flex items-center gap-3">
+                      <span className="mono text-[11px] text-[var(--text-tertiary)]">
+                        {(job.started_at ?? "").replace("T", " ").slice(0, 19)}
+                      </span>
+                      <span
+                        className={
+                          job.status === "completed"
+                            ? "text-[var(--status-success)]"
+                            : job.status === "failed" || job.status === "error"
+                              ? "text-[var(--status-danger)]"
+                              : "text-[var(--status-info)]"
+                        }
+                      >
+                        {job.status
+                          ? job.status[0].toUpperCase() + job.status.slice(1)
+                          : "Unknown"}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       </div>
 

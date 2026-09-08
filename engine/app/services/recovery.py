@@ -47,6 +47,87 @@ def _write_bounded_artifact(
     return hash_file(destination)
 
 
+def _write_raw_artifact(destination: Path, data: bytes) -> tuple[str, str]:
+    """Write bytes a parser already recovered (e.g. pytsk3 undelete) straight to
+    the artifact. Used when the segment's offsets are not container byte offsets."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(data)
+    return hash_file(destination)
+
+
+# Recovered artifacts are not one kind of thing. An examiner reading "26
+# recovered" needs to know how many are recorder recordings, how many are raw
+# stream carves with no index backing, and how many are filesystem-undelete
+# fragments (which can be directory debris a few bytes long). The kind is a
+# deterministic projection of the parser's validation_level, which is stored
+# NOT NULL on every recovered_sequences row.
+ARTIFACT_KINDS = ("recording", "carve", "filesystem_undelete")
+
+_RECORDING_VALIDATIONS = frozenset(
+    {
+        "dual_signature_4",
+        "dual_signature",
+        "hikbtree_indexed",
+        "hikbtree_recording",
+        "hikbtree_deleted_entry",
+        "hikbtree_entry",
+        "honeywell_index_4",
+        "honeywell_index",
+        "honeywell_expired_index",
+    }
+)
+
+_ARTIFACT_KIND_LABELS = {
+    "recording": "Recording",
+    "carve": "Stream carve",
+    "filesystem_undelete": "Filesystem undelete",
+}
+
+_VALIDATION_LABELS = {
+    "filesystem_deleted_inode": "Filesystem undelete (deleted inode)",
+    "filesystem_unallocated": "Filesystem carve (unallocated inode)",
+    "unreferenced_carve": "Stream carve (no index reference)",
+    "h264_nal": "H.264 stream carve",
+    "h264_nal_tail": "H.264 tail carve",
+    "offset-ordered, timestamp unverified": "Offset-ordered carve (timestamps unverified)",
+    "header_footer_only": "Frame carve (header and footer only)",
+    "honeywell_format_carve_4": "Honeywell format carve",
+    "honeywell_gpt_carve": "Honeywell GPT-scoped carve",
+    "dual_signature_4": "DHAV recording (start and end frame verified)",
+    "dual_signature": "DHAV recording (dual signature)",
+    "hikbtree_indexed": "HIKBTREE-indexed recording",
+    "hikbtree_recording": "HIKBTREE recording (open)",
+    "hikbtree_deleted_entry": "HIKBTREE recording (index entry deleted)",
+    "hikbtree_entry": "HIKBTREE index entry",
+    "honeywell_index_4": "Honeywell index recording",
+    "honeywell_index": "Honeywell index recording",
+    "honeywell_expired_index": "Honeywell recording (index entry expired)",
+}
+
+
+def classify_artifact_kind(validation_level: str | None) -> str:
+    value = (validation_level or "").strip()
+    if value.startswith("filesystem_"):
+        return "filesystem_undelete"
+    if value in _RECORDING_VALIDATIONS:
+        return "recording"
+    # Unknown or carve vocabulary: default to carve. A token that does not name a
+    # known index-backed validation has not proven index backing, so it must not
+    # be shown to an examiner as a recording.
+    return "carve"
+
+
+def artifact_kind_label(kind: str) -> str:
+    return _ARTIFACT_KIND_LABELS.get(kind, kind.replace("_", " "))
+
+
+def validation_label(validation_level: str | None) -> str:
+    value = (validation_level or "").strip()
+    if not value:
+        return "Not recorded"
+    return _VALIDATION_LABELS.get(value, value.replace("_", " "))
+
+
 def _confidence_label(value: float, validation: str) -> str:
     if validation in {"dual_signature_4", "dual_signature"} and value >= 0.85:
         return "high"
@@ -158,37 +239,64 @@ async def run_recovery_job(
 
         stored = 0
         skipped_oob = 0
+        kind_counts = {kind: 0 for kind in ARTIFACT_KINDS}
         evidence_rows: list[dict] = []
         artifact_dir = case_storage_dir(case_id) / "sequences"
         media_size = evidence_size(image_path)
         for seq_index, seg in enumerate(sorted(segments, key=lambda item: item.offset_start)):
             if seg.offset_end <= seg.offset_start:
                 continue
-            if seg.offset_start < 0 or seg.offset_end > media_size:
-                skipped_oob += 1
-                logger.warning(
-                    "Skipping recovered range [%s, %s) outside %s-byte logical source %s",
-                    seg.offset_start,
-                    seg.offset_end,
-                    media_size,
-                    image_path.name,
-                )
-                continue
             suffix = ".h264" if seg.codec == "h264" else ".bin"
             artifact_path = artifact_dir / f"{job_id}_{seq_index:06d}{suffix}"
-            try:
+            # Filesystem-undelete segments carry the recovered bytes in raw_bytes;
+            # their offsets are inode addresses, not container ranges, so they are
+            # written directly rather than re-carved from the image.
+            fs_recovered = (
+                str(seg.validation or "").startswith("filesystem_")
+                and bool(seg.raw_bytes)
+            )
+            if fs_recovered:
                 output_md5, output_sha256 = await asyncio.to_thread(
-                    _write_bounded_artifact,
-                    image_path,
-                    artifact_path,
-                    seg.offset_start,
-                    seg.offset_end,
+                    _write_raw_artifact, artifact_path, seg.raw_bytes
                 )
-            except ValueError as exc:
-                skipped_oob += 1
-                logger.warning("Skipping unrecovered range for %s: %s", image_path.name, exc)
-                continue
+            else:
+                if seg.offset_start < 0 or seg.offset_end > media_size:
+                    skipped_oob += 1
+                    logger.warning(
+                        "Skipping recovered range [%s, %s) outside %s-byte logical source %s",
+                        seg.offset_start,
+                        seg.offset_end,
+                        media_size,
+                        image_path.name,
+                    )
+                    continue
+                try:
+                    output_md5, output_sha256 = await asyncio.to_thread(
+                        _write_bounded_artifact,
+                        image_path,
+                        artifact_path,
+                        seg.offset_start,
+                        seg.offset_end,
+                    )
+                except ValueError as exc:
+                    skipped_oob += 1
+                    logger.warning("Skipping unrecovered range for %s: %s", image_path.name, exc)
+                    continue
             conf = _confidence_label(seg.confidence, seg.validation)
+            kind = classify_artifact_kind(seg.validation)
+            seg_evidence = dict(seg.validation_evidence or {})
+            if not seg_evidence.get("allocation_state"):
+                if kind == "carve":
+                    # A stream carve has no filesystem allocation map. Say so
+                    # explicitly; a blank allocation state reads as "allocated,
+                    # checked" in the recovery table and the segment inspector.
+                    seg_evidence["allocation_state"] = "carve (no allocation map)"
+                elif str(seg.validation or "").startswith("dual_signature"):
+                    # DHAV recovery is a frame carver. A dual-signature frame
+                    # bracket is structurally complete, but there is no
+                    # filesystem allocation table behind it, so it must not
+                    # render as a green "Allocated".
+                    seg_evidence["allocation_state"] = "structural (no allocation map)"
             row = insert_sequence(
                 device_id,
                 channel=int(seg.channel or 0),
@@ -211,9 +319,10 @@ async def run_recovery_job(
                 parser_version=seg.parser_version,
                 recovery_job_id=job_id,
                 signature_evidence=seg.signature_evidence,
-                validation_evidence=seg.validation_evidence,
+                validation_evidence=seg_evidence,
             )
             stored += 1
+            kind_counts[kind] += 1
             evidence_rows.append(
                 {
                     "sequence_id": row["id"],
@@ -251,11 +360,18 @@ async def run_recovery_job(
             "device_id": device_id,
             "segments_found": stored,
             "segments_skipped_out_of_bounds": skipped_oob,
+            "segments_by_kind": kind_counts,
             "adapter": adapter_key,
             "vendor": vendors[0].vendor if vendors else "Generic",
             "app_version": APP_VERSION,
             "evidence": evidence_rows,
         }
+        if kind_counts["filesystem_undelete"] > 0:
+            # The pytsk3 undelete pass reads the filesystem root directory only.
+            # Subdirectories are not walked and entries whose directory slot was
+            # reused are not recoverable here. Stated so a report and the UI can
+            # show the boundary rather than imply a full-disk undelete.
+            result["undelete_scope"] = "root_directory_only"
         await job_manager.update(job_id, status="completed", progress=100, message="Recovery complete", result=result)
         persist_job(
             job_id,
@@ -308,7 +424,15 @@ def segments_as_legacy(device_id: str, job_meta: dict | None = None) -> list[dic
                 "vendor": job_meta.get("vendor", "Unknown") if job_meta else "Unknown",
                 "offset_start": seq.get("byte_start"),
                 "offset_end": seq.get("byte_end"),
+                "byte_start": seq.get("byte_start"),
+                "byte_end": seq.get("byte_end"),
                 "byte_length": seq.get("byte_length"),
+                "output_path": seq.get("output_path"),
+                "validation_label": validation_label(seq["validation_level"]),
+                "artifact_kind": classify_artifact_kind(seq["validation_level"]),
+                "artifact_kind_label": artifact_kind_label(
+                    classify_artifact_kind(seq["validation_level"])
+                ),
                 "container_units": seq["frame_count"],
                 "playable_frame_count": seq.get("playable_frame_count"),
                 "confidence": _confidence_score(seq["confidence"], seq["validation_level"]),

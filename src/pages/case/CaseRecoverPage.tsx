@@ -17,7 +17,7 @@ import { VirtualTable } from "@/components/ui/virtual-table";
 import { subscribeJobEvents } from "@/lib/sse";
 import { useActivity } from "@/context/ActivityContext";
 import { cn, formatBytes } from "@/lib/utils";
-import { formatTimestampSource } from "@/lib/integrity";
+import { formatTimestampSource, recoveryAdapterLabel } from "@/lib/integrity";
 import {
   allocationDetail,
   allocationLabel,
@@ -32,6 +32,7 @@ import {
   truncationLabel,
   type AllocationState,
 } from "@/lib/allocation";
+import { countSegmentKinds, summariseSegmentKinds } from "@/lib/caseStats";
 import { timestampTier } from "@/lib/checks";
 import "@/styles/recovery.css";
 
@@ -45,6 +46,8 @@ function AllocationCell({ state }: { state: AllocationState }) {
     deleted: { glyph: "✕", color: "var(--status-danger)" },
     recording: { glyph: "●", color: "var(--status-info)" },
     allocated: { glyph: "✓", color: "var(--status-success)" },
+    carve: { glyph: "◆", color: "var(--text-tertiary)" },
+    structural: { glyph: "▣", color: "var(--status-info)" },
     unknown: { glyph: "?", color: "var(--text-tertiary)" },
   };
   const { glyph, color } = style[state];
@@ -297,6 +300,35 @@ function PartialResultBanner({
   );
 }
 
+/**
+ * Capability boundary for the generic filesystem-undelete pass: it reads the
+ * filesystem root directory only. Rendered whenever the recovery produced a
+ * filesystem-undelete row, so the table cannot be read as a full-disk undelete.
+ */
+function UndeleteScopeBanner() {
+  return (
+    <div className="flex shrink-0 items-start gap-2.5 border-b border-[var(--border-subtle)] bg-[var(--surface-3)] px-4 py-3">
+      <span
+        aria-hidden="true"
+        className="mt-px shrink-0 text-[13px] leading-none text-[var(--text-tertiary)]"
+      >
+        i
+      </span>
+      <div className="min-w-0 text-[12px] leading-relaxed">
+        <p className="font-semibold text-[var(--text-primary)]">
+          Undelete scope: filesystem root directory only
+        </p>
+        <p className="mt-0.5 text-[var(--text-secondary)]">
+          The generic undelete pass walks the root directory of the mounted
+          filesystem. Subdirectories are not walked, and a deleted entry whose
+          directory slot has been reused is not recoverable here. Absence from
+          this table is not evidence that a file was never present.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function CaseRecoverPage() {
   const { caseId, workspace, refresh } = useCaseContext();
   const [deviceId, setDeviceId] = useState("");
@@ -335,6 +367,13 @@ export function CaseRecoverPage() {
     () => workspace?.evidence.find((e) => e.id === deviceId) ?? null,
     [workspace?.evidence, deviceId],
   );
+
+  // An exported clip or a logical file export has no recorder filesystem, so
+  // "recovery" on it would only re-carve the same bytes. The Recover action is
+  // disabled for these; hashing, playback, Findings and cross-camera still work.
+  const isClip =
+    selectedEvidence?.media_type === "video_clip" ||
+    selectedEvidence?.media_type === "logical_export";
 
   const recommendedAdapter =
     selectedEvidence?.identification?.recommended_adapter;
@@ -391,6 +430,17 @@ export function CaseRecoverPage() {
   const truncatedIndex = useMemo(() => indexTruncation(segments), [segments]);
 
   const partialCount = useMemo(() => countPartial(segments), [segments]);
+
+  // The allocation summary noun is "recordings". When the engine reported that
+  // this recovery contains carves or filesystem-undelete fragments, that noun
+  // is wrong, so the header uses a kind-aware summary instead. A run that is
+  // all recordings keeps the allocation summary (deleted / in progress /
+  // partial nuance is meaningful there).
+  const kindCounts = useMemo(() => countSegmentKinds(segments), [segments]);
+  const useKindSummary = useMemo(() => {
+    if (!segments.some((s) => s.artifact_kind != null)) return false;
+    return kindCounts.carve > 0 || kindCounts.filesystem_undelete > 0;
+  }, [segments, kindCounts]);
 
   const allocationByRow = useMemo(() => {
     const map = new Map<string, AllocationState>();
@@ -668,6 +718,12 @@ export function CaseRecoverPage() {
       toast.error("Select device and enter examiner");
       return;
     }
+    if (isClip) {
+      toast.error(
+        "This evidence is an exported clip — there is no recorder filesystem to recover",
+      );
+      return;
+    }
     if (!effectiveAdapter) {
       toast.error(
         "Identification could not determine a parser — pick one under Advanced",
@@ -745,11 +801,14 @@ export function CaseRecoverPage() {
             <Input value={actor} onChange={(e) => setActor(e.target.value)} />
           </div>
           <div className="min-w-[220px]">
-            <label className="label">Recovery parser</label>
+            <label className="label">Recovery method</label>
             <div className="flex h-[34px] items-center gap-2">
               {effectiveAdapter ? (
-                <span className="mono text-[13px] font-medium text-[var(--text-primary)]">
-                  {effectiveAdapter}
+                <span
+                  className="text-[13px] font-medium text-[var(--text-primary)]"
+                  title={effectiveAdapter}
+                >
+                  {recoveryAdapterLabel(effectiveAdapter)}
                 </span>
               ) : (
                 <span className="text-[13px] text-[var(--status-warning)]">
@@ -764,8 +823,13 @@ export function CaseRecoverPage() {
             </div>
           </div>
           <Button
-            disabled={starting || !deviceId || isRecovering}
+            disabled={starting || !deviceId || isRecovering || isClip}
             onClick={() => void handleRecover()}
+            title={
+              isClip
+                ? "This evidence is an exported clip. There is no recorder filesystem to recover."
+                : undefined
+            }
           >
             {starting
               ? "Starting…"
@@ -773,6 +837,13 @@ export function CaseRecoverPage() {
                 ? "Recovery in progress…"
                 : "Run recovery"}
           </Button>
+          {isClip ? (
+            <p className="w-full text-[12px] text-[var(--text-secondary)]">
+              This is an exported clip. There is no recorder filesystem to
+              recover deleted footage from. Use Playback, Findings or
+              Cross-camera on this evidence instead.
+            </p>
+          ) : null}
 
           <div className="w-full">
             <button
@@ -873,6 +944,9 @@ export function CaseRecoverPage() {
               />
             </section>
             <section className="visily-card shrink-0 overflow-hidden">
+              {kindCounts.filesystem_undelete > 0 && !isRecovering ? (
+                <UndeleteScopeBanner />
+              ) : null}
               {partialResultStatus && !isRecovering ? (
                 <PartialResultBanner
                   status={partialResultStatus}
@@ -892,11 +966,13 @@ export function CaseRecoverPage() {
                   <span className="text-[11px] text-[var(--text-secondary)]">
                     {visibleSegments.length !== segments.length
                       ? `${visibleSegments.length} of ${segments.length} shown`
-                      : summariseAllocations(
-                          segments.length,
-                          allocationCounts,
-                          partialCount,
-                        )}
+                      : useKindSummary
+                        ? summariseSegmentKinds(kindCounts)
+                        : summariseAllocations(
+                            segments.length,
+                            allocationCounts,
+                            partialCount,
+                          )}
                   </span>
                   <input
                     type="search"
@@ -1074,8 +1150,16 @@ export function CaseRecoverPage() {
                       <div className="flex flex-col gap-0.5">
                         <ConfidenceBadge
                           tier={timestampTier(seg.timestamp_confidence)}
-                          label={seg.validation?.replace(/_/g, " ")}
+                          label={
+                            seg.validation_label ??
+                            seg.validation?.replace(/_/g, " ")
+                          }
                         />
+                        {seg.artifact_kind_label ? (
+                          <span className="text-[10px] text-[var(--text-tertiary)]">
+                            {seg.artifact_kind_label}
+                          </span>
+                        ) : null}
                         <Tooltip
                           content={
                             (seg.validation_evidence?.[

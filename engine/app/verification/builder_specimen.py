@@ -10,11 +10,11 @@ from engine.app.parsers.schemas.dhav import (
 )
 from engine.app.verification.media_fixture import get_nal_source
 
-_LAB_EPOCH = datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc)
+_BUILDER_EPOCH = datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc)
 
 
 def _frame_time(index: int) -> datetime:
-    return _LAB_EPOCH.replace(second=min(59, 20 + index % 40))
+    return _BUILDER_EPOCH.replace(second=min(59, 20 + index % 40))
 
 
 def _video_frame(channel: int, frame_number: int, index: int) -> bytes:
@@ -30,16 +30,21 @@ def _video_frame(channel: int, frame_number: int, index: int) -> bytes:
     )
 
 
-def build_dahua_lab_specimen() -> bytes:
+_BUILDER_MARKER = b"CPPLUS-BUILDER-IMG\x00"
+
+
+def build_dahua_builder_specimen() -> bytes:
     """
-    Synthetic DHAV stream aligned with libavformat/dhav.c.
-    Starts with DAHUA 0x400 header block containing DHFS4.1 marker for detection.
+    DHAV stream aligned with libavformat/dhav.c.
+    Starts with a DAHUA 0x400 header block carrying the DHFS4.1 detection marker
+    and, in the first sector, the builder-image marker.
     """
     get_nal_source().reset()
     header_block = bytearray(0x400)
     header_block[0:5] = b"DAHUA"
+    header_block[0x20 : 0x20 + len(_BUILDER_MARKER)] = _BUILDER_MARKER
     header_block[0x200 : 0x200 + 7] = b"DHFS4.1"
-    chunks: list[bytes] = [bytes(header_block), b"CPPLUS LAB SPECIMEN\x00" + b"\x00" * 200]
+    chunks: list[bytes] = [bytes(header_block), _BUILDER_MARKER + b"\x00" * 200]
 
     frame_number = 0
     index = 0
@@ -64,7 +69,7 @@ def build_dahua_lab_specimen() -> bytes:
     return b"".join(chunks)
 
 
-def write_lab_specimen(dest: Path) -> Path:
+def write_builder_specimen(dest: Path) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(build_dahua_lab_specimen())
+    dest.write_bytes(build_dahua_builder_specimen())
     return dest

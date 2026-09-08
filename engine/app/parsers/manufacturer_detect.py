@@ -15,7 +15,7 @@ OEM_PROFILES: list[dict] = [
         "tokens": [b"DHAV", b"DHFS", b"DHFS4", b"DHFS4.1", b"Dahua", b"DAHUA"],
         "weight": 1.0,
         "capability_tier": "experimental_parser",
-        "validation_scope": "synthetic_and_known_fixtures",
+        "validation_scope": "builder_and_known_fixtures",
         "user_label": "DHAV frame carver",
     },
     {
@@ -25,7 +25,7 @@ OEM_PROFILES: list[dict] = [
         "tokens": [b"HIKVISION@HANGZHOU", b"HIKBTREE", b"HIKVISION-DVR"],
         "weight": 1.0,
         "capability_tier": "experimental_parser",
-        "validation_scope": "synthetic_and_known_fixtures",
+        "validation_scope": "builder_and_known_fixtures",
     },
     {
         "vendor": "CP Plus",
@@ -45,7 +45,7 @@ OEM_PROFILES: list[dict] = [
         "tokens": [b"Honeywell", b"HWDVR", b"HONHT", b"HONEYWELL"],
         "weight": 0.85,
         "capability_tier": "experimental_parser",
-        "validation_scope": "synthetic_fixture_only",
+        "validation_scope": "builder_fixture_only",
     },
     {
         "vendor": "TP-Link",
@@ -93,12 +93,19 @@ FILESYSTEM_MARKERS = [
     (b"FAT32   ", "FAT32 volume"),
     (b"\x55\xaa", "MBR boot signature @510"),
     (b"DHFS4.1", "Dahua DHFS partition marker"),
-    (b"DHFS4", "Dahua DHFS4 index"),
+    (b"DHFS4", "Dahua DHFS4 signature (no index parser — DHAV frame carve only)"),
     (b"HIKBTREE", "Hikvision B-tree index"),
     (b"WFS0.4", "WFS 0.4 (common Indian OEM FAT variant)"),
 ]
 
 H264_NAL_TYPES = {0x67, 0x68, 0x65, 0x41, 0x61, 0x27, 0x28}
+
+# Capability tiers that count as a vendor-specific parser identification.
+# Every other tier (acquisition_generic_only, filesystem_recovery, unset) is
+# generic handling and must not be reported to an examiner as "vendor
+# identified". The frontend mirrors this set in src/lib/integrity.ts
+# (VENDOR_PARSER_TIERS) and both must stay in sync.
+VENDOR_PARSER_TIERS = frozenset({"validated_parser", "experimental_parser"})
 
 
 @dataclass
@@ -249,9 +256,9 @@ def identify_image(image_path: Path, sample_bytes: int = 64 * 1024 * 1024) -> di
     else:
         recommended = "needs_selection"
 
-    from engine.app.services.evidence_provenance import detect_lab_provenance
+    from engine.app.services.evidence_provenance import detect_acquisition_class
 
-    lab_provenance = detect_lab_provenance(image_path)
+    acquisition_class = detect_acquisition_class(image_path)
 
     return {
         "image_size_bytes": size,
@@ -259,7 +266,7 @@ def identify_image(image_path: Path, sample_bytes: int = 64 * 1024 * 1024) -> di
         "hits": [hit.to_dict() for hit in hits],
         "filesystem_hints": filesystem,
         "recommended_adapter": recommended,
-        "supported_oems_in_ps": [p["vendor"] for p in OEM_PROFILES],
+        "supported_oems": [p["vendor"] for p in OEM_PROFILES],
         "oem_capabilities": [
             {
                 "vendor": profile["vendor"],
@@ -277,7 +284,7 @@ def identify_image(image_path: Path, sample_bytes: int = 64 * 1024 * 1024) -> di
             "Honeywell has a fixture-tested experimental parser. When identification is inconclusive, select an "
             "adapter manually on Recovery."
         ),
-        "lab_provenance": lab_provenance,
+        "acquisition_class": acquisition_class,
     }
 
 

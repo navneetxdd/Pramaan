@@ -15,6 +15,23 @@ const DELETED_VALIDATIONS = new Set([
 
 const SCRUB_WINDOW_MS = 15_000;
 
+/** Readable text for an HTMLMediaError.code so a failed lane never shows a
+ * blank frame or a reason that does not match what went wrong. */
+function videoErrorText(code: number): string {
+  switch (code) {
+    case 1:
+      return "Playback was interrupted before this segment finished loading.";
+    case 2:
+      return "The exported segment could not be loaded from the engine.";
+    case 3:
+      return "The exported segment started to decode then failed. The carved stream is likely truncated or corrupt.";
+    case 4:
+      return "This browser will not play the exported segment. The carve produced a stream it does not accept, or FFmpeg was not available to remux it.";
+    default:
+      return "The exported segment could not be played and the media element reported no error code.";
+  }
+}
+
 type PlaybackDeckProps = {
   channels: TimelineChannel[];
   deviceId: string;
@@ -111,7 +128,9 @@ export function PlaybackDeck({
   const [laneMedia, setLaneMedia] = useState<Record<number, string>>({});
   const [laneGaps, setLaneGaps] = useState<Record<number, boolean>>({});
   const [laneLoading, setLaneLoading] = useState<Record<number, boolean>>({});
-  const [laneErrors, setLaneErrors] = useState<Record<number, boolean>>({});
+  // Keyed by channel; value is the HTMLMediaError.code (1..4) or 0 for an
+  // error the element reported with no code. Absent means no error.
+  const [laneErrors, setLaneErrors] = useState<Record<number, number>>({});
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
   const rafRef = useRef<number | null>(null);
 
@@ -461,7 +480,8 @@ export function PlaybackDeck({
                   <span className="text-[var(--text-tertiary)]">gap</span>
                 ) : null}
               </div>
-              {laneUrls[channel.channel] && !laneErrors[channel.channel] ? (
+              {laneUrls[channel.channel] &&
+              laneErrors[channel.channel] == null ? (
                 <video
                   ref={(el) => {
                     videoRefs.current[channel.channel] = el;
@@ -474,21 +494,21 @@ export function PlaybackDeck({
                   }
                   muted
                   playsInline
-                  onError={() =>
+                  onError={(e) =>
                     setLaneErrors((prev) => ({
                       ...prev,
-                      [channel.channel]: true,
+                      [channel.channel]: e.currentTarget.error?.code ?? 0,
                     }))
                   }
                 />
               ) : (
                 <div className="flex aspect-video items-center justify-center bg-[var(--surface-4)] p-3 text-center text-[12px] text-[var(--text-tertiary)]">
-                  {laneErrors[channel.channel]
-                    ? "Recovered segment has no decodable video frames — carve produced a non-continuous stream."
+                  {laneErrors[channel.channel] != null
+                    ? videoErrorText(laneErrors[channel.channel])
                     : laneGaps[channel.channel]
                       ? "No segment at playhead"
                       : laneLoading[channel.channel]
-                        ? "Exporting…"
+                        ? "Exporting the segment…"
                         : "Preparing playback…"}
                 </div>
               )}

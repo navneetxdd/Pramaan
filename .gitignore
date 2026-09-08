@@ -9,6 +9,7 @@ venv/
 
 # Runtime storage (never commit evidence or signing keys)
 .localdata/
+.localdata-*/
 uploads/
 scratch/
 tmp/

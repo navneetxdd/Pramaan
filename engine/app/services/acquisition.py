@@ -15,7 +15,7 @@ from engine.app.core.repository import (
 from engine.app.parsers.manufacturer_detect import identify_image
 from engine.app.verification.honeywell_specimen import write_honeywell_specimen
 from engine.app.verification.hikvision_specimen import write_hikvision_specimen
-from engine.app.verification.lab_specimen import write_lab_specimen
+from engine.app.verification.builder_specimen import write_builder_specimen
 
 SYNTHETIC_VENDORS = frozenset({"dahua", "honeywell", "hikvision"})
 
@@ -73,7 +73,7 @@ def _write_hash_sidecar(image_path: Path, sha256_hex: str | None) -> None:
     sidecar.write_text(f"{sha256_hex}  {image_path.name}\n", encoding="utf-8")
 
 
-async def create_lab_specimen(case_id: str, actor: str, vendor: str = "dahua") -> dict:
+async def create_builder_specimen(case_id: str, actor: str, vendor: str = "dahua") -> dict:
     if not get_case(case_id):
         raise HTTPException(status_code=404, detail="Case not found")
     vendor_key = vendor.strip().lower()
@@ -84,14 +84,14 @@ async def create_lab_specimen(case_id: str, actor: str, vendor: str = "dahua") -
         )
 
     if vendor_key == "honeywell":
-        dest = case_storage_dir(case_id) / "lab_honeywell_specimen.bin"
+        dest = case_storage_dir(case_id) / "builder_honeywell.bin"
         write_honeywell_specimen(dest)
     elif vendor_key == "hikvision":
-        dest = case_storage_dir(case_id) / "lab_hikvision_specimen.bin"
+        dest = case_storage_dir(case_id) / "builder_hikvision.bin"
         write_hikvision_specimen(dest)
     else:
-        dest = case_storage_dir(case_id) / "lab_dahua_dhav_specimen.bin"
-        write_lab_specimen(dest)
+        dest = case_storage_dir(case_id) / "builder_dahua_dhav.bin"
+        write_builder_specimen(dest)
 
     identification = identify_image(dest)
     device = register_device_from_path(
@@ -179,7 +179,7 @@ def _device_as_evidence(device: dict) -> dict:
     import json
 
     from engine.app.parsers.image_io import evidence_size
-    from engine.app.services.evidence_provenance import detect_lab_provenance
+    from engine.app.services.evidence_provenance import detect_acquisition_class
 
     identification = None
     if device.get("detection_trace_json"):
@@ -191,7 +191,7 @@ def _device_as_evidence(device: dict) -> dict:
         size_bytes = evidence_size(path) if path.exists() else 0
     except Exception:
         size_bytes = path.stat().st_size if path.exists() else 0
-    provenance = detect_lab_provenance(path) if path.exists() else None
+    acquisition_class = detect_acquisition_class(path) if path.exists() else None
     return {
         "id": device["id"],
         "case_id": device["case_id"],
@@ -210,5 +210,5 @@ def _device_as_evidence(device: dict) -> dict:
         "verification_status": device.get("verification_status", "pending"),
         "identification": identification,
         "identification_json": device.get("detection_trace_json"),
-        "lab_provenance": provenance,
+        "acquisition_class": acquisition_class,
     }

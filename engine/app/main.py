@@ -50,7 +50,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="Pramaan Engine",
     version=__version__,
-    description="SIH26150 multi-vendor DVR/NVR forensic analysis engine",
+    description="Multi-vendor DVR and NVR forensic analysis engine",
     lifespan=lifespan,
 )
 

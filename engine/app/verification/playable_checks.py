@@ -7,7 +7,7 @@ from pathlib import Path
 
 from engine.app.parsers.dahua_dhfs import DahuaDhavAdapter
 from engine.app.parsers.unwrap import unwrap_to_h264
-from engine.app.verification.lab_specimen import build_dahua_lab_specimen
+from engine.app.verification.builder_specimen import build_dahua_builder_specimen
 from engine.app.verification.media_fixture import split_annexb_nals
 
 

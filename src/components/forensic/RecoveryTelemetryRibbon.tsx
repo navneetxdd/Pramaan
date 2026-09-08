@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { EvidenceRecord, Segment } from "@/lib/api";
 import { formatBytes } from "@/lib/utils";
+import { recoveryAdapterLabel } from "@/lib/integrity";
 import {
   countAllocations,
   countInvalidChannels,
@@ -159,10 +160,13 @@ export function RecoveryTelemetryRibbon({
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10.5px]">
-        <span className="text-[var(--text-tertiary)]">
-          PARSER{" "}
+        <span
+          className="text-[var(--text-tertiary)]"
+          title={adapter || undefined}
+        >
+          METHOD{" "}
           <span className="font-semibold text-[var(--text-secondary)]">
-            {adapter || "—"}
+            {adapter ? recoveryAdapterLabel(adapter) : "Not determined"}
           </span>
         </span>
         <Divider />

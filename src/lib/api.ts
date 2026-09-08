@@ -58,14 +58,13 @@ export type IdentificationReport = {
   hits: VendorHit[];
   filesystem_hints: Array<{ marker: string; label: string }>;
   recommended_adapter: string;
-  supported_oems_in_ps: string[];
+  supported_oems: string[];
   oem_capabilities?: OemCapability[];
   coverage_note: string;
-  lab_provenance?: {
-    kind: string;
-    stamp: string;
+  acquisition_class?: {
+    class: string;
+    authenticity: string;
     message: string;
-    is_lab_specimen: boolean;
   } | null;
 };
 
@@ -86,11 +85,10 @@ export type EvidenceRecord = {
   verification_status?: string;
   identification?: IdentificationReport | null;
   identification_json?: string | null;
-  lab_provenance?: {
-    kind: string;
-    stamp: string;
+  acquisition_class?: {
+    class: string;
+    authenticity: string;
     message: string;
-    is_lab_specimen: boolean;
   } | null;
 };
 
@@ -128,10 +126,16 @@ export type Segment = {
   vendor: string;
   offset_start: number;
   offset_end: number;
+  byte_start?: number | null;
+  byte_end?: number | null;
+  output_path?: string | null;
   container_units: number;
   playable_frame_count?: number | null;
   confidence: number;
   validation: string;
+  validation_label?: string | null;
+  artifact_kind?: "recording" | "carve" | "filesystem_undelete" | string | null;
+  artifact_kind_label?: string | null;
   confidence_tier?: string;
   preview_path: string | null;
   created_at: string;
@@ -167,6 +171,9 @@ export type SegmentDetail = {
   frame_count: number;
   confidence: string | null;
   validation_level: string | null;
+  validation_label?: string | null;
+  artifact_kind?: "recording" | "carve" | "filesystem_undelete" | string | null;
+  artifact_kind_label?: string | null;
   output_path: string | null;
   output_md5: string | null;
   output_sha256: string | null;
@@ -352,22 +359,6 @@ export const api = {
       body: form,
     });
   },
-
-  createLabSpecimen: (
-    caseId: string,
-    actor: string,
-    vendor: "dahua" | "honeywell" | "hikvision" = "dahua",
-  ) =>
-    request<{
-      evidence: EvidenceRecord;
-      identification: IdentificationReport;
-      vendor?: string;
-      specimen_type?: string;
-    }>(`/api/v1/cases/${caseId}/devices/acquire/synthetic`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actor, source: "synthetic_specimen", vendor }),
-    }),
 
   listImagingDisks: () =>
     request<{ disks: ImagingDisk[]; count: number; read_only_policy: string }>(
@@ -631,7 +622,7 @@ export const api = {
       message?: string | null;
       error?: string | null;
       result?: {
-        demo_mode_unavailable?: boolean;
+        analytics_unavailable?: boolean;
         message?: string;
         findings_count?: number;
       } | null;

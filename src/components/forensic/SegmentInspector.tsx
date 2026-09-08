@@ -24,6 +24,8 @@ const ALLOCATION_COLOR: Record<string, string> = {
   allocated: "var(--status-success)",
   deleted: "var(--status-danger)",
   recording: "var(--status-info)",
+  carve: "var(--text-tertiary)",
+  structural: "var(--status-info)",
   unknown: "var(--text-tertiary)",
 };
 
@@ -255,7 +257,18 @@ export function SegmentInspector({
           return version ? `${name} · v${version}` : name;
         })(),
       ],
-      ["Validation", segment?.validation ?? detail?.validation_level ?? "—"],
+      [
+        "Kind",
+        segment?.artifact_kind_label ?? detail?.artifact_kind_label ?? "—",
+      ],
+      [
+        "Validation",
+        segment?.validation_label ??
+          detail?.validation_label ??
+          segment?.validation ??
+          detail?.validation_level ??
+          "—",
+      ],
       [
         "Confidence tier",
         segment?.confidence_tier
@@ -315,6 +328,12 @@ export function SegmentInspector({
         title: "Recording",
         fields: [
           ["Channel", displayOrDash(segment.channel ?? detail?.channel)],
+          [
+            "Kind",
+            displayOrDash(
+              segment.artifact_kind_label ?? detail?.artifact_kind_label,
+            ),
+          ],
           ["State", allocationLabel(allocationOf(segment))],
           [
             "Data",

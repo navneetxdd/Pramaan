@@ -83,7 +83,7 @@ export function CaseCustodyPage() {
           </p>
           <p className="mt-1 text-[12px] text-[var(--text-secondary)]">
             {brokenRowPosition != null
-              ? "This is the first row whose stored hash no longer matches its predecessor — everything from this row onward cannot be trusted as unaltered. Rows before it still verify. It's highlighted below."
+              ? "This is the first row whose stored hash no longer matches its predecessor. Everything from this row onward cannot be trusted as unaltered. Rows before it still verify. It is highlighted below."
               : "The hash chain failed verification, but the exact break point could not be determined."}
           </p>
         </section>
