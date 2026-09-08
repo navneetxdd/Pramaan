@@ -287,7 +287,9 @@ export function CasesPage() {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
             <FolderOpen className="h-4 w-4" />
-            {filtered.length} active case{filtered.length === 1 ? "" : "s"}
+            {loading
+              ? "Active cases"
+              : `${filtered.length} active case${filtered.length === 1 ? "" : "s"}`}
           </h2>
         </div>
 

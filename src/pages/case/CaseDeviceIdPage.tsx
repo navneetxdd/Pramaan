@@ -14,6 +14,10 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/visily/PageHeader";
 import { formatBytes, formatOffset } from "@/lib/utils";
 
+// A DHAV or NAL stream can have thousands of leaf nodes; the tree is a preview,
+// not an inventory. Cap the rendered rows so the page stays usable.
+const LAYOUT_TREE_LIMIT = 60;
+
 type StructureNode = {
   label: string;
   offset: number;
@@ -133,7 +137,7 @@ export function CaseDeviceIdPage() {
       <PageHeader
         kicker="Step 2 · Identification"
         title="Device & format analysis"
-        subtitle="Signature scan and partition layout — selects the recovery adapter. Routing hints only until field-validated."
+        subtitle="Signature scan and partition layout. Selects the recovery adapter. Routing hints only until field-validated."
         actions={
           <Button
             disabled={!deviceId || scanning}
@@ -216,37 +220,44 @@ export function CaseDeviceIdPage() {
               ))}
             </ul>
 
-            {flatStructure.length > 0 ? (
+            {!isClip && flatStructure.length > 0 ? (
               <>
                 <p className="visily-card-title mb-2 mt-4 text-[11px]">
-                  Layout tree
+                  Layout tree{" "}
+                  {flatStructure.length > LAYOUT_TREE_LIMIT ? (
+                    <span className="font-normal text-[var(--text-tertiary)]">
+                      (first {LAYOUT_TREE_LIMIT} of {flatStructure.length})
+                    </span>
+                  ) : null}
                 </p>
 
                 <div className="max-h-48 overflow-auto">
-                  {flatStructure.map(({ node, depth }) => (
-                    <button
-                      key={`${node.type}-${node.offset}-${node.label}`}
+                  {flatStructure
+                    .slice(0, LAYOUT_TREE_LIMIT)
+                    .map(({ node, depth }) => (
+                      <button
+                        key={`${node.type}-${node.offset}-${node.label}`}
 
-                      type="button"
+                        type="button"
 
-                      className={`block w-full truncate rounded px-1 py-0.5 text-left text-[11px] ${
-                        selectedNode?.offset === node.offset &&
-                        selectedNode?.label === node.label
-                          ? "bg-[var(--accent-soft)] text-[var(--accent-600)]"
-                          : "hover:bg-[var(--surface-3)]"
-                      }`}
+                        className={`block w-full truncate rounded px-1 py-0.5 text-left text-[11px] ${
+                          selectedNode?.offset === node.offset &&
+                          selectedNode?.label === node.label
+                            ? "bg-[var(--accent-soft)] text-[var(--accent-600)]"
+                            : "hover:bg-[var(--surface-3)]"
+                        }`}
 
-                      style={{ paddingLeft: `${depth * 10 + 4}px` }}
+                        style={{ paddingLeft: `${depth * 10 + 4}px` }}
 
-                      onClick={() => {
-                        setSelectedNode(node);
+                        onClick={() => {
+                          setSelectedNode(node);
 
-                        setHexOffset(node.offset);
-                      }}
-                    >
-                      {node.label}
-                    </button>
-                  ))}
+                          setHexOffset(node.offset);
+                        }}
+                      >
+                        {node.label}
+                      </button>
+                    ))}
                 </div>
               </>
             ) : null}

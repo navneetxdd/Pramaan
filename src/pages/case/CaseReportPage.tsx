@@ -105,7 +105,7 @@ export function CaseReportPage() {
               <Badge variant={jobCount > 0 ? "success" : "outline"}>
                 {jobCount > 0 ? "✓" : "—"}
               </Badge>
-              Recovered sequences ({jobCount} jobs)
+              Recovered sequences ({jobCount} {jobCount === 1 ? "job" : "jobs"})
             </li>
             <li className="flex items-center gap-2">
               <Badge variant={hasMethodology ? "success" : "outline"}>

@@ -92,6 +92,8 @@ export function capabilityTierLabel(tier: string): string {
       return "Experimental parser";
     case "acquisition_generic_only":
       return "Acquisition + generic only";
+    case "filesystem_recovery":
+      return "Filesystem undelete";
     default:
       return tier.replace(/_/g, " ");
   }
@@ -125,6 +127,8 @@ export function validationScopeLabel(scope: string): string {
       return "Generic carving only. No vendor-specific parser.";
     case "annex_b_signature_only":
       return "Generic H.264 signature only. No vendor structure.";
+    case "pytsk3_tier2":
+      return "Filesystem undelete via The Sleuth Kit";
     default:
       return scope.replace(/_/g, " ");
   }

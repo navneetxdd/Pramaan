@@ -236,9 +236,7 @@ export function CaseOverviewPage() {
               id: e.id,
               time: e.created_at.replace("T", " ").replace("Z", " UTC"),
               actor: e.actor,
-              action: e.detail
-                ? `${custodyActionLabel(e.action)} (${e.detail})`
-                : custodyActionLabel(e.action),
+              action: custodyActionLabel(e.action),
             }))}
           />
 

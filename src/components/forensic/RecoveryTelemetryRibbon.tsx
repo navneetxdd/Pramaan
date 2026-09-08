@@ -53,6 +53,18 @@ function Divider() {
   return <span className="text-[var(--border-default)]">│</span>;
 }
 
+const MEDIA_TYPE_LABELS: Record<string, string> = {
+  disk_image: "Disk image",
+  ewf_image: "EWF image",
+  video_clip: "Video clip",
+  logical_export: "Logical export",
+};
+
+function mediaTypeLabel(value?: string | null): string {
+  if (!value) return "—";
+  return MEDIA_TYPE_LABELS[value] ?? value.replace(/_/g, " ");
+}
+
 export function RecoveryTelemetryRibbon({
   segments,
   evidence,
@@ -183,7 +195,7 @@ export function RecoveryTelemetryRibbon({
         <span className="text-[var(--text-tertiary)]">
           MEDIA{" "}
           <span className="font-semibold text-[var(--text-secondary)]">
-            {evidence?.media_type ?? "—"}
+            {mediaTypeLabel(evidence?.media_type)}
           </span>
         </span>
       </div>
