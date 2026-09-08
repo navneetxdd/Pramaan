@@ -494,12 +494,18 @@ export function PlaybackDeck({
                   }
                   muted
                   playsInline
-                  onError={(e) =>
+                  onError={(e) => {
+                    // currentTarget can be null if the media element errors
+                    // during teardown; fall back to target, then to 0.
+                    const media =
+                      (e.currentTarget as HTMLVideoElement | null) ??
+                      (e.target as HTMLVideoElement | null);
+                    const code = media?.error?.code ?? 0;
                     setLaneErrors((prev) => ({
                       ...prev,
-                      [channel.channel]: e.currentTarget.error?.code ?? 0,
-                    }))
-                  }
+                      [channel.channel]: code,
+                    }));
+                  }}
                 />
               ) : (
                 <div className="flex aspect-video items-center justify-center bg-[var(--surface-4)] p-3 text-center text-[12px] text-[var(--text-tertiary)]">
