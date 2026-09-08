@@ -238,7 +238,7 @@ export function CaseAcquirePage() {
 
     setHashState("pending");
 
-    setWorking("Block imaging (read-only source)…");
+    setWorking("Disk imaging (read-only source)…");
 
     try {
       const started = await api.acquirePhysical(caseId, {
@@ -432,11 +432,11 @@ export function CaseAcquirePage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="mx-auto flex max-w-[1440px] flex-col gap-3 pb-8">
       <PageHeader
         kicker="Step 1 · Preservation"
         title="Acquire evidence"
-        subtitle="Image or register read-only copies. Source media is never modified — hashes are verified before the catalog."
+        subtitle="Image or register read-only copies. Source media is never modified."
       />
       <ol className="flex flex-wrap gap-2 px-5">
         {STEPS.map((label, idx) => (
@@ -453,8 +453,8 @@ export function CaseAcquirePage() {
         ))}
       </ol>
 
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(260px,300px)_1fr_minmax(220px,260px)]">
-        <section className="visily-card min-h-0 space-y-4 overflow-y-auto p-4">
+      <div className="grid gap-3 lg:grid-cols-[minmax(260px,300px)_1fr_minmax(220px,260px)] lg:items-start">
+        <section className="visily-card space-y-4 p-4">
           <div>
             <p className="visily-card-title text-[11px]">
               Who is performing this step?
@@ -523,7 +523,7 @@ export function CaseAcquirePage() {
             style={{ borderColor: "var(--border-subtle)" }}
           >
             <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
-              Block imaging
+              Disk imaging
             </p>
 
             <Input
@@ -596,20 +596,14 @@ export function CaseAcquirePage() {
             </p>
 
             <p className="text-[11px] text-[var(--text-secondary)]">
-              Drop E01, DD, or IMG files in{" "}
-              <span className="mono">{oemDropLabel}</span>
-              {oemDropLabel.startsWith("$") ? null : (
-                <>
-                  {" "}
-                  or set <span className="mono">PRAMAAN_OEM_IMAGE_DIR</span>
-                </>
-              )}
-              .
+              Copy E01, DD, or IMG files into {oemDropLabel} and they appear
+              here for registration.
             </p>
 
             {oemImages.length === 0 ? (
               <p className="text-[11px] text-[var(--text-tertiary)]">
-                No images found — run fetch script or copy media there.
+                No images in the drop folder yet. Copy disk images there and
+                they appear here.
               </p>
             ) : (
               <ul className="space-y-1">
@@ -667,7 +661,7 @@ export function CaseAcquirePage() {
               {hashState === "mismatch" && hashMismatch ? (
                 <div className="rounded-lg border border-[var(--status-danger)] bg-[var(--surface-2)] p-3 font-mono text-[11px]">
                   <p className="mb-2 font-sans text-[12px] font-semibold text-[var(--status-danger)]">
-                    Hash mismatch — do not treat this evidence as verified
+                    Hash mismatch. Do not treat this evidence as verified
                   </p>
                   {hashMismatch.expected_sha256 ? (
                     <>
@@ -741,14 +735,14 @@ export function CaseAcquirePage() {
               </p>
 
               <p className="mt-2 max-w-sm text-[13px] text-[var(--text-secondary)]">
-                Choose a source on the left — upload, image a path, or register
-                a file from the operator drop folder.
+                Choose a source on the left: upload, image a path, or register a
+                file from the operator drop folder.
               </p>
             </div>
           )}
         </section>
 
-        <aside className="visily-card flex min-h-0 flex-col">
+        <aside className="visily-card flex flex-col">
           <div className="visily-card-header">
             <span className="visily-card-title">This case</span>
 
@@ -757,7 +751,7 @@ export function CaseAcquirePage() {
             </span>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          <div className="max-h-[520px] overflow-y-auto p-2">
             {queueItems.length === 0 ? (
               <p className="p-3 text-[12px] text-[var(--text-tertiary)]">
                 Evidence items appear here after acquisition.

@@ -22,7 +22,7 @@ export function CatalogStatStrip({
       tone: "info" as const,
     },
     {
-      label: "Artefact count",
+      label: "Artifacts",
       value: artefactCount.toLocaleString(),
       icon: FileStack,
       tone: "neutral" as const,

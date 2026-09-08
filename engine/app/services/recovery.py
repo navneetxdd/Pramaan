@@ -204,7 +204,7 @@ async def run_recovery_job(
         vendors = detect_vendors(image_path)
         adapter_key = adapter or (vendors[0].adapter if vendors else "needs_selection")
         if adapter_key == "needs_selection":
-            raise RuntimeError("Identification inconclusive — select a recovery adapter manually")
+            raise RuntimeError("Identification inconclusive. Select a recovery adapter manually.")
         adapter_impl = get(adapter_key)
         if not adapter_impl:
             raise RuntimeError(f"Adapter not registered: {adapter_key}")

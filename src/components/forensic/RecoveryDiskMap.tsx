@@ -163,7 +163,7 @@ export function RecoveryDiskMap({
               {laneSegments.every((s) => !channelIsValid(s)) ? (
                 <span
                   className="mono uppercase text-[var(--status-warning)]"
-                  title="This channel byte cannot name a camera — it is 0x00 or the format's 0xFF erase pattern. The raw value is shown as found."
+                  title="This channel byte cannot name a camera. It is 0x00 or the format's 0xFF erase pattern. The raw value is shown as found."
                 >
                   Ch {channel} · invalid
                 </span>
@@ -257,7 +257,7 @@ export function RecoveryDiskMap({
         <p className="pt-1 text-[10px] text-[var(--text-tertiary)]">
           Positions are to scale. Recordings narrower than 3&nbsp;px are drawn
           at 3&nbsp;px so they stay visible and clickable, so the coloured area
-          overstates coverage — read the figure above, not the bar.
+          overstates coverage. Read the figure above, not the bar.
         </p>
       ) : null}
     </div>

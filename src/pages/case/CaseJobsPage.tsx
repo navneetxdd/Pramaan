@@ -103,7 +103,7 @@ export function CaseJobsPage() {
       <PageHeader
         kicker="Parsing queue"
         title="DVR/NVR extraction jobs"
-        subtitle="Recovery and imaging jobs for this case — live progress from the forensic engine."
+        subtitle="Recovery and imaging jobs, with live engine progress."
         actions={
           <>
             <Button variant="secondary" onClick={() => void refresh()}>

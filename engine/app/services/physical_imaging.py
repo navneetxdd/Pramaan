@@ -143,7 +143,7 @@ async def run_imaging_job(
     try:
         if _is_e01(source_path):
             if not pyewf_available():
-                raise RuntimeError("E01 imaging requires pyewf — use raw/DD or install pyewf")
+                raise RuntimeError("E01 imaging requires pyewf. Use raw/DD or install pyewf.")
             e01_handle = open_e01_readonly(Path(source_path))
             total_size = e01_size(e01_handle)
         else:
@@ -406,7 +406,9 @@ def prepare_imaging_device(
         return device
 
     source_name = Path(source_path.replace("\\\\.\\", "").replace("/", "_")).name or "evidence"
-    filename = f"physical_{source_name}.dd".replace(":", "")
+    # Keep the operator's own name for the media; the raw copy just carries a
+    # .dd extension. No "physical_" prefix and no doubled extension.
+    filename = f"{Path(source_name).stem or source_name}.dd".replace(":", "")
     dest = case_storage_dir(case_id) / filename
     device = register_pending_device(
         case_id,

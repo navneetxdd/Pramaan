@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, Lock, Shield, Activity, Database } from "lucide-react";
 import { useActivity } from "@/context/ActivityContext";
 import { useBreadcrumb } from "./ModuleSidebar";
@@ -12,7 +12,6 @@ export function AppHeader() {
   const { mode, message } = useActivity();
   const { page } = useBreadcrumb();
   const { caseId } = useParams();
-  const location = useLocation();
   const navigate = useNavigate();
   const [cases, setCases] = useState<CaseRecord[]>([]);
   const [activeCase, setActiveCase] = useState<CaseRecord | null>(null);
@@ -25,7 +24,7 @@ export function AppHeader() {
       .listCaseRegistry()
       .then(setCases)
       .catch(() => setCases([]));
-  }, [location.pathname]);
+  }, [caseId]);
 
   useEffect(() => {
     if (!caseId) {
@@ -35,48 +34,47 @@ export function AppHeader() {
       setCustodyState("unknown");
       return;
     }
-    void api
-      .getCase(caseId)
-      .then((w) => {
-        setActiveCase(w.case);
-        setStorageBytes(w.evidence.reduce((s, e) => s + e.size_bytes, 0));
-      })
-      .catch(() => {
-        setActiveCase(null);
-        setStorageBytes(0);
-      });
-    setCustodyState("checking");
-    void api
-      .custodyStatus(caseId)
-      .then((s) => setCustodyState(s.intact ? "intact" : "broken"))
-      .catch(() => setCustodyState("unknown"));
-  }, [caseId, location.pathname]);
-
-  useEffect(() => {
-    if (!caseId) return;
     let cancelled = false;
+
+    // One poll keeps the header (case, storage, custody, live job progress)
+    // current. Every case screen also has this data, so a single 12s poll here
+    // replaces the header, sidebar and status bar each fetching /workspace on
+    // their own 2s/5s/30s timers. Paused while the tab is hidden.
     async function poll() {
+      if (cancelled || document.hidden) return;
       try {
         const w = await api.getCase(caseId!);
+        if (cancelled) return;
+        setActiveCase(w.case);
+        setStorageBytes(w.evidence.reduce((s, e) => s + e.size_bytes, 0));
         const active = runningJobs(w.jobs)[0];
         if (!active) {
-          if (!cancelled) setLiveProgress(null);
-          return;
+          setLiveProgress(null);
+        } else {
+          const status = await api.getJobStatus(active.id);
+          if (!cancelled && typeof status.progress === "number")
+            setLiveProgress(Math.round(status.progress));
         }
-        const status = await api.getJobStatus(active.id);
-        if (!cancelled && typeof status.progress === "number")
-          setLiveProgress(Math.round(status.progress));
       } catch {
         if (!cancelled) setLiveProgress(null);
       }
     }
+
+    setCustodyState("checking");
+    void api
+      .custodyStatus(caseId)
+      .then(
+        (s) => !cancelled && setCustodyState(s.intact ? "intact" : "broken"),
+      )
+      .catch(() => !cancelled && setCustodyState("unknown"));
+
     void poll();
-    const timer = window.setInterval(poll, 2000);
+    const timer = window.setInterval(() => void poll(), 12_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [caseId, location.pathname]);
+  }, [caseId]);
 
   return (
     <header
@@ -94,7 +92,7 @@ export function AppHeader() {
               >
                 {cases.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name.slice(0, 40)} — {c.examiner_name}
+                    {c.name.slice(0, 40)} · {c.examiner_name}
                   </option>
                 ))}
               </select>

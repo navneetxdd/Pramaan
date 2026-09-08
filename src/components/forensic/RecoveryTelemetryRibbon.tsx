@@ -53,6 +53,18 @@ function Divider() {
   return <span className="text-[var(--border-default)]">│</span>;
 }
 
+const MEDIA_TYPE_LABELS: Record<string, string> = {
+  disk_image: "Disk image",
+  ewf_image: "EWF image",
+  video_clip: "Video clip",
+  logical_export: "Logical export",
+};
+
+function mediaTypeLabel(value?: string | null): string {
+  if (!value) return "—";
+  return MEDIA_TYPE_LABELS[value] ?? value.replace(/_/g, " ");
+}
+
 export function RecoveryTelemetryRibbon({
   segments,
   evidence,
@@ -106,9 +118,10 @@ export function RecoveryTelemetryRibbon({
     <div className="rec-ribbon flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-2 text-[11px]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <Stat
-          label="Recordings"
+          label="Segments"
           value={String(segments.length)}
           accent={segments.length > 0}
+          title="Recovered segments in the catalog: recordings, carves and filesystem-undelete fragments together"
         />
         <Divider />
         <Stat
@@ -124,7 +137,7 @@ export function RecoveryTelemetryRibbon({
           accent={partial > 0}
           title={
             assessesPartial
-              ? "Recordings whose data block was partly overwritten — only the bytes inside the entry's own window are reported as recovered"
+              ? "Recordings whose data block was partly overwritten. Only the bytes inside the entry's own window are reported as recovered."
               : "This parser does not assess whether a recording's bytes are all still present, so no completeness claim is made either way"
           }
         />
@@ -183,7 +196,7 @@ export function RecoveryTelemetryRibbon({
         <span className="text-[var(--text-tertiary)]">
           MEDIA{" "}
           <span className="font-semibold text-[var(--text-secondary)]">
-            {evidence?.media_type ?? "—"}
+            {mediaTypeLabel(evidence?.media_type)}
           </span>
         </span>
       </div>

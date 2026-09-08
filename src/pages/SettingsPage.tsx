@@ -79,33 +79,33 @@ export function SettingsPage() {
           Settings
         </h1>
         <p className="mt-1 text-[14px] text-[var(--text-secondary)]">
-          Workstation storage, validation datasets, and report signing.
+          Storage location, AI models, and report signing.
         </p>
       </header>
 
       <section className="visily-card space-y-3 p-4">
         <div>
           <p className="text-[13px] font-medium text-[var(--text-primary)]">
-            Data directory
+            Case data folder
           </p>
           <p className="mt-0.5 text-[12px] text-[var(--text-tertiary)]">
-            Set <code className="mono">FORENSIC_WORKSTATION_DATA</code> before
-            launching the engine. Runtime relocation is not supported.
+            Every case, evidence copy, recovered clip and report is stored here.
+            Set at startup; back up this folder to preserve the caseload.
           </p>
         </div>
         <code className="mono block rounded-md border border-[var(--border-subtle)] bg-[var(--surface-3)] px-3 py-2 text-[12px] text-[var(--text-secondary)]">
-          {workingDir || "—"}
+          {workingDir || "Could not read the data folder path"}
         </code>
       </section>
 
       <section className="visily-card space-y-3 p-4">
         <div>
           <p className="text-[13px] font-medium text-[var(--text-primary)]">
-            Validation datasets
+            AI models
           </p>
           <p className="mt-0.5 text-[12px] text-[var(--text-tertiary)]">
-            Public corpora and reference samples — fetched on demand, verified
-            by SHA-256 in manifest.
+            Object, face and re-identification models used by Findings and
+            Cross-camera trace. They run entirely on this workstation.
           </p>
         </div>
         <div className="max-h-64 overflow-y-auto rounded-md border border-[var(--border-subtle)]">
@@ -124,8 +124,7 @@ export function SettingsPage() {
                     colSpan={3}
                     className="px-2 py-3 text-[var(--text-tertiary)]"
                   >
-                    No manifest entries — run fetch_validation_assets.py
-                    locally.
+                    No models registered on this workstation.
                   </td>
                 </tr>
               ) : (
@@ -182,10 +181,13 @@ export function SettingsPage() {
       <section className="visily-card space-y-3 p-4">
         <div>
           <p className="text-[13px] font-medium text-[var(--text-primary)]">
-            PDF signing fingerprint
+            Report signing fingerprint
           </p>
           <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--text-tertiary)]">
-            Compare this value to signature properties in your PDF reader.
+            Every signed PDF report carries this fingerprint. Check it against
+            the signature shown in your PDF reader to confirm a report was
+            produced by this workstation and has not been altered. Self-signed:
+            it proves the file is intact, not the examiner's identity.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-3)] px-3 py-2">
@@ -199,6 +201,7 @@ export function SettingsPage() {
             type="button"
             variant="ghost"
             size="sm"
+            disabled={!fingerprint}
             className="h-8 shrink-0 px-2"
             onClick={() => void copyFingerprint()}
           >

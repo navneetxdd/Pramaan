@@ -40,7 +40,7 @@ export function CaseCustodyPage() {
       <PageHeader
         kicker="Audit trail"
         title="Chain of custody"
-        subtitle="Append-only custody log with hash-linked verification for this case."
+        subtitle="Append-only, hash-linked custody log."
         actions={
           <Badge
             variant={
@@ -59,7 +59,7 @@ export function CaseCustodyPage() {
           icon={Shield}
         />
         <DashboardStat
-          label="Unique actors"
+          label="Actors"
           value={String(actors)}
           icon={ShieldCheck}
           tone="info"

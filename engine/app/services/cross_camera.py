@@ -16,6 +16,7 @@ No live streaming, no per-frame realtime inference, no PyTorch.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import shutil
@@ -25,7 +26,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 from engine.app.core.config import FFMPEG_BIN, REID_MODEL_PATH, SFACE_MODEL_PATH, YUNET_MODEL_PATH
 from engine.app.core.db import append_custody, get_db
@@ -55,6 +56,21 @@ FACE_MATCH_COS = 0.363          # SFace same-person cosine floor, ~99.80% accura
                                  # match. A false identity match is the worst error this tool can make.
 
 VIDEO_SUFFIXES = {".mp4", ".avi", ".mkv", ".mov", ".mpg", ".mpeg", ".m4v", ".dav", ".ts", ".webm"}
+
+
+def _iso_to_epoch_ms(value: str | None) -> int | None:
+    """Recorder timestamp (ISO 8601) -> epoch milliseconds, or None if unparseable.
+    A naive timestamp is read as UTC: the recorder clock is the reference and the
+    report states that basis explicitly."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp() * 1000)
 
 _reid_net = None
 _reid_checked = False
@@ -230,6 +246,7 @@ class _Det:
     source_label: str
     source_video: str
     offset_ms: int
+    recorded_epoch_ms: int | None
     box: dict
     conf: float
     emb: object  # np.ndarray (768,)
@@ -346,6 +363,7 @@ def list_sources(case_id: str) -> list[dict]:
             "label": f"Recovered channel {ch}",
             "kind": "recovered_channel",
             "segments": [s["output_path"] for s in seqs],
+            "segment_starts": [s.get("recorder_start_ts") for s in seqs],
             "clip_count": len(seqs),
         })
     # registered video evidence (live captures, network-pulled clips, directly imported video)
@@ -357,6 +375,7 @@ def list_sources(case_id: str) -> list[dict]:
                 "label": p.name,
                 "kind": "video_evidence",
                 "segments": [str(p)],
+                "segment_starts": [dev.get("recorder_start_ts")],
                 "clip_count": 1,
             })
     return out
@@ -382,9 +401,9 @@ async def run_correlation(
     match_sensitivity: float = 0.5,
     max_frames_per_source: int = DEFAULT_MAX_FRAMES,
 ) -> None:
-    import cv2  # type: ignore
-    import numpy as np  # type: ignore
-
+    """Orchestrate the correlation. The CPU-heavy scan and clustering run in a
+    worker thread (asyncio.to_thread) so a multi-minute run does not block the
+    event loop — the SSE job stream and every other API call keep responding."""
     now = datetime.now(timezone.utc).isoformat()
     params = {
         "fps": fps,
@@ -400,143 +419,20 @@ async def run_correlation(
     await job_manager.update(job_id, status="running", progress=2, message="Loading models")
     persist_job(job_id, "cross_camera", "running", case_id=case_id, progress=2, message="Loading models")
 
-    try:
-        if _load_reid() is None:
-            raise RuntimeError(
-                "Re-identification model unavailable. Fetch it with "
-                "`python scripts/validation/fetch_validation_assets.py`."
-            )
-        sources = _resolve_sources(case_id, source_keys)
-        # match_sensitivity in [0,1] -> average-linkage cosine floor for cross-source grouping
-        s = min(max(match_sensitivity, 0.0), 1.0)
-        cos_threshold = round(0.40 + 0.35 * s, 3)   # 0.40 (loose) .. 0.75 (strict)
+    loop = asyncio.get_running_loop()
 
-        all_tracklets: list = []
-        det_total = 0
-        total = len(sources)
-        for si, src in enumerate(sources):
-            await job_manager.update(
-                job_id, progress=5 + int(65 * si / max(total, 1)),
-                message=f"Scanning {src['label']} ({si + 1}/{total})",
-            )
-            src_dets: list[_Det] = []
-            budget = max_frames_per_source
-            for video in src["segments"]:
-                if budget <= 0:
-                    break
-                for offset_ms, frame in _sample(Path(video), fps, budget):
-                    budget -= 1
-                    persons = [
-                        (c, b) for (lbl, c, b) in _detect_objects(frame)
-                        if lbl == "person" and c >= MIN_PERSON_CONF and int(b["h"]) >= MIN_BOX_PX
-                    ]
-                    for conf, box in persons:
-                        emb = _embed(frame, box)
-                        if emb is None:
-                            continue
-                        x, y, w, h = int(box["x"]), int(box["y"]), int(box["w"]), int(box["h"])
-                        crop = frame[max(0, y): y + h, max(0, x): x + w].copy()
-                        face_emb = _face_embed(frame, box)
-                        src_dets.append(_Det(src["key"], src["label"], video, offset_ms, box,
-                                             float(conf), emb, crop, face_emb))
-            det_total += len(src_dets)
-            all_tracklets.extend(_build_tracklets(src_dets))
-
-        await job_manager.update(
-            job_id, progress=78,
-            message=f"Correlating {len(all_tracklets)} tracks from {det_total} detections",
+    def _progress(pct: int, msg: str) -> None:
+        # Called from the worker thread: hop back onto the loop for the SSE push.
+        asyncio.run_coroutine_threadsafe(
+            job_manager.update(job_id, status="running", progress=pct, message=msg), loop
         )
-        # A run that finds nobody is a completed run with an empty result, not a
-        # failure — it still ran to the end. Marking it "failed" would inflate the
-        # Overview / Job-log "Failed jobs" counters for a normal null outcome.
-        groups = _agglomerate(all_tracklets, cos_threshold)
+        persist_job(job_id, "cross_camera", "running", case_id=case_id, progress=pct, message=msg)
 
-        class _Ident:
-            def __init__(self, tracklets):
-                self.dets = [d for t in tracklets for d in t.dets]
-                self.sources = {t.source_key for t in tracklets}
-                m = np.mean([d.emb for d in self.dets], axis=0)
-                n = float(np.linalg.norm(m))
-                self.centroid = (m / n if n > 1e-6 else m).astype(np.float32)
-                faces = [d.face_emb for d in self.dets if d.face_emb is not None]
-                if faces:
-                    fm = np.mean(faces, axis=0)
-                    fn = float(np.linalg.norm(fm))
-                    self.face_centroid = (fm / fn if fn > 1e-6 else fm).astype(np.float32)
-                else:
-                    self.face_centroid = None
-
-        kept = [_Ident(g) for g in groups]
-        kept = [c for c in kept if len(c.dets) >= MIN_APPEARANCES]
-        kept.sort(key=lambda c: (len(c.sources), len(c.dets)), reverse=True)
-        dets = kept and [d for c in kept for d in c.dets] or []
-
-        thumb_dir = case_storage_dir(case_id) / "cross_camera" / run_id
-        thumb_dir.mkdir(parents=True, exist_ok=True)
-        identities_summary: list[dict] = []
-        with get_db() as conn:
-            for i, cl in enumerate(kept, start=1):
-                iid = uuid.uuid4().hex
-                cl.dets.sort(key=lambda d: (d.source_key, d.offset_ms))
-                rep = max(cl.dets, key=lambda d: d.conf)
-                rep_path = thumb_dir / f"{iid}.jpg"
-                cv2.imwrite(str(rep_path), rep.crop)
-                first_ms = min(d.offset_ms for d in cl.dets)
-                last_ms = max(d.offset_ms for d in cl.dets)
-                cams = {}
-                for d in cl.dets:
-                    cams.setdefault(d.source_label, {"key": d.source_key, "count": 0, "first_ms": d.offset_ms, "last_ms": d.offset_ms})
-                    e = cams[d.source_label]
-                    e["count"] += 1
-                    e["first_ms"] = min(e["first_ms"], d.offset_ms)
-                    e["last_ms"] = max(e["last_ms"], d.offset_ms)
-                conn.execute(
-                    """INSERT INTO cross_camera_identities
-                       (id, run_id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms,
-                        rep_thumb_path, cameras_json, embedding, face_embedding)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                    (iid, run_id, f"Person {i}", len(cl.sources), len(cl.dets), first_ms, last_ms,
-                     str(rep_path), json.dumps(cams), cl.centroid.astype(np.float32).tobytes(),
-                     cl.face_centroid.tobytes() if cl.face_centroid is not None else None),
-                )
-                for d in cl.dets:
-                    conn.execute(
-                        """INSERT INTO cross_camera_appearances
-                           (id, identity_id, run_id, source_key, source_label, source_video, offset_ms,
-                            bbox_json, confidence, embedding, face_embedding)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                        (uuid.uuid4().hex, iid, run_id, d.source_key, d.source_label, d.source_video,
-                         d.offset_ms, json.dumps(d.box), d.conf, d.emb.astype(np.float32).tobytes(),
-                         d.face_emb.astype(np.float32).tobytes() if d.face_emb is not None else None),
-                    )
-                identities_summary.append({
-                    "id": iid, "label": f"Person {i}", "camera_count": len(cl.sources),
-                    "appearance_count": len(cl.dets),
-                })
-
-            faces_kept = sum(1 for c in kept for d in c.dets if d.face_emb is not None)
-            summary = {
-                "identities": len(kept),
-                "cross_camera_identities": sum(1 for c in kept if len(c.sources) >= 2),
-                "detections": det_total,
-                "appearances_with_face": faces_kept,
-                "sources": [{"key": s["key"], "label": s["label"]} for s in sources],
-                "cosine_threshold": round(cos_threshold, 3),
-            }
-            conn.execute(
-                "UPDATE cross_camera_runs SET status=?, summary_json=?, completed_at=? WHERE id=?",
-                ("completed", json.dumps(summary), datetime.now(timezone.utc).isoformat(), run_id),
-            )
-            append_custody(
-                conn, actor=actor, action="cross_camera_correlation_run",
-                target_type="case", target_id=case_id,
-            )
-
-        result = {"run_id": run_id, **summary}
-        await job_manager.update(job_id, status="completed", progress=100,
-                                 message=f"{len(kept)} identities, {summary['cross_camera_identities']} seen on 2+ cameras",
-                                 result=result)
-        persist_job(job_id, "cross_camera", "completed", case_id=case_id, progress=100, result=result)
+    try:
+        result, message = await asyncio.to_thread(
+            _correlate_sync, run_id, case_id, actor, source_keys,
+            fps, match_sensitivity, max_frames_per_source, _progress,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Cross-camera correlation %s failed", run_id)
         with get_db() as conn:
@@ -544,6 +440,200 @@ async def run_correlation(
                          ("failed", str(exc), datetime.now(timezone.utc).isoformat(), run_id))
         await job_manager.update(job_id, status="failed", error=str(exc))
         persist_job(job_id, "cross_camera", "failed", case_id=case_id, error=str(exc))
+        return
+
+    await job_manager.update(job_id, status="completed", progress=100, message=message, result=result)
+    persist_job(job_id, "cross_camera", "completed", case_id=case_id, progress=100, result=result)
+
+
+def _correlate_sync(
+    run_id: str,
+    case_id: str,
+    actor: str,
+    source_keys: list[str],
+    fps: float,
+    match_sensitivity: float,
+    max_frames_per_source: int,
+    progress: Callable[[int, str], None],
+) -> tuple[dict, str]:
+    """Blocking body of a correlation run. Returns (result_dict, status_message).
+    Raises on failure; the async caller records the failed state."""
+    import cv2  # type: ignore
+    import numpy as np  # type: ignore
+
+    if _load_reid() is None:
+        raise RuntimeError(
+            "Re-identification model unavailable. Fetch it with "
+            "`python scripts/validation/fetch_validation_assets.py`."
+        )
+    sources = _resolve_sources(case_id, source_keys)
+    # match_sensitivity in [0,1] -> average-linkage cosine floor for cross-source grouping
+    s = min(max(match_sensitivity, 0.0), 1.0)
+    cos_threshold = round(0.40 + 0.35 * s, 3)   # 0.40 (loose) .. 0.75 (strict)
+
+    all_tracklets: list = []
+    det_total = 0
+    total = len(sources)
+    span = 70 / max(total, 1)   # progress band (5..75%) split across the sources
+    for si, src in enumerate(sources):
+        base = 5 + span * si
+        progress(int(base), f"Scanning {src['label']} ({si + 1}/{total})")
+        src_dets: list[_Det] = []
+        budget = max_frames_per_source
+        scanned = 0
+        seg_starts = src.get("segment_starts") or []
+        for seg_index, video in enumerate(src["segments"]):
+            if budget <= 0:
+                break
+            seg_base_ms = _iso_to_epoch_ms(
+                seg_starts[seg_index] if seg_index < len(seg_starts) else None
+            )
+            for offset_ms, frame in _sample(Path(video), fps, budget):
+                budget -= 1
+                scanned += 1
+                if scanned % 25 == 0:
+                    frac = scanned / max_frames_per_source
+                    progress(
+                        int(base + span * min(frac, 1.0)),
+                        f"Scanning {src['label']} ({si + 1}/{total}) · {scanned} frames",
+                    )
+                recorded_epoch_ms = (
+                    seg_base_ms + offset_ms if seg_base_ms is not None else None
+                )
+                persons = [
+                    (c, b) for (lbl, c, b) in _detect_objects(frame)
+                    if lbl == "person" and c >= MIN_PERSON_CONF and int(b["h"]) >= MIN_BOX_PX
+                ]
+                for conf, box in persons:
+                    emb = _embed(frame, box)
+                    if emb is None:
+                        continue
+                    x, y, w, h = int(box["x"]), int(box["y"]), int(box["w"]), int(box["h"])
+                    crop = frame[max(0, y): y + h, max(0, x): x + w].copy()
+                    face_emb = _face_embed(frame, box)
+                    src_dets.append(_Det(src["key"], src["label"], video, offset_ms,
+                                         recorded_epoch_ms, box, float(conf), emb, crop, face_emb))
+        det_total += len(src_dets)
+        all_tracklets.extend(_build_tracklets(src_dets))
+
+    progress(78, f"Correlating {len(all_tracklets)} tracks from {det_total} detections")
+    # A run that finds nobody is a completed run with an empty result, not a
+    # failure — it still ran to the end. Marking it "failed" would inflate the
+    # Overview / Job-log "Failed jobs" counters for a normal null outcome.
+    groups = _agglomerate(all_tracklets, cos_threshold)
+
+    class _Ident:
+        def __init__(self, tracklets):
+            self.dets = [d for t in tracklets for d in t.dets]
+            self.sources = {t.source_key for t in tracklets}
+            # Grouping cohesion: how tightly the merged tracks resemble each
+            # other (mean pairwise cosine of their track means). 1.0 for a lone
+            # track. Low cohesion => the group may mix two look-alike people and
+            # the examiner should confirm it by eye.
+            tms = [t.mean_emb for t in tracklets if t.mean_emb is not None]
+            if len(tms) >= 2:
+                mat = np.stack(tms)
+                sims = mat @ mat.T
+                iu = np.triu_indices(len(tms), k=1)
+                self.cohesion = round(float(sims[iu].mean()), 3)
+            else:
+                self.cohesion = 1.0
+            m = np.mean([d.emb for d in self.dets], axis=0)
+            n = float(np.linalg.norm(m))
+            self.centroid = (m / n if n > 1e-6 else m).astype(np.float32)
+            faces = [d.face_emb for d in self.dets if d.face_emb is not None]
+            if faces:
+                fm = np.mean(faces, axis=0)
+                fn = float(np.linalg.norm(fm))
+                self.face_centroid = (fm / fn if fn > 1e-6 else fm).astype(np.float32)
+            else:
+                self.face_centroid = None
+
+    kept = [_Ident(g) for g in groups]
+    kept = [c for c in kept if len(c.dets) >= MIN_APPEARANCES]
+    kept.sort(key=lambda c: (len(c.sources), len(c.dets)), reverse=True)
+
+    thumb_dir = case_storage_dir(case_id) / "cross_camera" / run_id
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    with get_db() as conn:
+        for i, cl in enumerate(kept, start=1):
+            iid = uuid.uuid4().hex
+            cl.dets.sort(key=lambda d: (d.source_key, d.offset_ms))
+            rep = max(cl.dets, key=lambda d: d.conf)
+            rep_path = thumb_dir / f"{iid}.jpg"
+            cv2.imwrite(str(rep_path), rep.crop)
+            first_ms = min(d.offset_ms for d in cl.dets)
+            last_ms = max(d.offset_ms for d in cl.dets)
+            epochs = [d.recorded_epoch_ms for d in cl.dets if d.recorded_epoch_ms is not None]
+            first_epoch_ms = min(epochs) if epochs else None
+            last_epoch_ms = max(epochs) if epochs else None
+            cams = {}
+            for d in cl.dets:
+                cams.setdefault(d.source_label, {
+                    "key": d.source_key, "count": 0,
+                    "first_ms": d.offset_ms, "last_ms": d.offset_ms,
+                    "first_epoch_ms": d.recorded_epoch_ms, "last_epoch_ms": d.recorded_epoch_ms,
+                })
+                e = cams[d.source_label]
+                e["count"] += 1
+                e["first_ms"] = min(e["first_ms"], d.offset_ms)
+                e["last_ms"] = max(e["last_ms"], d.offset_ms)
+                if d.recorded_epoch_ms is not None:
+                    e["first_epoch_ms"] = (
+                        d.recorded_epoch_ms if e["first_epoch_ms"] is None
+                        else min(e["first_epoch_ms"], d.recorded_epoch_ms)
+                    )
+                    e["last_epoch_ms"] = (
+                        d.recorded_epoch_ms if e["last_epoch_ms"] is None
+                        else max(e["last_epoch_ms"], d.recorded_epoch_ms)
+                    )
+            conn.execute(
+                """INSERT INTO cross_camera_identities
+                   (id, run_id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms,
+                    first_seen_epoch_ms, last_seen_epoch_ms, cohesion,
+                    rep_thumb_path, cameras_json, embedding, face_embedding)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (iid, run_id, f"Person {i}", len(cl.sources), len(cl.dets), first_ms, last_ms,
+                 first_epoch_ms, last_epoch_ms, cl.cohesion,
+                 str(rep_path), json.dumps(cams), cl.centroid.astype(np.float32).tobytes(),
+                 cl.face_centroid.tobytes() if cl.face_centroid is not None else None),
+            )
+            for d in cl.dets:
+                conn.execute(
+                    """INSERT INTO cross_camera_appearances
+                       (id, identity_id, run_id, source_key, source_label, source_video, offset_ms,
+                        recorded_epoch_ms, bbox_json, confidence, embedding, face_embedding)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (uuid.uuid4().hex, iid, run_id, d.source_key, d.source_label, d.source_video,
+                     d.offset_ms, d.recorded_epoch_ms, json.dumps(d.box), d.conf,
+                     d.emb.astype(np.float32).tobytes(),
+                     d.face_emb.astype(np.float32).tobytes() if d.face_emb is not None else None),
+                )
+
+        faces_kept = sum(1 for c in kept for d in c.dets if d.face_emb is not None)
+        summary = {
+            "identities": len(kept),
+            "cross_camera_identities": sum(1 for c in kept if len(c.sources) >= 2),
+            "detections": det_total,
+            "appearances_with_face": faces_kept,
+            "sources": [{"key": s["key"], "label": s["label"]} for s in sources],
+            "cosine_threshold": round(cos_threshold, 3),
+        }
+        conn.execute(
+            "UPDATE cross_camera_runs SET status=?, summary_json=?, completed_at=? WHERE id=?",
+            ("completed", json.dumps(summary), datetime.now(timezone.utc).isoformat(), run_id),
+        )
+        append_custody(
+            conn, actor=actor, action="cross_camera_correlation_run",
+            target_type="case", target_id=case_id,
+        )
+
+    result = {"run_id": run_id, **summary}
+    message = (
+        f"{len(kept)} identities, "
+        f"{summary['cross_camera_identities']} seen on 2+ cameras"
+    )
+    return result, message
 
 
 # --- read side ----------------------------------------------------------------
@@ -575,7 +665,8 @@ def get_run(run_id: str) -> dict | None:
         if not r:
             return None
         idents = conn.execute(
-            "SELECT id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms, cameras_json "
+            "SELECT id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms, "
+            "first_seen_epoch_ms, last_seen_epoch_ms, cohesion, cameras_json "
             "FROM cross_camera_identities WHERE run_id=? ORDER BY camera_count DESC, appearance_count DESC",
             (run_id,),
         ).fetchall()
@@ -589,6 +680,9 @@ def get_run(run_id: str) -> dict | None:
                 "id": i["id"], "label": i["label"], "camera_count": i["camera_count"],
                 "appearance_count": i["appearance_count"],
                 "first_seen_ms": i["first_seen_ms"], "last_seen_ms": i["last_seen_ms"],
+                "first_seen_epoch_ms": i["first_seen_epoch_ms"],
+                "last_seen_epoch_ms": i["last_seen_epoch_ms"],
+                "cohesion": i["cohesion"],
                 "cameras": json.loads(i["cameras_json"] or "{}"),
             }
             for i in idents
@@ -599,26 +693,32 @@ def get_run(run_id: str) -> dict | None:
 def get_identity(identity_id: str) -> dict | None:
     with get_db() as conn:
         i = conn.execute(
-            "SELECT id, run_id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms, cameras_json "
+            "SELECT id, run_id, label, camera_count, appearance_count, first_seen_ms, last_seen_ms, "
+            "first_seen_epoch_ms, last_seen_epoch_ms, cohesion, cameras_json "
             "FROM cross_camera_identities WHERE id=?",
             (identity_id,),
         ).fetchone()
         if not i:
             return None
         aps = conn.execute(
-            "SELECT id, source_key, source_label, offset_ms, bbox_json, confidence "
-            "FROM cross_camera_appearances WHERE identity_id=? ORDER BY source_label, offset_ms",
+            "SELECT id, source_key, source_label, offset_ms, recorded_epoch_ms, bbox_json, confidence "
+            "FROM cross_camera_appearances WHERE identity_id=? "
+            "ORDER BY recorded_epoch_ms IS NULL, recorded_epoch_ms, source_label, offset_ms",
             (identity_id,),
         ).fetchall()
     return {
         "id": i["id"], "run_id": i["run_id"], "label": i["label"],
         "camera_count": i["camera_count"], "appearance_count": i["appearance_count"],
         "first_seen_ms": i["first_seen_ms"], "last_seen_ms": i["last_seen_ms"],
+        "first_seen_epoch_ms": i["first_seen_epoch_ms"],
+        "last_seen_epoch_ms": i["last_seen_epoch_ms"],
+        "cohesion": i["cohesion"],
         "cameras": json.loads(i["cameras_json"] or "{}"),
         "appearances": [
             {
                 "id": a["id"], "source_key": a["source_key"], "source_label": a["source_label"],
-                "offset_ms": a["offset_ms"], "bbox": json.loads(a["bbox_json"]),
+                "offset_ms": a["offset_ms"], "recorded_epoch_ms": a["recorded_epoch_ms"],
+                "bbox": json.loads(a["bbox_json"]),
                 "confidence": round(a["confidence"], 3),
             }
             for a in aps
@@ -723,7 +823,7 @@ def search_person(run_id: str, query_image: bytes, *, mode: str = "appearance", 
             raise RuntimeError("Face models unavailable on the engine host")
         q = _face_embed(img, None)
         if q is None:
-            raise ValueError("No face found in the reference photo — try a closer, front-facing image")
+            raise ValueError("No face found in the reference photo. Try a closer, front-facing image.")
         floor = FACE_MATCH_COS
     else:
         if _load_reid() is None:
@@ -735,7 +835,7 @@ def search_person(run_id: str, query_image: bytes, *, mode: str = "appearance", 
 
     with get_db() as conn:
         rows = conn.execute(
-            f"SELECT a.id, a.identity_id, a.source_label, a.offset_ms, a.confidence, a.{col} AS vec, i.label "
+            f"SELECT a.id, a.identity_id, a.source_label, a.offset_ms, a.recorded_epoch_ms, a.confidence, a.{col} AS vec, i.label "
             "FROM cross_camera_appearances a JOIN cross_camera_identities i ON i.id=a.identity_id "
             "WHERE a.run_id=?",
             (run_id,),
@@ -759,6 +859,7 @@ def search_person(run_id: str, query_image: bytes, *, mode: str = "appearance", 
         {
             "appearance_id": r["id"], "identity_id": r["identity_id"], "identity_label": r["label"],
             "source_label": r["source_label"], "offset_ms": r["offset_ms"],
+            "recorded_epoch_ms": r["recorded_epoch_ms"],
             "similarity": round(sim, 3),
         }
         for sim, r in scored[:top_k]

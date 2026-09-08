@@ -82,7 +82,10 @@ function parseSegmentEnd(
       const parsed = Date.parse(raw);
       if (!Number.isNaN(parsed)) return parsed;
     }
-    return start;
+    // No end timestamp (a carve has none). Give it a nominal one-minute span so
+    // the playhead can still land on it and it can be played back; a zero-width
+    // segment is never hittable and shows a permanent "no segment at playhead".
+    return start + 60_000;
   }
   if (seg.offset_end != null) return seg.offset_end;
   const byteLen = seg.byte_length ?? 1;
@@ -269,11 +272,19 @@ export function PlaybackDeck({
         const end = parseSegmentEnd(seg, start, useTime);
         let fromMs: number | undefined;
         let toMs: number | undefined;
-        if (useTime) {
+        if (useTime && end - start > SCRUB_WINDOW_MS) {
           const relPlayhead = effectivePlayhead - start;
           const bucket = Math.floor(relPlayhead / SCRUB_WINDOW_MS);
           fromMs = Math.max(0, bucket * SCRUB_WINDOW_MS);
           toMs = Math.min(end - start, fromMs + SCRUB_WINDOW_MS * 2);
+        }
+        // A carve or a sub-window-length segment has no meaningful scrub range
+        // (end === start for a single DHAV frame bracket). Export the whole
+        // segment instead of asking for a zero-length window, which 400s and
+        // leaves the lane showing "no segment at playhead".
+        if (fromMs != null && toMs != null && toMs <= fromMs) {
+          fromMs = undefined;
+          toMs = undefined;
         }
 
         const cacheKey = exportCacheKey(seg.id, fromMs, toMs);
@@ -396,7 +407,7 @@ export function PlaybackDeck({
         </p>
         <p className="mx-auto mt-2 max-w-md text-[13px] text-[var(--text-secondary)]">
           Run recovery on Step 3 first. Playback appears here when sequences
-          with decodable video are indexed — generic disk images may only yield
+          with decodable video are indexed. Generic disk images may only yield
           filesystem or carve hits without a camera timeline.
         </p>
       </section>
@@ -418,7 +429,7 @@ export function PlaybackDeck({
           <p className="mono text-[11px] text-[var(--text-tertiary)]">
             {useTime
               ? formatPlayhead(effectivePlayhead, true)
-              : "byte-offset order — step through segments"}
+              : "Byte-offset order. Step through segments."}
           </p>
         </div>
         <div className="flex gap-2">
@@ -442,7 +453,7 @@ export function PlaybackDeck({
             title={
               useTime
                 ? undefined
-                : "Byte-offset mode — use Step to advance between segments"
+                : "Byte-offset mode. Use Step to advance between segments."
             }
           >
             {playing ? (
@@ -473,7 +484,7 @@ export function PlaybackDeck({
                 <span>{channel.label}</span>
                 {deleted ? (
                   <span className="font-semibold uppercase tracking-wide text-[var(--status-warning)]">
-                    Recovered — unreferenced
+                    Recovered, unreferenced
                   </span>
                 ) : null}
                 {laneGaps[channel.channel] ? (
@@ -494,12 +505,18 @@ export function PlaybackDeck({
                   }
                   muted
                   playsInline
-                  onError={(e) =>
+                  onError={(e) => {
+                    // currentTarget can be null if the media element errors
+                    // during teardown; fall back to target, then to 0.
+                    const media =
+                      (e.currentTarget as HTMLVideoElement | null) ??
+                      (e.target as HTMLVideoElement | null);
+                    const code = media?.error?.code ?? 0;
                     setLaneErrors((prev) => ({
                       ...prev,
-                      [channel.channel]: e.currentTarget.error?.code ?? 0,
-                    }))
-                  }
+                      [channel.channel]: code,
+                    }));
+                  }}
                 />
               ) : (
                 <div className="flex aspect-video items-center justify-center bg-[var(--surface-4)] p-3 text-center text-[12px] text-[var(--text-tertiary)]">

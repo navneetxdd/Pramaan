@@ -41,28 +41,45 @@ type ExportResult = { filename: string; download_url: string };
  * docs/reference/hikvision_playback_handoff.md — so this reports exactly what
  * came back rather than promising a playable MP4.
  */
+/** A filesystem-safe, examiner-readable name for an exported recording:
+ * ch01_20231114-221320.mp4 (recorder clock). */
+function exportDownloadName(segment: Segment, ext: string): string {
+  const ch = String(segment.channel ?? 0).padStart(2, "0");
+  const m = (segment.recorder_start_ts ?? "").match(
+    /(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/,
+  );
+  const stamp = m
+    ? `${m[1]}${m[2]}${m[3]}-${m[4]}${m[5]}${m[6]}`
+    : segment.id.slice(0, 8);
+  return `ch${ch}_${stamp}.${ext}`;
+}
+
 function ExportSegmentButton({
   deviceId,
-  segmentId,
+  segment,
 }: {
   deviceId: string;
-  segmentId: string;
+  segment: Segment;
 }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ExportResult | null>(null);
 
   useEffect(() => {
     setResult(null);
-  }, [segmentId]);
+  }, [segment.id]);
 
   async function run() {
     setBusy(true);
     try {
-      const response = (await api.exportSegment(deviceId, segmentId, {
+      const response = (await api.exportSegment(deviceId, segment.id, {
         full: true,
       })) as ExportResult;
       setResult(response);
-      toast.success(`Exported ${response.filename}`);
+      toast.success(
+        response.filename.toLowerCase().endsWith(".mp4")
+          ? "Recording exported to MP4"
+          : "Recording exported (raw H.264, FFmpeg unavailable)",
+      );
     } catch (err) {
       // 409 here means the artifact failed its byte-length/identity check —
       // surface it verbatim rather than as a generic failure.
@@ -74,37 +91,27 @@ function ExportSegmentButton({
     }
   }
 
-  const isMp4 = result?.filename.toLowerCase().endsWith(".mp4");
+  const ext = result?.filename.toLowerCase().endsWith(".mp4") ? "mp4" : "h264";
 
   return (
-    <div className="space-y-1.5">
-      <p className="text-[10px] font-semibold uppercase text-[var(--text-tertiary)]">
-        Export
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={busy}
-          onClick={() => void run()}
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={busy}
+        onClick={() => void run()}
+      >
+        {busy ? "Exporting…" : result ? "Re-export" : "Export recording"}
+      </Button>
+      {result ? (
+        <a
+          href={`${getApiBase()}${result.download_url}`}
+          download={exportDownloadName(segment, ext)}
+          className="mono text-[11px] text-[var(--accent-500)] underline underline-offset-2"
         >
-          {busy ? "Exporting…" : "Export segment"}
-        </Button>
-        {result ? (
-          <a
-            href={`${getApiBase()}${result.download_url}`}
-            download={result.filename}
-            className="mono text-[11px] text-[var(--accent-500)] underline underline-offset-2"
-          >
-            {result.filename}
-          </a>
-        ) : null}
-      </div>
-      {result && !isMp4 ? (
-        <p className="text-[10px] text-[var(--status-warning)]">
-          Exported as raw H.264 — FFmpeg was not available, so this is not a
-          container-wrapped, directly playable file.
-        </p>
+          {exportDownloadName(segment, ext)}
+          {ext === "h264" ? " (raw H.264)" : ""}
+        </a>
       ) : null}
     </div>
   );
@@ -413,7 +420,7 @@ export function SegmentInspector({
   }
 
   return (
-    <section className="visily-card flex min-h-[384px] flex-col overflow-hidden">
+    <section className="visily-card flex flex-col">
       <div className="visily-card-header">
         <span className="visily-card-title">Segment inspector</span>
         {/* Identify the subject in the header, so the examiner knows what they
@@ -432,9 +439,9 @@ export function SegmentInspector({
             <span className="mono text-[var(--text-tertiary)]">
               {formatOffset(segment.offset_start)}
             </span>
-            <span className="mono text-[10px] text-[var(--text-tertiary)]">
-              {segment.id.slice(0, 8)}…
-            </span>
+            {deviceId ? (
+              <ExportSegmentButton deviceId={deviceId} segment={segment} />
+            ) : null}
           </div>
         ) : (
           <span className="mono text-[10px] text-[var(--text-tertiary)]">
@@ -458,7 +465,7 @@ export function SegmentInspector({
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-3">
+      <div className="p-4">
         {tab === "metadata" ? (
           <div className="space-y-3">
             {/* Grouped key/value columns: related facts read across together
@@ -491,7 +498,7 @@ export function SegmentInspector({
               ))}
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+            <div className="space-y-3">
               {isPartial(segment) && partialReason(segment) ? (
                 <div className="rounded border border-[var(--status-warning)] bg-[rgba(217,119,6,0.1)] p-2.5">
                   <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--status-warning)]">
@@ -512,15 +519,7 @@ export function SegmentInspector({
                     {confidenceBasis}
                   </p>
                 </div>
-              ) : (
-                <div />
-              )}
-              <div className="flex shrink-0 items-start">
-                <ExportSegmentButton
-                  deviceId={deviceId}
-                  segmentId={segment.id}
-                />
-              </div>
+              ) : null}
             </div>
 
             {detail?.output_md5 || detail?.output_sha256 ? (

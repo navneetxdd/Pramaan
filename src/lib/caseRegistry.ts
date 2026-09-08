@@ -1,16 +1,14 @@
 import type { CaseRecord } from "@/lib/api";
 
-/** Names produced by smoke tests, CI, and automated validation — hidden from the operator registry. */
+/**
+ * Cases created by the automated test and CI suites. Those runs mark their
+ * cases `ephemeral`, which is the real signal; the name patterns below only
+ * catch older automation output on a developer machine and are deliberately
+ * narrow so they can never hide a case an examiner actually named.
+ */
 const AUTOMATED_NAME_PATTERNS: RegExp[] = [
-  /^M\d[\s_]/i,
   /^Smoke[\s_]/i,
-  /^Custody gate$/i,
-  /^Tool Verification$/i,
   /^verify_/i,
-  /^Public media validation$/i,
-  /^CAVIAR analytics$/i,
-  /^E01 OEM$/i,
-  /^M5 Export$/i,
   /^dbg$/i,
 ];
 
@@ -35,4 +33,4 @@ export function formatCaseRef(caseId: string): string {
 
 export const HANDLER_FIELD_LABEL = "Your name (recorded on chain of custody)";
 export const HANDLER_FIELD_HINT =
-  "Who is performing this action — written into the custody log as the actor for each step.";
+  "Who is performing this action. Written into the custody log as the actor for each step.";

@@ -32,7 +32,6 @@ import {
 export function CaseOverviewPage() {
   const { caseId, workspace } = useCaseContext();
   const [custody, setCustody] = useState<ChainLinkState>("checking");
-  const [chainTip, setChainTip] = useState<string | null>(null);
   const [brokenRowId, setBrokenRowId] = useState<number | null>(null);
   const [liveJobState, setLiveJobState] = useState<
     Record<string, { progress: number; message: string }>
@@ -43,7 +42,6 @@ export function CaseOverviewPage() {
       .custodyStatus(caseId)
       .then((s) => {
         setCustody(s.intact ? "intact" : "broken");
-        setChainTip(s.tip_hash ?? null);
         setBrokenRowId(s.first_broken_row_id);
       })
       .catch(() => setCustody("unknown"));
@@ -115,7 +113,10 @@ export function CaseOverviewPage() {
         description={record.notes?.trim() || "No case notes."}
         meta={[
           { label: "Case handler", value: record.examiner_name },
-          { label: "Case ID", value: record.id.slice(0, 18) },
+          {
+            label: "Case reference",
+            value: record.id.slice(0, 8).toUpperCase(),
+          },
         ]}
         primaryAction={{ label: "Run identification", to: "device-id" }}
         secondaryAction={{ label: "Open report", to: "report" }}
@@ -123,7 +124,7 @@ export function CaseOverviewPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <DashboardStat
-          label="Evidence items"
+          label="Evidence"
           value={String(evidence.length)}
           icon={HardDrive}
           tone="info"
@@ -140,11 +141,8 @@ export function CaseOverviewPage() {
           tone={vendorHit > 0 ? "success" : undefined}
         />
         <DashboardStat
-          label={segmentKinds ? "Recordings recovered" : "Recovered artifacts"}
-          value={(segmentKinds
-            ? segmentKinds.recording
-            : segmentTotal
-          ).toLocaleString()}
+          label="Segments recovered"
+          value={segmentTotal.toLocaleString()}
           hint={
             segmentKinds
               ? summariseSegmentKinds(segmentKinds)
@@ -221,12 +219,10 @@ export function CaseOverviewPage() {
                     .slice(0, 19)
                 : "No events yet"
             }
-            witnessHash={chainTip ?? undefined}
             brokenRowId={brokenRowId}
             onVerify={() =>
               void api.custodyStatus(caseId).then((s) => {
                 setCustody(s.intact ? "intact" : "broken");
-                setChainTip(s.tip_hash ?? null);
                 setBrokenRowId(s.first_broken_row_id);
               })
             }
@@ -236,9 +232,7 @@ export function CaseOverviewPage() {
               id: e.id,
               time: e.created_at.replace("T", " ").replace("Z", " UTC"),
               actor: e.actor,
-              action: e.detail
-                ? `${custodyActionLabel(e.action)} (${e.detail})`
-                : custodyActionLabel(e.action),
+              action: custodyActionLabel(e.action),
             }))}
           />
 

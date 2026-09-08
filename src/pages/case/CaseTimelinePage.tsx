@@ -206,7 +206,7 @@ export function CaseTimelinePage() {
       <PageHeader
         kicker="Temporal review"
         title="Recovery timeline"
-        subtitle="Multi-camera playback deck with shared transport. Deleted recoveries are highlighted on each lane."
+        subtitle="Multi-camera playback with a shared scrubber. Deleted recoveries are flagged on each lane."
       />
 
       <section className="visily-card p-3">
@@ -410,11 +410,13 @@ export function CaseTimelinePage() {
                 },
                 {
                   key: "export",
-                  header: "",
+                  header: "Export",
                   cell: (seg) => (
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={`Export recording from channel ${seg.channel ?? "?"} as a video file`}
+                      title="Export this recording as a video file"
                       onClick={() => void handleExport(seg.id)}
                     >
                       <Download className="h-4 w-4" />

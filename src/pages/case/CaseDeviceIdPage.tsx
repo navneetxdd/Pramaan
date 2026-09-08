@@ -14,6 +14,10 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/visily/PageHeader";
 import { formatBytes, formatOffset } from "@/lib/utils";
 
+// A DHAV or NAL stream can have thousands of leaf nodes; the tree is a preview,
+// not an inventory. Cap the rendered rows so the page stays usable.
+const LAYOUT_TREE_LIMIT = 60;
+
 type StructureNode = {
   label: string;
   offset: number;
@@ -119,13 +123,27 @@ export function CaseDeviceIdPage() {
   // an H.264 stream is not a partition table. Real container-signature vendor
   // hits are kept.
   const visibleHits = useMemo(() => {
-    const hits = report?.hits ?? [];
-    if (!isClip) return hits;
-    return hits.filter(
-      (h) =>
-        h.vendor !== "Filesystem" &&
-        h.capability_tier !== "filesystem_recovery",
-    );
+    let hits = report?.hits ?? [];
+    if (isClip) {
+      hits = hits.filter(
+        (h) =>
+          h.vendor !== "Filesystem" &&
+          h.capability_tier !== "filesystem_recovery",
+      );
+    }
+    // Collapse hits that route to the same vendor + adapter (the engine can
+    // emit two "Filesystem / generic_tier2" hits off different markers). Keep
+    // the one with the most marker evidence so nothing useful is lost.
+    const byRoute = new Map<string, (typeof hits)[number]>();
+    for (const h of hits) {
+      const routeKey = `${h.vendor}|${h.adapter}`;
+      const existing = byRoute.get(routeKey);
+      const markerCount = (h.markers ?? []).length;
+      if (!existing || markerCount > (existing.markers ?? []).length) {
+        byRoute.set(routeKey, h);
+      }
+    }
+    return [...byRoute.values()];
   }, [report, isClip]);
 
   return (
@@ -133,7 +151,7 @@ export function CaseDeviceIdPage() {
       <PageHeader
         kicker="Step 2 · Identification"
         title="Device & format analysis"
-        subtitle="Signature scan and partition layout — selects the recovery adapter. Routing hints only until field-validated."
+        subtitle="Signature scan and partition layout. Picks the recovery adapter for the next step."
         actions={
           <Button
             disabled={!deviceId || scanning}
@@ -216,37 +234,44 @@ export function CaseDeviceIdPage() {
               ))}
             </ul>
 
-            {flatStructure.length > 0 ? (
+            {!isClip && flatStructure.length > 0 ? (
               <>
                 <p className="visily-card-title mb-2 mt-4 text-[11px]">
-                  Layout tree
+                  Layout tree{" "}
+                  {flatStructure.length > LAYOUT_TREE_LIMIT ? (
+                    <span className="font-normal text-[var(--text-tertiary)]">
+                      (first {LAYOUT_TREE_LIMIT} of {flatStructure.length})
+                    </span>
+                  ) : null}
                 </p>
 
                 <div className="max-h-48 overflow-auto">
-                  {flatStructure.map(({ node, depth }) => (
-                    <button
-                      key={`${node.type}-${node.offset}-${node.label}`}
+                  {flatStructure
+                    .slice(0, LAYOUT_TREE_LIMIT)
+                    .map(({ node, depth }) => (
+                      <button
+                        key={`${node.type}-${node.offset}-${node.label}`}
 
-                      type="button"
+                        type="button"
 
-                      className={`block w-full truncate rounded px-1 py-0.5 text-left text-[11px] ${
-                        selectedNode?.offset === node.offset &&
-                        selectedNode?.label === node.label
-                          ? "bg-[var(--accent-soft)] text-[var(--accent-600)]"
-                          : "hover:bg-[var(--surface-3)]"
-                      }`}
+                        className={`block w-full truncate rounded px-1 py-0.5 text-left text-[11px] ${
+                          selectedNode?.offset === node.offset &&
+                          selectedNode?.label === node.label
+                            ? "bg-[var(--accent-soft)] text-[var(--accent-600)]"
+                            : "hover:bg-[var(--surface-3)]"
+                        }`}
 
-                      style={{ paddingLeft: `${depth * 10 + 4}px` }}
+                        style={{ paddingLeft: `${depth * 10 + 4}px` }}
 
-                      onClick={() => {
-                        setSelectedNode(node);
+                        onClick={() => {
+                          setSelectedNode(node);
 
-                        setHexOffset(node.offset);
-                      }}
-                    >
-                      {node.label}
-                    </button>
-                  ))}
+                          setHexOffset(node.offset);
+                        }}
+                      >
+                        {node.label}
+                      </button>
+                    ))}
                 </div>
               </>
             ) : null}
@@ -287,9 +312,9 @@ export function CaseDeviceIdPage() {
                 </p>
               ) : (
                 <ul className="mt-4 space-y-2">
-                  {visibleHits.map((hit) => (
+                  {visibleHits.map((hit, hitIndex) => (
                     <li
-                      key={`${hit.vendor}-${hit.adapter}`}
+                      key={`${hit.vendor}-${hit.adapter}-${hitIndex}`}
                       className="rounded-lg border border-[var(--border-subtle)] px-3 py-2"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -344,7 +369,7 @@ export function CaseDeviceIdPage() {
                 >
                   <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
                     Parser coverage across the {report.oem_capabilities.length}{" "}
-                    vendors this build recognises
+                    vendors this build recognizes
                   </p>
                   <div className="mt-2 overflow-x-auto">
                     <table className="w-full text-[11px]">

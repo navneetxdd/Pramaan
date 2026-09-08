@@ -127,7 +127,10 @@ export function ModuleSidebar() {
 
     let cancelled = false;
 
+    // Only used to unlock the numbered nav steps; those change after an acquire
+    // or a recovery, not second to second. Paused while the tab is hidden.
     async function loadCounts() {
+      if (cancelled || document.hidden) return;
       try {
         const workspace = await api.getCase(caseId!);
 
@@ -147,7 +150,7 @@ export function ModuleSidebar() {
 
     void loadCounts();
 
-    const timer = window.setInterval(() => void loadCounts(), 5000);
+    const timer = window.setInterval(() => void loadCounts(), 15_000);
 
     return () => {
       cancelled = true;

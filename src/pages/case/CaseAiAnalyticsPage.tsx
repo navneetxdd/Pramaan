@@ -12,6 +12,12 @@ import { useActivity } from "@/context/ActivityContext";
 import { DashboardStat } from "@/components/visily/DashboardStat";
 import { PageHeader } from "@/components/visily/PageHeader";
 
+/** Position of a frame inside its recovered clip, as m:ss. */
+function fmtClipOffset(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 export function CaseAiAnalyticsPage() {
   const { caseId, workspace, refresh } = useCaseContext();
   const [actor, setActor] = useState(workspace?.case.examiner_name ?? "");
@@ -28,6 +34,11 @@ export function CaseAiAnalyticsPage() {
   useEffect(() => {
     if (devices[0] && !deviceId) setDeviceId(devices[0].id);
   }, [devices, deviceId]);
+
+  // Seed the examiner name once the workspace arrives (stays editable).
+  useEffect(() => {
+    if (workspace?.case.examiner_name) setActor(workspace.case.examiner_name);
+  }, [workspace?.case.examiner_name]);
 
   useEffect(() => {
     if (!deviceId) return;
@@ -127,7 +138,7 @@ export function CaseAiAnalyticsPage() {
       <PageHeader
         kicker="Investigative leads"
         title="Findings"
-        subtitle="Five pipelines: foreground motion, scene change, face candidate, YOLOX object candidate, and person-object proximity. Leads only, none asserted as fact."
+        subtitle="Motion, scene change, face, object and proximity detection. Investigative leads only, not verified evidence."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
@@ -241,9 +252,9 @@ export function CaseAiAnalyticsPage() {
               },
               {
                 key: "offset",
-                header: "Offset",
+                header: "Into clip",
                 className: "mono",
-                cell: (f) => `${f.frame_offset_ms}ms`,
+                cell: (f) => fmtClipOffset(f.frame_offset_ms),
               },
               { key: "label", header: "Label", cell: (f) => f.label ?? "—" },
               {
