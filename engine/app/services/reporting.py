@@ -369,20 +369,22 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
 <html lang="en"><head><meta charset="utf-8"/><title>Forensic report: {escape(str(case['title']))}</title>
 <style>
 body{{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#ffffff;color:#111418}}
-table{{border-collapse:collapse;width:100%;margin:1rem 0}} th,td{{border:1px solid #d7dbe0;padding:8px;font-size:13px;vertical-align:top}}
-th{{background:#f4f6f8;text-align:left}} code{{font-family:monospace;font-size:12px}}
+table{{border-collapse:collapse;width:100%;margin:1rem 0}} th,td{{border:1px solid #d7dbe0;padding:8px;font-size:13px;vertical-align:top;-pdf-word-wrap:CJK;word-wrap:break-word}}
+th{{background:#f4f6f8;text-align:left}} code{{font-family:monospace;font-size:12px;-pdf-word-wrap:CJK;word-wrap:break-word}}
 .ok{{color:#0f7b3f}} .bad{{color:#b00020}} h2{{margin-top:2rem}}
-.meta{{margin:0.15rem 0;font-size:13px}} .meta b{{display:inline-block;min-width:9rem}}
+.metatable{{width:auto;border:none;margin:0}} .metatable td{{border:none;padding:2px 10px 2px 0;font-size:13px}}
 .signoff{{margin-top:2.5rem;padding-top:1rem;border-top:1px solid #d7dbe0;font-size:13px}}
 .signoff .line{{display:inline-block;border-bottom:1px solid #111418;min-width:16rem;margin:0 0.5rem}}
 </style></head><body>
 <h1>Forensic case report</h1>
-<p class="meta"><b>Case</b>{escape(str(case['title']))}</p>
-{f'<p class="meta"><b>Reference</b>{escape(str(case["reference"]))}</p>' if case.get('reference') else ''}
-<p class="meta"><b>Examiner</b>{escape(str(case['examiner']))}</p>
-<p class="meta"><b>Custody chain</b><span class="{'ok' if chain_ok else 'bad'}">{escape(chain_detail)}</span></p>
-<p class="meta"><b>Report generated</b>{escape(str(report['generated_at'])[:19].replace('T', ' '))} UTC</p>
-<p class="meta"><b>Tool</b>Pramaan {escape(str(report['app_version']))}</p>
+<table class="metatable">
+<tr><td><b>Case:</b></td><td>{escape(str(case['title']))}</td></tr>
+{f'<tr><td><b>Reference:</b></td><td>{escape(str(case["reference"]))}</td></tr>' if case.get('reference') else ''}
+<tr><td><b>Examiner:</b></td><td>{escape(str(case['examiner']))}</td></tr>
+<tr><td><b>Custody chain:</b></td><td><span class="{'ok' if chain_ok else 'bad'}">{escape(chain_detail)}</span></td></tr>
+<tr><td><b>Report generated:</b></td><td>{escape(str(report['generated_at'])[:19].replace('T', ' '))} UTC</td></tr>
+<tr><td><b>Tool:</b></td><td>Pramaan {escape(str(report['app_version']))}</td></tr>
+</table>
 {builder_banner}
 {logical_banner}
 <h2>Evidence</h2><table><tr><th>File</th><th>SHA-256</th><th>MD5</th><th>Bytes</th><th>Acquisition</th><th>Write blocker</th></tr>{rows}</table>
@@ -411,47 +413,20 @@ def build_integrity_html_report(case_id: str) -> str:
 
 
 def build_pdf_report(case_id: str, *, require_intact_chain: bool = True) -> tuple[bytes, str]:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import cm
-    from reportlab.pdfgen import canvas
+    from xhtml2pdf import pisa
 
+    html_content = build_html_report(case_id, require_intact_chain=require_intact_chain)
     report = build_json_report(case_id, require_intact_chain=require_intact_chain)
-    case = report["case"]
+
     buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4)
-    height = A4[1]
-    y = height - 2 * cm
+    pisa_status = pisa.CreatePDF(
+        html_content,
+        dest=buffer
+    )
 
-    def line(text: str, font: str = "Helvetica", size: int = 10) -> None:
-        nonlocal y
-        if y < 2 * cm:
-            pdf.showPage()
-            y = height - 2 * cm
-        pdf.setFont(font, size)
-        pdf.drawString(2 * cm, y, text[:110])
-        y -= 0.45 * cm
+    if pisa_status.err:
+        raise RuntimeError("Failed to generate PDF from HTML")
 
-    line("Forensic Workstation — Case Report", "Helvetica-Bold", 14)
-    line(f"Case: {case['title']}")
-    line(f"Examiner: {case['examiner']}")
-    line(f"Generated: {report['generated_at']}")
-    line(f"Build: {APP_VERSION}")
-    chain_ok = report["custody_chain_valid"]["ok"]
-    chain_label = "INTACT" if chain_ok else f"BROKEN at custody row {report['custody_chain_valid'].get('first_broken_row_id')}"
-    line(f"Custody chain: {chain_label}")
-    line(f"Segments recovered: {report['total_segments_recovered']}")
-    for ev in report["evidence"]:
-        line(f"  {ev['filename']} · SHA-256 {ev['sha256'][:32]}…")
-    leads = report.get("investigative_leads") or []
-    if leads:
-        line("Investigative leads (examiner-selected, not verified evidence):", "Helvetica-Bold", 11)
-        for lead in leads[:20]:
-            label = lead.get("label") or lead.get("finding_type") or "lead"
-            line(
-                f"  {label} at {_clip_offset(lead.get('frame_offset_ms'))} into clip"
-                f" conf={lead.get('confidence', '—')}"
-            )
-    pdf.save()
     raw = buffer.getvalue()
     signed, fingerprint = sign_pdf_bytes(raw)
     report_id = uuid.uuid4().hex

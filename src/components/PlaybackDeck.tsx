@@ -351,8 +351,7 @@ export function PlaybackDeck({
       const url = laneUrls[channel.channel];
       if (!window || !video || !url) continue;
       const offsetSec =
-        (effectivePlayhead - window.segStart) / 1000 +
-        driftOffsetSeconds -
+        (effectivePlayhead - window.segStart) / 1000 -
         window.fromMs / 1000;
       if (
         Number.isFinite(offsetSec) &&
@@ -362,7 +361,7 @@ export function PlaybackDeck({
         video.currentTime = offsetSec;
       }
     }
-  }, [effectivePlayhead, driftOffsetSeconds, channels, laneUrls, useTime]);
+  }, [effectivePlayhead, channels, laneUrls, useTime]);
 
   useEffect(() => {
     if (!playing || !useTime) {
@@ -505,6 +504,15 @@ export function PlaybackDeck({
                   }
                   muted
                   playsInline
+                  controls
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
+                  onSeeked={(e) => {
+                    const window = laneExportWindowRef.current[channel.channel];
+                    if (!window) return;
+                    const newPlayhead = window.segStart + window.fromMs + (e.currentTarget.currentTime * 1000);
+                    onPlayheadChange(newPlayhead);
+                  }}
                   onError={(e) => {
                     // currentTarget can be null if the media element errors
                     // during teardown; fall back to target, then to 0.

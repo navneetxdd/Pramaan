@@ -113,6 +113,8 @@ def run_desktop(ui_url: str, *, force_browser: bool = False) -> int:
     def on_loaded() -> None:
         loaded.set()
 
+    storage_path = str(ROOT / ".localdata" / "webview2")
+    os.makedirs(storage_path, exist_ok=True)
     window = webview.create_window(
         "Pramaan",
         ui_url,
@@ -136,10 +138,23 @@ def run_desktop(ui_url: str, *, force_browser: bool = False) -> int:
     threading.Thread(target=watch_engine, daemon=True).start()
 
     try:
-        webview.start(on_closed, gui="edgechromium")
-    except Exception as exc:
-        print(f"WebView2 failed to start ({exc}). Opening the system browser instead.")
-        return run_browser_shell(ui_url, engine)
+        webview.start(on_closed, gui="edgechromium", storage_path=storage_path, private_mode=False)
+    except Exception:
+        loaded.clear()
+        window = webview.create_window(
+            "Pramaan",
+            ui_url,
+            width=1440,
+            height=920,
+            min_size=(1100, 680),
+            background_color="#070b12",
+        )
+        window.events.loaded += on_loaded
+        try:
+            webview.start(on_closed)
+        except Exception as exc:
+            print(f"All GUI backends failed ({exc}). Opening the system browser instead.")
+            return run_browser_shell(ui_url, engine)
 
     if not loaded.is_set():
         print(
