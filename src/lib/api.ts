@@ -99,6 +99,10 @@ export type CustodyEvent = {
   actor: string;
   action: string;
   detail: string | null;
+  /** Stored custody digest, "sha256:<hex>" when the row was written against a
+   * specific artefact. The custody log is case-scoped (target_type='case'), so
+   * this is the only field that binds a row to one evidence image. */
+  evidence_digest?: string | null;
   created_at: string;
 };
 

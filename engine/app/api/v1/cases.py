@@ -254,6 +254,12 @@ def get_case_workspace(case_id: str) -> dict:
             "actor": entry["actor"],
             "action": entry["action"],
             "detail": entry.get("target_type"),
+            # The custody row's stored digest is the only per-item binding the
+            # log carries: acquisition writes "sha256:<image hash>" against the
+            # case-scoped row. Surfacing the stored column (no recomputation)
+            # lets the Evidence Catalog bind events to one image and cross-check
+            # the catalog's hash against what custody recorded.
+            "evidence_digest": entry.get("evidence_digest"),
             "created_at": entry["timestamp_utc"],
         }
         for entry in list_custody_for_case(case_id)
