@@ -11,32 +11,37 @@ export type LiveJobState = {
 export function useLiveJobs(jobs: RecoveryJob[], refreshMs = 2000) {
   const [live, setLive] = useState<Record<string, LiveJobState>>({});
 
+  const activeIds = jobs
+    .filter((j) => j.status === "running" || j.status === "pending")
+    .map((j) => j.id)
+    .sort()
+    .join(",");
+
   useEffect(() => {
-    const active = jobs.filter(
-      (j) => j.status === "running" || j.status === "pending",
-    );
-    if (active.length === 0) {
+    if (!activeIds) {
       setLive({});
       return;
     }
+
+    const idsToPoll = activeIds.split(",");
 
     let cancelled = false;
     async function poll() {
       const next: Record<string, LiveJobState> = {};
       await Promise.all(
-        active.map(async (job) => {
+        idsToPoll.map(async (id) => {
           try {
-            const s = await api.getJobStatus(job.id);
-            next[job.id] = {
+            const s = await api.getJobStatus(id);
+            next[id] = {
               progress: typeof s.progress === "number" ? s.progress : 0,
               message: s.message ?? "",
               status: s.status,
             };
           } catch {
-            next[job.id] = {
+            next[id] = {
               progress: 0,
-              message: job.status,
-              status: job.status,
+              message: "error",
+              status: "error",
             };
           }
         }),
@@ -50,7 +55,7 @@ export function useLiveJobs(jobs: RecoveryJob[], refreshMs = 2000) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [jobs, refreshMs]);
+  }, [activeIds, refreshMs]);
 
   return live;
 }

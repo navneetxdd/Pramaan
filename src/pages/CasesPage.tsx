@@ -470,18 +470,14 @@ export function CasesPage() {
                 />
               </div>
               {importKind === "case_export" ? (
-                <label className="flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
+                <label className="flex items-start gap-2 text-[13px] text-[var(--text-primary)]">
                   <input
                     type="checkbox"
                     className="mt-0.5"
                     checked={verifyOnly}
                     onChange={(e) => setVerifyOnly(e.target.checked)}
                   />
-                  <span>
-                    Verify only: check the signature and every file's hash
-                    without importing. Use this to confirm an export is intact,
-                    including on the workstation that made it.
-                  </span>
+                  <span>Verify only</span>
                 </label>
               ) : null}
             </div>

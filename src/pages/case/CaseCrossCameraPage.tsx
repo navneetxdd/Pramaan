@@ -103,6 +103,7 @@ function SetupSection({
   models,
   busy,
   onRun,
+  onAddVideo,
 }: {
   sources: CrossCameraSource[];
   models: Models;
@@ -112,12 +113,15 @@ function SetupSection({
     fps: number;
     match_sensitivity: number;
   }) => void;
+  onAddVideo: (f: File) => Promise<void>;
 }) {
   const [picked, setPicked] = useState<Set<string>>(
     () => new Set(sources.map((s) => s.key)),
   );
   const [fps, setFps] = useState(1);
   const [sensitivity, setSensitivity] = useState(0.55);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setPicked(new Set(sources.map((s) => s.key)));
@@ -130,12 +134,42 @@ function SetupSection({
       return next;
     });
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      await onAddVideo(file);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-4 text-[13px]">
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
-          Sources
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
+            Sources
+          </p>
+          <input
+            type="file"
+            accept="video/*"
+            ref={fileInputRef}
+            className="hidden"
+            onChange={(e) => { void handleFileChange(e); }}
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-6 px-2 text-[11px]"
+            disabled={uploading || busy}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? "Adding…" : "Add video"}
+          </Button>
+        </div>
         {sources.length === 0 ? (
           <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--text-secondary)]">
             No footage in this case yet. Recover channels from a device image,
@@ -840,7 +874,7 @@ export function CaseCrossCameraPage() {
       <PageHeader
         kicker="Correlation"
         title="Cross-camera trace"
-        subtitle="Find the same person across recovered channels and imported clips. One offline pass, nothing leaves the workstation."
+
       />
 
       <div className="flex min-h-0 flex-1">
@@ -869,6 +903,10 @@ export function CaseCrossCameraPage() {
                   models={models}
                   busy={busy}
                   onRun={startRun}
+                  onAddVideo={async (file) => {
+                    await api.acquire(caseId, actor, file);
+                    await refresh();
+                  }}
                 />
                 {runs.length > 0 ? (
                   <div className="mt-5">

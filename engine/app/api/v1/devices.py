@@ -26,7 +26,7 @@ from engine.app.core.repository import (
 )
 from engine.app.parsers.manufacturer_detect import identify_image
 from engine.app.parsers.unwrap import NAL_START_3, NAL_START_4, unwrap_to_h264
-from engine.app.services.acquisition import acquire_upload, create_builder_specimen, _device_as_evidence
+from engine.app.services.acquisition import acquire_upload, _device_as_evidence
 from engine.app.parsers.image_io import evidence_size, read_image_bytes
 from engine.app.services.recovery import (
     artifact_kind_label,
@@ -73,12 +73,6 @@ def _count_decoded_frames(video_path: Path) -> int | None:
 router = APIRouter(tags=["devices"])
 
 
-class SyntheticAcquireRequest(BaseModel):
-    actor: str = Field(min_length=1)
-    source: Literal["synthetic_specimen"] = "synthetic_specimen"
-    vendor: Literal["dahua", "honeywell", "hikvision"] = "dahua"
-
-
 class RecoveryRequest(BaseModel):
     actor: str = Field(min_length=1)
     max_scan_bytes: int | None = None
@@ -100,15 +94,6 @@ async def acquire_device(
     if not get_case(case_id):
         raise HTTPException(status_code=404, detail="Case not found")
 
-    if source == "synthetic_specimen":
-        try:
-            return await create_builder_specimen(case_id, actor, vendor="dahua")
-        except HTTPException:
-            raise
-        except Exception as exc:
-            logger.exception("Builder specimen acquire failed")
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-
     if file is None:
         raise HTTPException(status_code=400, detail="file is required for upload acquisition")
 
@@ -118,17 +103,6 @@ async def acquire_device(
         raise
     except Exception as exc:
         logger.exception("Acquire failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@router.post("/cases/{case_id}/devices/acquire/synthetic")
-async def acquire_synthetic(case_id: str, body: SyntheticAcquireRequest) -> dict:
-    try:
-        return await create_builder_specimen(case_id, body.actor, vendor=body.vendor)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("Builder specimen acquire failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
