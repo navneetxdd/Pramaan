@@ -727,6 +727,8 @@ export const api = {
       filename: string;
       download_url: string;
       media_type: string;
+      codec?: string;
+      transcoded?: boolean;
     }>(
       `/api/v1/devices/${deviceId}/sequences/${segmentId}/export${qs ? `?${qs}` : ""}`,
       { method: "POST" },

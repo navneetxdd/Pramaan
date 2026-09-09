@@ -74,11 +74,24 @@ class HikvisionE2ETests(unittest.TestCase):
         for sequence in stored:
             artifact = Path(sequence["output_path"])
             self.assertNotEqual(artifact.resolve(), Path(device["image_path"]).resolve())
-            self.assertEqual(artifact.stat().st_size, sequence["byte_length"])
-            self.assertEqual(
-                artifact.read_bytes(),
-                source_bytes[sequence["byte_start"] : sequence["byte_end"]],
+            artifact_bytes = artifact.read_bytes()
+            source_range = source_bytes[sequence["byte_start"] : sequence["byte_end"]]
+            # Recovery demuxes the Hikvision picture-index wrapper frame-by-frame:
+            # the artifact is a real H.264 Annex-B elementary stream, strictly
+            # smaller than the container range and not a verbatim copy of it.
+            self.assertGreater(len(artifact_bytes), 0)
+            self.assertLessEqual(len(artifact_bytes), sequence["byte_length"])
+            self.assertNotEqual(artifact_bytes, source_range)
+            self.assertTrue(
+                artifact_bytes.startswith(b"\x00\x00\x00\x01")
+                or artifact_bytes.startswith(b"\x00\x00\x01"),
+                artifact_bytes[:8].hex(),
             )
+            self.assertNotIn(b"\x00\x00\x01\xba", artifact_bytes[:64])
+            self.assertEqual(sequence["codec"], "h264")
+            evidence0 = sequence["validation_evidence"]
+            self.assertEqual(evidence0["demux_method"], "hikvision_picture_index_strip")
+            self.assertGreater(evidence0["frames_extracted"], 0)
             self.assertIsNotNone(sequence["recorder_start_ts"])
             # §7.1 timestamp provenance ladder — indexed, residual, or IDR-table recovered.
             self.assertIn(

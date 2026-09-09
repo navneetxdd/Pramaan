@@ -25,11 +25,24 @@ def _resolve_export_path(filename: str) -> Path:
     return path
 
 
+def _elementary_format(path: Path) -> str:
+    """Demuxer name for a raw elementary stream by extension."""
+    return "hevc" if path.suffix.lower() in {".h265", ".hevc", ".265"} else "h264"
+
+
 def _prepare_playable_h264(source: Path) -> Path:
-    """Write source bytes (with SPS/PPS prefix ensured) to a temp file for ffmpeg."""
-    with tempfile.NamedTemporaryFile(suffix=".playable.h264", delete=False) as tmp:
+    """Copy the elementary stream to a temp file for ffmpeg.
+
+    H.264 carves get SPS/PPS ensured (a carve can start mid-stream). HEVC and
+    already-demuxed streams are copied verbatim — they carry their own parameter
+    sets and the H.264 parameter-set prefix would corrupt an HEVC stream.
+    """
+    fmt = _elementary_format(source)
+    suffix = f".playable.{ 'h265' if fmt == 'hevc' else 'h264' }"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         playable_path = Path(tmp.name)
-    playable_path.write_bytes(ensure_playable_h264(source.read_bytes()))
+    data = source.read_bytes()
+    playable_path.write_bytes(data if fmt == "hevc" else ensure_playable_h264(data))
     return playable_path
 
 
@@ -53,7 +66,7 @@ def _probe_decodable(ffmpeg: str, playable_path: Path, *, timeout: float = 8.0) 
         "-loglevel",
         "error",
         "-f",
-        "h264",
+        _elementary_format(playable_path),
         "-i",
         str(playable_path),
         "-frames:v",
@@ -79,7 +92,7 @@ def _ffmpeg_transcode_stream(ffmpeg: str, playable_path: Path, *, full: bool = F
             "-loglevel",
             "error",
             "-f",
-            "h264",
+            _elementary_format(playable_path),
             "-i",
             str(playable_path),
         ]
@@ -126,10 +139,16 @@ def download_file(
     full: int = Query(0, ge=0, le=1),
 ) -> Response:
     path = _resolve_export_path(filename)
-    if transcode and path.suffix.lower() in {".h264", ".264"}:
+    if transcode and path.suffix.lower() in {".h264", ".264", ".h265", ".hevc", ".265"}:
         ffmpeg = shutil.which(FFMPEG_BIN)
         if not ffmpeg:
-            raise HTTPException(status_code=503, detail="FFmpeg not available for inline playback")
+            raise HTTPException(
+                status_code=503,
+                detail="FFmpeg is not installed on this workstation, so the raw "
+                f"{_elementary_format(path).upper()} elementary stream cannot be "
+                "remuxed for in-browser playback. Download the segment and open it "
+                "in a local player (VLC, mpv), or install FFmpeg and retry.",
+            )
         playable_path = _prepare_playable_h264(path)
         if not _probe_decodable(ffmpeg, playable_path):
             playable_path.unlink(missing_ok=True)
@@ -146,4 +165,6 @@ def download_file(
     media = "video/mp4" if path.suffix.lower() == ".mp4" else "application/octet-stream"
     if path.suffix.lower() in {".h264", ".264"}:
         media = "video/H264"
+    elif path.suffix.lower() in {".h265", ".hevc", ".265"}:
+        media = "video/H265"
     return FileResponse(path, filename=path.name, media_type=media)

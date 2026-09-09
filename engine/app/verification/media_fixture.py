@@ -257,9 +257,34 @@ def h264_parameter_set_prefix() -> bytes:
     return bytes(prefix)
 
 
+def _looks_like_hevc(nals: list[bytes]) -> bool:
+    """True when the stream carries HEVC NAL headers (VPS/SPS/PPS = 32/33/34).
+
+    The H.264 parameter-set prefix must never be prepended to an HEVC stream.
+    """
+    for nal in nals[:12]:
+        if nal.startswith(NAL_START_4):
+            b0 = nal[4] if len(nal) > 4 else 0
+        elif nal.startswith(b"\x00\x00\x01"):
+            b0 = nal[3] if len(nal) > 3 else 0
+        else:
+            continue
+        if b0 & 0x80:
+            continue
+        if (b0 >> 1) & 0x3F in (32, 33, 34):
+            return True
+    return False
+
+
 def ensure_playable_h264(blob: bytes) -> bytes:
-    """Prepend parameter sets when an Annex-B export lacks SPS/PPS."""
+    """Prepend H.264 parameter sets when an Annex-B *H.264* export lacks SPS/PPS.
+
+    A no-op for HEVC (different NAL grammar) and for streams that already carry
+    their own parameter sets — recovered recorder streams always do.
+    """
     nals = split_annexb_nals(blob)
+    if _looks_like_hevc(nals):
+        return blob
     if any(_nal_type(nal) == 7 for nal in nals) and any(_nal_type(nal) == 8 for nal in nals):
         return blob
     prefix = h264_parameter_set_prefix()

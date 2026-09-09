@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Forensic report: LIVE_AUDIT_DAHUA</title>
+<style>
+body{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#ffffff;color:#111418}
+table{border-collapse:collapse;width:100%;margin:1rem 0} th,td{border:1px solid #d7dbe0;padding:8px;font-size:13px;vertical-align:top;-pdf-word-wrap:CJK;word-wrap:break-word}
+th{background:#f4f6f8;text-align:left} code{font-family:monospace;font-size:12px;-pdf-word-wrap:CJK;word-wrap:break-word}
+.ok{color:#0f7b3f} .bad{color:#b00020} h2{margin-top:2rem}
+.metatable{width:auto;border:none;margin:0} .metatable td{border:none;padding:2px 10px 2px 0;font-size:13px}
+.signoff{margin-top:2.5rem;padding-top:1rem;border-top:1px solid #d7dbe0;font-size:13px}
+.signoff .line{display:inline-block;border-bottom:1px solid #111418;min-width:16rem;margin:0 0.5rem}
+</style></head><body>
+<h1>Forensic case report</h1>
+<table class="metatable">
+<tr><td><b>Case:</b></td><td>LIVE_AUDIT_DAHUA</td></tr>
+<tr><td><b>Reference:</b></td><td>Live test</td></tr>
+<tr><td><b>Examiner:</b></td><td>Auditor</td></tr>
+<tr><td><b>Custody chain:</b></td><td><span class="ok">INTACT</span></td></tr>
+<tr><td><b>Report generated:</b></td><td>2026-09-09 17:24:52 UTC</td></tr>
+<tr><td><b>Tool:</b></td><td>Pramaan 0.6.0</td></tr>
+</table>
+
+
+<h2>Evidence</h2><table><tr><th>File</th><th>SHA-256</th><th>MD5</th><th>Bytes</th><th>Acquisition</th><th>Write blocker</th></tr><tr><td>20.49.55-20.50.21_M_0_0_0_.dav</td><td><code>f64b8884169315f3…</code></td><td><code>9d2c4f39bbf73415…</code></td><td>27503704</td><td>Logical file acquisition</td><td>Source opened read-only (software)</td></tr></table>
+<h2>Capability &amp; validation scope</h2>
+<p>Recovery in this case used: Dahua DHAV frame carve. The table below lists every parser the identification scan considered for this evidence.</p>
+<p>No parser is field-validated without independent recorder media. Dahua recovery is a DHAV frame carver (DHFS4.1 is a detection marker only). Hikvision uses HIKBTREE index + MPEG-PS carve. Honeywell has a fixture-tested experimental parser. When identification is inconclusive, select an adapter manually on Recovery.</p>
+<table><tr><th>Vendor</th><th>Adapter</th><th>Tier</th><th>Scope</th></tr><tr><td>Dahua</td><td>Dahua DHAV frame carve</td><td>Experimental parser</td><td>Proven on builder and known fixtures only</td></tr></table>
+<h2>Timeline normalization</h2><p>Device 25fa65614e57… drift +0.0s · adapter Dahua DHAV frame carve</p>
+<h2>Recovery summary</h2><table><tr><th>Recovery run</th><th>Status</th><th>Vendor</th><th>Adapter</th><th>Segments in catalog</th></tr><tr><td><code>8dd24b53fde3…</code></td><td>Completed</td><td>Dahua</td><td>Dahua DHAV frame carve</td><td>1</td></tr></table>
+<h2>Segment provenance</h2><table><tr><th>Ch</th><th>Byte start</th><th>Byte end</th><th>Parser</th><th>Allocation</th><th>Artifact SHA-256</th></tr><tr><td>0</td><td><code>0</code></td><td><code>27503704</code></td><td>Dahua DHAV frame carve</td><td>Structurally complete (no allocation map)</td><td><code>f64b8884169315f3…</code></td></tr></table>
+<h2>Investigative leads (examiner-selected)</h2>
+<p>Leads marked INCLUDED by the examiner. These are analytical hints only, not verified evidence.</p>
+<table><tr><th>Type</th><th>Label</th><th>Into clip</th><th>Confidence</th><th>Finding ID</th></tr><tr><td colspan="5">No examiner-selected leads.</td></tr></table>
+<h2>Custody ledger</h2><table><tr><th>Time</th><th>Action</th><th>Actor</th><th>Detail</th></tr><tr><td>2026-09-09T17:10:16Z</td><td>Case created</td><td>Auditor</td><td></td></tr><tr><td>2026-09-09T17:12:24Z</td><td>Evidence acquired</td><td>LiveAuditor</td><td>sha256:f64b8884169315f3b60d4c0278648f5a26ef389b1e970b2d188db7d9a35d8efc</td></tr><tr><td>2026-09-09T17:15:54Z</td><td>Recovery started</td><td>LiveAuditor</td><td></td></tr><tr><td>2026-09-09T17:15:55Z</td><td>Recovered segment added</td><td>LiveAuditor</td><td>sha256:f64b8884169315f3b60d4c0278648f5a26ef389b1e970b2d188db7d9a35d8efc</td></tr><tr><td>2026-09-09T17:15:55Z</td><td>Recovery completed</td><td>LiveAuditor</td><td></td></tr><tr><td>2026-09-09T17:24:18Z</td><td>Signed report generated</td><td>Pramaan Engine</td><td></td></tr></table>
+<h2>Methodology</h2><p>Tier 1 DHAV + HIKBTREE index to H.264 NAL extraction, Tier 2 filesystem undelete and H.264 carve</p>
+<div class="signoff">
+<p>The examiner named above certifies that the acquisition, recovery and analysis
+recorded here were carried out as described, and that the custody chain is as stated.</p>
+<p style="margin-top:1.5rem">Examiner signature <span class="line">&nbsp;</span> Date <span class="line">&nbsp;</span></p>
+</div>
+</body></html>

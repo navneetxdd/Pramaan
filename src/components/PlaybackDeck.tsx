@@ -44,7 +44,12 @@ type PlaybackDeckProps = {
 type ExportCacheEntry = {
   url: string;
   mediaType: string;
+  transcoded: boolean;
 };
+
+/** Media types that are a raw elementary stream and need FFmpeg to play in a
+ * browser (which cannot decode a bare Annex-B stream without a container). */
+const RAW_ELEMENTARY = new Set(["h264", "hevc", "video/H264", "video/H265"]);
 
 type LaneExportWindow = {
   segStart: number;
@@ -123,6 +128,8 @@ export function PlaybackDeck({
   onSelectSegment,
 }: PlaybackDeckProps) {
   const [playing, setPlaying] = useState(false);
+  // null = unknown (still checking); true/false once the engine has answered.
+  const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null);
   const exportCacheRef = useRef(new Map<string, ExportCacheEntry>());
   const syncTokenRef = useRef(0);
   const laneExportWindowRef = useRef<Record<number, LaneExportWindow>>({});
@@ -136,6 +143,22 @@ export function PlaybackDeck({
   const [laneErrors, setLaneErrors] = useState<Record<number, number>>({});
   const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
   const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .version()
+      .then((v) => {
+        if (!cancelled)
+          setFfmpegAvailable(v.capabilities.ffmpeg_available !== false);
+      })
+      .catch(() => {
+        if (!cancelled) setFfmpegAvailable(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const flatSegments = useMemo(
     () =>
@@ -179,9 +202,10 @@ export function PlaybackDeck({
         fromMs,
         toMs,
       });
-      const entry = {
+      const entry: ExportCacheEntry = {
         url: resolveApiUrl(result.download_url),
         mediaType: result.media_type,
+        transcoded: result.transcoded === true || result.media_type === "video/mp4",
       };
       exportCache.set(key, entry);
       return entry;
@@ -474,17 +498,41 @@ export function PlaybackDeck({
                   <span className="text-[var(--text-tertiary)]">gap</span>
                 ) : null}
               </div>
-              {laneUrls[channel.channel] &&
-              laneErrors[channel.channel] == null ? (
+              {(() => {
+                const url = laneUrls[channel.channel];
+                const media = laneMedia[channel.channel];
+                const needsTranscode = RAW_ELEMENTARY.has(media);
+                // A raw H.264/HEVC elementary stream can only play in the browser
+                // after FFmpeg remuxes it. If FFmpeg is not on the engine host,
+                // say so plainly and offer the file — never spin forever.
+                if (url && needsTranscode && ffmpegAvailable === false) {
+                  return (
+                    <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-[var(--surface-4)] p-3 text-center text-[12px] text-[var(--text-tertiary)]">
+                      <span>
+                        Raw {media === "hevc" || media === "video/H265" ? "H.265" : "H.264"} stream recovered.
+                        In-browser playback needs FFmpeg, which is not installed on
+                        this workstation.
+                      </span>
+                      <a
+                        href={url}
+                        download
+                        className="rounded border border-[var(--border-default)] px-2 py-1 font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-3)]"
+                      >
+                        Download segment
+                      </a>
+                    </div>
+                  );
+                }
+                return url && laneErrors[channel.channel] == null ? (
                 <video
                   ref={(el) => {
                     videoRefs.current[channel.channel] = el;
                   }}
                   className="aspect-video w-full bg-[var(--surface-4)]"
                   src={
-                    laneMedia[channel.channel] === "h264"
-                      ? `${laneUrls[channel.channel]}${laneUrls[channel.channel].includes("?") ? "&" : "?"}transcode=1`
-                      : laneUrls[channel.channel]
+                    needsTranscode
+                      ? `${url}${url.includes("?") ? "&" : "?"}transcode=1`
+                      : url
                   }
                   muted
                   playsInline
@@ -520,7 +568,8 @@ export function PlaybackDeck({
                         ? "Exporting the segment…"
                         : "Preparing playback…"}
                 </div>
-              )}
+              );
+              })()}
             </div>
           );
         })}

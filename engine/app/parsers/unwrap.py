@@ -24,10 +24,19 @@ def _ensure_playable_h264(blob: bytes) -> bytes:
 
 
 def unwrap_to_h264(blob: bytes) -> bytes:
+    """Best-effort container strip for a *legacy* recovered artifact.
+
+    Recovery now demuxes vendor containers frame-by-frame at write time
+    (engine.app.parsers.demux), so a freshly recovered artifact reaches the
+    export path already as an elementary stream. This remains for artifacts
+    recovered by an older build and for the verbatim fallback.
+    """
     if blob.startswith(DHAV_HEADER) or DHAV_HEADER in blob[:4096]:
-        unwrapped = _unwrap_dhav_frames(blob)
-        if unwrapped:
-            return unwrapped
+        from engine.app.parsers.demux import demux_dhav
+
+        result = demux_dhav(blob)
+        if result.stream and NAL_START_3 in result.stream:
+            return result.stream
     honeywell = _unwrap_honeywell_nal(blob)
     if honeywell:
         return honeywell

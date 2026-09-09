@@ -2,6 +2,7 @@ import struct
 from pathlib import Path
 
 from engine.app.parsers.base import RecoveredSegment
+from engine.app.parsers.demux import CONTAINER_DHAV
 from engine.app.parsers.schemas.dhav import DHAV_HEADER, validate_dhav_frame
 
 UNREFERENCED_GAP_BYTES = 4096
@@ -107,6 +108,7 @@ class DahuaDhavAdapter:
                                 validation=validation,
                                 raw_bytes=window[hit : hit + parsed.frame_len],
                                 codec="h264",
+                                stream_container=CONTAINER_DHAV,
                                 recorder_start_ts=recorder_ts,
                                 recorder_end_ts=recorder_ts,
                                 timestamp_source=ts_source,
@@ -163,6 +165,7 @@ def _merge_adjacent(segments: list[RecoveredSegment]) -> list[RecoveredSegment]:
                 validation=last.validation,
                 raw_bytes=b"",
                 codec=last.codec,
+                stream_container=CONTAINER_DHAV,
                 recorder_start_ts=last.recorder_start_ts,
                 recorder_end_ts=seg.recorder_end_ts or last.recorder_end_ts,
                 timestamp_source=last.timestamp_source,
