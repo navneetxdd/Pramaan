@@ -7,6 +7,7 @@ from typing import BinaryIO
 from pathlib import Path
 
 from engine.app.parsers.base import RecoveredSegment
+from engine.app.parsers.demux import CONTAINER_HONEYWELL_NAL
 from engine.app.parsers.generic_fallback import H264CarveAdapter
 from engine.app.parsers.schemas.honeywell import (
     NAL_START_4,
@@ -78,6 +79,7 @@ class HoneywellAdapter:
                             validation=validation,
                             raw_bytes=b"",
                             codec="h264",
+                            stream_container=CONTAINER_HONEYWELL_NAL,
                             recorder_start_ts=_epoch_seconds(ts),
                             recorder_end_ts=_epoch_seconds(ts),
                             timestamp_source="honeywell_channel_index",
@@ -150,6 +152,7 @@ class HoneywellAdapter:
                             validation="honeywell_format_carve_4",
                             raw_bytes=b"",
                             codec="h264",
+                            stream_container=CONTAINER_HONEYWELL_NAL,
                             recorder_start_ts=recorder_ts,
                             recorder_end_ts=recorder_ts,
                             timestamp_source="honeywell_nal_timestamp_us",

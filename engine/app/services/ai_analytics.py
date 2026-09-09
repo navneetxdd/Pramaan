@@ -593,8 +593,16 @@ async def _execute_ai_analytics(job_id: str, case_id: str, device_id: str, actor
         progress = min(95.0, ((index + 1) / len(sequences)) * 95)
         artifact = Path(sequence["output_path"])
         expected_length = sequence.get("byte_length")
-        if not artifact.exists() or expected_length is None or artifact.stat().st_size != int(expected_length):
-            error = f"Sequence {sequence['id']} does not have a bounded artifact"
+        artifact_size = artifact.stat().st_size if artifact.exists() else -1
+        # The artifact is a demuxed elementary stream (size <= the container
+        # range) or a verbatim bounded copy (size == the range). Either is valid;
+        # a zero-byte or over-long artifact is not.
+        if (
+            artifact_size <= 0
+            or expected_length is None
+            or artifact_size > int(expected_length)
+        ):
+            error = f"Sequence {sequence['id']} does not have a recovered artifact"
             await job_manager.update(job_id, status="failed", error=error)
             persist_job(job_id, "ai_analytics", "failed", case_id=case_id, device_id=device_id, error=error)
             return

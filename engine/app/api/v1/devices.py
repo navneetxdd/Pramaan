@@ -422,66 +422,101 @@ def export_sequence(
 
     artifact_path = Path(seq["output_path"])
     byte_length = seq.get("byte_length")
+    artifact_size = artifact_path.stat().st_size if artifact_path.exists() else -1
+    # The artifact is either a verbatim bounded copy (size == the container range)
+    # or a demuxed elementary stream (size <= the range, the wrapper bytes removed).
+    # Either way it must exist, be non-empty, fit inside the range, and not be the
+    # source image itself.
     if (
-        not artifact_path.exists()
+        artifact_size <= 0
         or byte_length is None
-        or artifact_path.stat().st_size != int(byte_length)
+        or artifact_size > int(byte_length)
         or artifact_path.resolve() == Path(device["image_path"]).resolve()
     ):
-        raise HTTPException(status_code=409, detail="Sequence does not have a verified bounded artifact")
+        raise HTTPException(status_code=409, detail="Sequence does not have a verified recovered artifact")
+
+    evidence = seq.get("validation_evidence") or {}
+    stream_codec = (
+        evidence.get("stream_codec")
+        or (seq.get("codec") if seq.get("codec") in {"h264", "hevc"} else None)
+        or "h264"
+    )
+    container_fmt = "hevc" if stream_codec == "hevc" else "h264"
+    already_elementary = bool(evidence.get("demux_method")) and evidence.get(
+        "demux_method"
+    ) not in {"failed_verbatim_fallback"}
 
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    raw_path = EXPORTS_DIR / f"{uuid.uuid4().hex}.h264"
+    raw_suffix = ".h265" if container_fmt == "hevc" else ".h264"
+    raw_path = EXPORTS_DIR / f"{uuid.uuid4().hex}{raw_suffix}"
     mp4_path = EXPORTS_DIR / f"{raw_path.stem}.mp4"
 
     chunk = artifact_path.read_bytes()
 
-    h264 = ensure_playable_h264(unwrap_to_h264(chunk))
-    if NAL_START_3 not in h264 and NAL_START_4 not in h264:
-        h264 = ensure_playable_h264(chunk)
-    raw_path.write_bytes(h264)
+    if already_elementary:
+        # Recovery already stripped the vendor container frame-by-frame. Do not run
+        # it through the H.264 unwrap/parameter-set path again — that would corrupt
+        # an HEVC stream and re-wrap an H.264 one.
+        stream = chunk
+    else:
+        stream = ensure_playable_h264(unwrap_to_h264(chunk))
+        if NAL_START_3 not in stream and NAL_START_4 not in stream:
+            stream = ensure_playable_h264(chunk)
+    raw_path.write_bytes(stream)
 
     ranged = from_ms is not None and to_ms is not None
+
+    # Frame rate for the raw elementary stream. The recorder timestamps are the
+    # source of truth: (frames extracted) / (recorder end - recorder start) makes
+    # the exported clip's wall-clock length match the footage it represents. A raw
+    # H.264/HEVC demuxer takes this via "-r" *before* "-i" (not "-framerate").
+    _fps = 25.0
+    try:
+        from datetime import datetime as _dt
+
+        _start = seq.get("corrected_start_ts") or seq.get("recorder_start_ts")
+        _end = seq.get("corrected_end_ts") or seq.get("recorder_end_ts")
+        _ev = seq.get("validation_evidence") or {}
+        _frames = _ev.get("frames_extracted") or seq.get("frame_count") or 0
+        if _start and _end and _frames:
+            _span = (
+                _dt.fromisoformat(_end.replace("Z", "+00:00"))
+                - _dt.fromisoformat(_start.replace("Z", "+00:00"))
+            ).total_seconds()
+            if _span > 0:
+                _fps = _frames / _span
+    except Exception:
+        pass
+    fps = max(1.0, min(120.0, _fps))
 
     def transcode_to_mp4(source: Path, destination: Path) -> bool:
         if not shutil.which(FFMPEG_BIN):
             return False
-            
-        fps = 25.0
-        try:
-            from datetime import datetime
-            start_ts = seq.get("corrected_start_ts") or seq.get("recorder_start_ts")
-            end_ts = seq.get("corrected_end_ts") or seq.get("recorder_end_ts")
-            if start_ts and end_ts:
-                dt_start = datetime.fromisoformat(start_ts.replace("Z", "+00:00"))
-                dt_end = datetime.fromisoformat(end_ts.replace("Z", "+00:00"))
-                duration = (dt_end - dt_start).total_seconds()
-                frames = seq.get("frame_count", 0)
-                if duration > 0 and frames > 0:
-                    fps = frames / duration
-        except Exception:
-            pass
-        fps = max(1.0, min(120.0, fps))
 
         if ranged:
             from_s = from_ms / 1000
             dur_s = (to_ms - from_ms) / 1000
+            # A raw H.264/HEVC elementary stream has no container index, so an
+            # input-side "-ss" (before "-i") seeks against nothing and yields an
+            # empty clip. Seek on the OUTPUT side (after "-i"): ffmpeg decodes
+            # from the start and discards until the mark, which is accurate on a
+            # raw stream once "-r" has given it a timebase.
             copy_cmd = [
                 FFMPEG_BIN,
                 "-y",
                 "-hide_banner",
                 "-loglevel",
                 "error",
-                "-ss",
-                f"{from_s:.3f}",
                 "-fflags",
                 "+genpts",
-                "-framerate",
-                f"{fps:.2f}",
+                "-r",
+                f"{fps:.3f}",
                 "-f",
-                "h264",
+                container_fmt,
                 "-i",
                 str(source),
+                "-ss",
+                f"{from_s:.3f}",
                 "-t",
                 f"{dur_s:.3f}",
                 "-c",
@@ -499,16 +534,16 @@ def export_sequence(
                 "-hide_banner",
                 "-loglevel",
                 "error",
-                "-ss",
-                f"{from_s:.3f}",
                 "-fflags",
                 "+genpts",
-                "-framerate",
-                f"{fps:.2f}",
+                "-r",
+                f"{fps:.3f}",
                 "-f",
-                "h264",
+                container_fmt,
                 "-i",
                 str(source),
+                "-ss",
+                f"{from_s:.3f}",
                 "-t",
                 f"{dur_s:.3f}",
                 "-c:v",
@@ -532,10 +567,10 @@ def export_sequence(
             "error",
             "-fflags",
             "+genpts",
-            "-framerate",
-            f"{fps:.2f}",
+            "-r",
+            f"{fps:.3f}",
             "-f",
-            "h264",
+            container_fmt,
             "-i",
             str(source),
             "-c",
@@ -557,10 +592,10 @@ def export_sequence(
             "error",
             "-fflags",
             "+genpts",
-            "-framerate",
-            f"{fps:.2f}",
+            "-r",
+            f"{fps:.3f}",
             "-f",
-            "h264",
+            container_fmt,
             "-i",
             str(source),
         ]
@@ -589,8 +624,14 @@ def export_sequence(
             if frame_count is not None:
                 update_sequence_playable_frame_count(segment_id, frame_count)
 
+    if out_path.suffix == ".mp4":
+        media_type = "video/mp4"
+    else:
+        media_type = container_fmt  # "h264" | "hevc" — the deck picks the transcode path
     return {
         "filename": out_path.name,
         "download_url": f"/api/v1/files/{out_path.name}",
-        "media_type": "video/mp4" if out_path.suffix == ".mp4" else "h264",
+        "media_type": media_type,
+        "codec": stream_codec,
+        "transcoded": out_path.suffix == ".mp4",
     }

@@ -28,6 +28,31 @@ function formatDuration(startIso?: string | null, endIso?: string | null) {
   return `${minutes}m ${Math.round(seconds % 60)}s`;
 }
 
+/** Total recorded footage across the recovered segments, from each segment's own
+ * recorder start/end timestamps. This is the length of video recovered — distinct
+ * from how long the recovery job took to run. */
+function formatFootage(segments: Segment[]): string | null {
+  let ms = 0;
+  let counted = 0;
+  for (const seg of segments) {
+    const start = seg.corrected_start_ts ?? seg.recorder_start_ts;
+    const end = seg.corrected_end_ts ?? seg.recorder_end_ts;
+    if (!start || !end) continue;
+    const span = Date.parse(end) - Date.parse(start);
+    if (Number.isFinite(span) && span > 0) {
+      ms += span;
+      counted += 1;
+    }
+  }
+  if (counted === 0) return null;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${Math.round(seconds % 60)}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
 function formatWhen(iso?: string | null) {
   if (!iso) return null;
   const date = new Date(iso);
@@ -100,6 +125,7 @@ export function RecoveryLastRun({
   }
 
   const duration = formatDuration(job.started_at, job.completed_at);
+  const footage = formatFootage(segments);
   const when = formatWhen(job.completed_at ?? job.started_at);
   const tone = STATUS_TONE[job.status] ?? "var(--text-tertiary)";
   const skippedOob =
@@ -128,7 +154,8 @@ export function RecoveryLastRun({
           accent={counts.deleted > 0 ? "var(--status-danger)" : undefined}
         />
         <Metric label="Channels" value={channels ? String(channels) : "—"} />
-        <Metric label="Duration" value={duration ?? "—"} />
+        <Metric label="Footage" value={footage ?? "—"} />
+        <Metric label="Run time" value={duration ?? "—"} />
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">

@@ -16,6 +16,7 @@ from engine.app.core.repository import (
     persist_job,
 )
 from engine.app.core.hashing import hash_file
+from engine.app.parsers.demux import DEMUX_CONTAINERS, DemuxResult, demux_container
 from engine.app.parsers.image_io import evidence_size, open_evidence_readonly
 from engine.app.parsers.manufacturer_detect import detect_vendors
 from engine.app.parsers.registry import bootstrap_defaults, get
@@ -53,6 +54,50 @@ def _write_raw_artifact(destination: Path, data: bytes) -> tuple[str, str]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(data)
     return hash_file(destination)
+
+
+def _read_range(source: Path, byte_start: int, byte_end: int) -> bytes:
+    source_size = evidence_size(source)
+    if byte_start < 0 or byte_end <= byte_start or byte_end > source_size:
+        raise ValueError(
+            f"Invalid recovered byte range [{byte_start}, {byte_end}) for {source_size}-byte source"
+        )
+    remaining = byte_end - byte_start
+    buf = bytearray()
+    with open_evidence_readonly(source) as src:
+        src.seek(byte_start)
+        while remaining:
+            chunk = src.read(min(COPY_CHUNK_SIZE, remaining))
+            if not chunk:
+                raise OSError("Evidence source ended before recovered range was copied")
+            buf.extend(chunk)
+            remaining -= len(chunk)
+    return bytes(buf)
+
+
+def _write_demuxed_artifact(
+    source: Path,
+    destination: Path,
+    byte_start: int,
+    byte_end: int,
+    container: str,
+) -> tuple[str, str, DemuxResult]:
+    """Strip the vendor container from [byte_start, byte_end) and write the
+    resulting elementary stream. Lossless repackage — no decode, no re-encode.
+
+    Raises ValueError if the demux produced nothing usable, so the caller can
+    fall back to a verbatim copy and record why.
+    """
+    wrapped = _read_range(source, byte_start, byte_end)
+    result = demux_container(wrapped, container)
+    if not result.stream or not result.ok:
+        raise ValueError(
+            f"{container} demux of [{byte_start}, {byte_end}) yielded no elementary stream"
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(result.stream)
+    md5, sha256 = hash_file(destination)
+    return md5, sha256, result
 
 
 # Recovered artifacts are not one kind of thing. An examiner reading "26
@@ -246,8 +291,6 @@ async def run_recovery_job(
         for seq_index, seg in enumerate(sorted(segments, key=lambda item: item.offset_start)):
             if seg.offset_end <= seg.offset_start:
                 continue
-            suffix = ".h264" if seg.codec == "h264" else ".bin"
-            artifact_path = artifact_dir / f"{job_id}_{seq_index:06d}{suffix}"
             # Filesystem-undelete segments carry the recovered bytes in raw_bytes;
             # their offsets are inode addresses, not container ranges, so they are
             # written directly rather than re-carved from the image.
@@ -255,7 +298,17 @@ async def run_recovery_job(
                 str(seg.validation or "").startswith("filesystem_")
                 and bool(seg.raw_bytes)
             )
+            demux_this = (
+                not fs_recovered
+                and seg.stream_container in DEMUX_CONTAINERS
+            )
+            artifact_codec = seg.codec
+            artifact_frame_count = seg.frame_count
+            demux_meta: dict | None = None
+            stem = f"{job_id}_{seq_index:06d}"
+
             if fs_recovered:
+                artifact_path = artifact_dir / f"{stem}.bin"
                 output_md5, output_sha256 = await asyncio.to_thread(
                     _write_raw_artifact, artifact_path, seg.raw_bytes
                 )
@@ -270,21 +323,71 @@ async def run_recovery_job(
                         image_path.name,
                     )
                     continue
-                try:
-                    output_md5, output_sha256 = await asyncio.to_thread(
-                        _write_bounded_artifact,
-                        image_path,
-                        artifact_path,
-                        seg.offset_start,
-                        seg.offset_end,
-                    )
-                except ValueError as exc:
-                    skipped_oob += 1
-                    logger.warning("Skipping unrecovered range for %s: %s", image_path.name, exc)
-                    continue
+                demux_ok = False
+                if demux_this:
+                    try:
+                        provisional = artifact_dir / f"{stem}.stream"
+                        output_md5, output_sha256, demux_result = await asyncio.to_thread(
+                            _write_demuxed_artifact,
+                            image_path,
+                            provisional,
+                            seg.offset_start,
+                            seg.offset_end,
+                            seg.stream_container,
+                        )
+                        artifact_path = artifact_dir / f"{stem}{demux_result.file_suffix}"
+                        provisional.replace(artifact_path)
+                        artifact_codec = demux_result.codec
+                        artifact_frame_count = demux_result.frames_extracted
+                        demux_meta = {
+                            "demux_method": demux_result.method,
+                            "stream_codec": demux_result.codec,
+                            "frames_detected_in_source": demux_result.frames_detected,
+                            "frames_extracted": demux_result.frames_extracted,
+                            "demux_complete": demux_result.complete,
+                            "source_byte_range": [seg.offset_start, seg.offset_end],
+                            "artifact_bytes": artifact_path.stat().st_size,
+                        }
+                        if demux_result.notes:
+                            demux_meta["demux_notes"] = demux_result.notes
+                        demux_ok = True
+                    except (ValueError, OSError) as exc:
+                        # Demux could not produce an elementary stream from this
+                        # range. Fall back to a verbatim copy and say so, rather
+                        # than dropping the recording.
+                        logger.warning(
+                            "Demux (%s) failed for %s [%s, %s): %s — writing verbatim range",
+                            seg.stream_container,
+                            image_path.name,
+                            seg.offset_start,
+                            seg.offset_end,
+                            exc,
+                        )
+                        demux_meta = {
+                            "demux_method": "failed_verbatim_fallback",
+                            "demux_error": str(exc),
+                            "source_byte_range": [seg.offset_start, seg.offset_end],
+                        }
+                if not demux_ok:
+                    suffix = ".h264" if (artifact_codec == "h264") else ".bin"
+                    artifact_path = artifact_dir / f"{stem}{suffix}"
+                    try:
+                        output_md5, output_sha256 = await asyncio.to_thread(
+                            _write_bounded_artifact,
+                            image_path,
+                            artifact_path,
+                            seg.offset_start,
+                            seg.offset_end,
+                        )
+                    except ValueError as exc:
+                        skipped_oob += 1
+                        logger.warning("Skipping unrecovered range for %s: %s", image_path.name, exc)
+                        continue
             conf = _confidence_label(seg.confidence, seg.validation)
             kind = classify_artifact_kind(seg.validation)
             seg_evidence = dict(seg.validation_evidence or {})
+            if demux_meta:
+                seg_evidence.update(demux_meta)
             if not seg_evidence.get("allocation_state"):
                 if kind == "carve":
                     # A stream carve has no filesystem allocation map. Say so
@@ -307,11 +410,11 @@ async def run_recovery_job(
                 output_path=str(artifact_path),
                 output_md5=output_md5,
                 output_sha256=output_sha256,
-                frame_count=seg.frame_count,
+                frame_count=artifact_frame_count,
                 drift_offset=float(device.get("drift_offset_seconds") or 0),
                 byte_start=seg.offset_start,
                 byte_end=seg.offset_end,
-                codec=seg.codec,
+                codec=artifact_codec,
                 offset_order=seq_index,
                 timestamp_source=seg.timestamp_source,
                 timestamp_confidence=seg.timestamp_confidence,
@@ -332,7 +435,7 @@ async def run_recovery_job(
                     "parser_name": seg.parser_name,
                     "parser_version": seg.parser_version,
                     "signature_evidence": seg.signature_evidence,
-                    "validation_evidence": seg.validation_evidence,
+                    "validation_evidence": seg_evidence,
                 }
             )
             with get_db() as conn:

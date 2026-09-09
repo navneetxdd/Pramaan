@@ -114,7 +114,12 @@ async def run_verification_suite(job_id: str) -> dict:
     )
     stages.extend(hikvision_stages)
 
-    real_dav = VALIDATION_DATA_DIR / "external" / "dvr" / "dahua" / "19.25.00-19.25.50-R-.dav"
+    # Any real Dahua .dav the operator has fetched (manifest ids dahua_dav_motion
+    # / dahua_dav_continuous). The stage self-skips when none is present.
+    dav_dir = VALIDATION_DATA_DIR / "external" / "dvr" / "dahua"
+    real_davs = sorted(dav_dir.glob("*.dav")) if dav_dir.is_dir() else []
+    real_davs += sorted((VALIDATION_DATA_DIR / "oem").glob("*.dav"))
+    real_dav = real_davs[0] if real_davs else dav_dir / "none.dav"
     stages.append(dahua_real_dav_stage(real_dav))
 
     passed = all(s["passed"] for s in stages)

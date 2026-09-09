@@ -17,6 +17,7 @@ import mmap
 from pathlib import Path
 
 from engine.app.parsers.base import RecoveredSegment
+from engine.app.parsers.demux import CONTAINER_HIKVISION_PICTURE_INDEX
 from engine.app.parsers.schemas.hikvision_fs import (
     RECOVERY_PARTIAL,
     STATE_DELETED,
@@ -124,6 +125,7 @@ class HikvisionAdapter:
             validation=validation,
             raw_bytes=b"",
             codec="h264",
+            stream_container=CONTAINER_HIKVISION_PICTURE_INDEX,
             recorder_start_ts=item.start_ts,
             recorder_end_ts=item.end_ts,
             timestamp_source=item.timestamp_source,

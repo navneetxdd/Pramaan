@@ -16,6 +16,12 @@ class RecoveredSegment:
     validation: str
     raw_bytes: bytes
     codec: str | None = None
+    # Vendor container wrapping the [offset_start, offset_end) byte range. When set
+    # to one of engine.app.parsers.demux.DEMUX_CONTAINERS, the recovery write step
+    # strips the wrapper frame-by-frame into a real elementary stream instead of
+    # copying the container bytes verbatim. None means the range is already a clean
+    # stream (a carve) or filesystem debris.
+    stream_container: str | None = None
     recorder_start_ts: str | None = None
     recorder_end_ts: str | None = None
     timestamp_source: str = "unavailable"

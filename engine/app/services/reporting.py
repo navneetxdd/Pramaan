@@ -241,8 +241,9 @@ def build_json_report(case_id: str, *, require_intact_chain: bool = True) -> dic
         # Hikvision data blocks hold raw H.264 Annex-B NAL units behind proprietary
         # picture-index headers, not MPEG-PS. See docs/reference/hikvision_fs.md §5.1.
         "methodology": (
-            "Tier 1 DHAV + HIKBTREE index to H.264 NAL extraction, "
-            "Tier 2 filesystem undelete and H.264 carve"
+            "Tier 1 DHAV frame walk and HIKBTREE index walk, each demuxed to its "
+            "native elementary stream (H.264 or H.265); Tier 2 filesystem undelete "
+            "and H.264 stream carve"
         ),
         "report_kind": "standard" if require_intact_chain else "integrity",
     }
@@ -343,11 +344,23 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
             f"{escape(_label(device.get('detected_engine'), _ADAPTER_LABELS, 'unknown'))}"
         )
         for sequence in list_sequences(device["id"]):
+            ev = sequence.get("validation_evidence") or {}
+            codec = (ev.get("stream_codec") or sequence.get("codec") or "—")
+            frames = ev.get("frames_extracted")
+            detected = ev.get("frames_detected_in_source")
+            if frames is not None and detected is not None and frames != detected:
+                frames_cell = f"{frames} of {detected} (partial)"
+            elif frames is not None:
+                frames_cell = str(frames)
+            else:
+                frames_cell = "—"
             provenance_rows += (
                 f"<tr><td>{escape(str(sequence.get('channel')))}</td>"
                 f"<td><code>{escape(str(sequence.get('byte_start')))}</code></td>"
                 f"<td><code>{escape(str(sequence.get('byte_end')))}</code></td>"
                 f"<td>{escape(_label(sequence.get('parser_name'), _ADAPTER_LABELS, '—'))}</td>"
+                f"<td>{escape(str(codec).upper())}</td>"
+                f"<td>{escape(frames_cell)}</td>"
                 f"<td>{escape(_allocation_label(sequence))}</td>"
                 f"<td><code>{escape(str(sequence.get('output_sha256', '')[:16]))}…</code></td></tr>"
             )
@@ -394,7 +407,7 @@ th{{background:#f4f6f8;text-align:left}} code{{font-family:monospace;font-size:1
 <table><tr><th>Vendor</th><th>Adapter</th><th>Tier</th><th>Scope</th></tr>{capability_rows or '<tr><td colspan="4">No identification hits recorded.</td></tr>'}</table>
 <h2>Timeline normalization</h2><p>{timeline_section}</p>
 <h2>Recovery summary</h2><table><tr><th>Recovery run</th><th>Status</th><th>Vendor</th><th>Adapter</th><th>Segments in catalog</th></tr>{recovery_rows}</table>
-<h2>Segment provenance</h2><table><tr><th>Ch</th><th>Byte start</th><th>Byte end</th><th>Parser</th><th>Allocation</th><th>Artifact SHA-256</th></tr>{provenance_rows or '<tr><td colspan="6">No recovered sequences.</td></tr>'}</table>
+<h2>Segment provenance</h2><p>Each artifact is the elementary video stream demuxed from the recovered range (vendor frame headers removed); its SHA-256 is over that stream, not the source bytes. "Frames" is coded pictures written vs. detected in the source.</p><table><tr><th>Ch</th><th>Byte start</th><th>Byte end</th><th>Parser</th><th>Codec</th><th>Frames</th><th>Allocation</th><th>Artifact SHA-256</th></tr>{provenance_rows or '<tr><td colspan="8">No recovered sequences.</td></tr>'}</table>
 <h2>Investigative leads (examiner-selected)</h2>
 <p>Leads marked INCLUDED by the examiner. These are analytical hints only, not verified evidence.</p>
 <table><tr><th>Type</th><th>Label</th><th>Into clip</th><th>Confidence</th><th>Finding ID</th></tr>{lead_rows or '<tr><td colspan="5">No examiner-selected leads.</td></tr>'}</table>
