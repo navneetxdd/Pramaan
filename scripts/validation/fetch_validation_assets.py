@@ -245,14 +245,14 @@ def _sync_oem_drop_zone() -> list[str]:
 def _generate_fixtures() -> list[dict]:
     sys.path.insert(0, str(ROOT))
     from engine.app.parsers.filesystem_recovery import build_fat16_deleted_fixture
-    from engine.app.verification.hikvision_specimen import build_hikvision_lab_specimen
-    from engine.app.verification.honeywell_specimen import build_honeywell_lab_specimen
-    from engine.app.verification.lab_specimen import build_dahua_lab_specimen
+    from engine.app.verification.hikvision_specimen import build_hikvision_builder_specimen
+    from engine.app.verification.honeywell_specimen import build_honeywell_builder_specimen
+    from engine.app.verification.builder_specimen import build_dahua_builder_specimen
 
     fixtures: list[tuple[str, bytes]] = [
-        ("fixtures/tier1/dahua_known_answer.bin", build_dahua_lab_specimen()),
-        ("fixtures/tier1/honeywell_known_answer.bin", build_honeywell_lab_specimen()),
-        ("fixtures/tier1/hikvision_known_answer.bin", build_hikvision_lab_specimen()),
+        ("fixtures/tier1/dahua_known_answer.bin", build_dahua_builder_specimen()),
+        ("fixtures/tier1/honeywell_known_answer.bin", build_honeywell_builder_specimen()),
+        ("fixtures/tier1/hikvision_known_answer.bin", build_hikvision_builder_specimen()),
         ("fixtures/tier2/fat16_deleted_entry.img", build_fat16_deleted_fixture()),
     ]
     out: list[dict] = []

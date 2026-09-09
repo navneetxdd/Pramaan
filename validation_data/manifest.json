@@ -1,26 +1,26 @@
 {
-  "generated_at": "2026-09-02T02:52:54.775420+00:00",
+  "generated_at": "2026-09-09T16:24:06.749179+00:00",
   "note": "Public DVR/NVR OEM disk images are NOT available from CFReDS or Digital Corpora. Place operator captures under validation_data/oem/ or set PRAMAAN_OEM_IMAGE_DIR.",
   "assets": [
     {
       "id": "fixtures_tier1_dahua_known_answer_bin",
       "path": "fixtures/tier1/dahua_known_answer.bin",
-      "bytes": 950491,
-      "sha256": "f348b18cd59042e865127dbdaad043ef3c49626117dab17e09bee35b954f3df0",
+      "bytes": 950490,
+      "sha256": "7ebbe769d3d6a34c76bd076f1a2a6de71aca36745b782b3af92d9326ad9c9d9a",
       "kind": "generated_known_answer"
     },
     {
       "id": "fixtures_tier1_honeywell_known_answer_bin",
       "path": "fixtures/tier1/honeywell_known_answer.bin",
       "bytes": 4259904,
-      "sha256": "34e6fe848023ae1a7b5080df4159bd4d98801e7c7efe4fed57202e2757629019",
+      "sha256": "b6746ff2a24972532fafaa1236bcfa40a1ca246bae41ef0ae6547158b97bd851",
       "kind": "generated_known_answer"
     },
     {
       "id": "fixtures_tier1_hikvision_known_answer_bin",
       "path": "fixtures/tier1/hikvision_known_answer.bin",
       "bytes": 7360512,
-      "sha256": "fdc135d57db1dee07ee2f364113e7501e314ff75e0418ae99915c51bbab323c5",
+      "sha256": "cc0378dc9fa866746bfb487950d50b7daa19f74ba217a4ea82ed6bba196d4535",
       "kind": "generated_known_answer"
     },
     {
@@ -31,34 +31,25 @@
       "kind": "generated_known_answer"
     },
     {
-      "id": "caviar_walk1_h264_fallback",
-      "path": "fixtures/media/caviar_walk1_320x240.h264",
-      "bytes": 1032790,
-      "sha256": "df3df4933bec77f005610fbddc59d416a96c70c7bae8ff2eae510265d7798d50",
-      "purpose": "Committed CAVIAR Annex-B fallback for lab specimens (regenerate with x264 keyint=6 for GOP structure)",
-      "license": "CC BY-SA; acknowledge EC Funded CAVIAR project/IST 2001 37540",
-      "kind": "generated_known_answer"
-    },
-    {
       "id": "digitalcorpora_ubnist1_narrative",
       "path": "external/digitalcorpora/nps-2009-ubnist1/narrative.txt",
-      "bytes": 685,
-      "sha256": "b84e94921462a4331b1943d56f4703519ddfef0a5b1d68d573d11296418d2473",
+      "bytes": 699,
+      "sha256": "78d31a6fde2163239f825cc72e856e1e04f72d59f640f75788e6ac586b811351",
       "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2009-ubnist1/narrative.txt",
       "purpose": "Tier-2 FAT corpus reference (full ubnist1.gen3.raw is ~2.1 GB \u2014 fetch separately if needed)",
       "license": "NPS-created content is public domain; inspect embedded-file rights",
-      "retrieved_at": "2026-09-02T02:52:56.238179+00:00",
+      "retrieved_at": "2026-09-09T16:24:08.104957+00:00",
       "kind": "download"
     },
     {
       "id": "digitalcorpora_xbox_narrative",
       "path": "external/digitalcorpora/nps-2014-xbox1/narrative.txt",
-      "bytes": 4107,
-      "sha256": "fc8d087647a85a724bfbf3627815cbd5675d38ed308f178b5bee27114b4d5126",
+      "bytes": 4186,
+      "sha256": "20344bdb5143d1b28fcf9228ba4b77d650faaad4b6e8114aebd0681bf54e6103",
       "url": "https://downloads.digitalcorpora.org/corpora/drives/nps-2014-xbox1/narrative.txt",
       "purpose": "Filesystem scenario metadata for extended tier-2 regression",
       "license": "NPS-created content is public domain; inspect embedded-file rights",
-      "retrieved_at": "2026-09-02T02:52:56.239234+00:00",
+      "retrieved_at": "2026-09-09T16:24:08.130653+00:00",
       "kind": "download"
     },
     {
@@ -69,7 +60,7 @@
       "url": "https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx",
       "purpose": "Optional YuNet face detection for AI analytics (replaces Haar fallback when present)",
       "license": "Apache-2.0",
-      "retrieved_at": "2026-09-02T02:52:56.240396+00:00",
+      "retrieved_at": "2026-09-09T16:24:08.130653+00:00",
       "kind": "download"
     },
     {
@@ -80,7 +71,7 @@
       "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx",
       "purpose": "YOLOX Nano COCO object-candidate detector for offline analytics",
       "license": "Apache-2.0",
-      "retrieved_at": "2026-09-02T02:52:56.245174+00:00",
+      "retrieved_at": "2026-09-09T16:24:08.149860+00:00",
       "kind": "download"
     },
     {
@@ -89,9 +80,9 @@
       "bytes": 106878407,
       "sha256": "0579683334d4b9440221606dcb461656dd0dc64143b18f48faedaced9b4f580d",
       "url": "https://huggingface.co/opencv/person_reid_youtureid/resolve/main/person_reid_youtu_2021nov.onnx",
-      "purpose": "Person re-identification embeddings for cross-camera trace",
-      "license": "OpenCV Zoo",
-      "retrieved_at": "2026-09-04T18:06:00+00:00",
+      "purpose": "Person re-identification embeddings for cross-camera trace (OpenCV Zoo / Tencent Youtu)",
+      "license": "OpenCV Zoo (Apache-2.0 tooling; model weights per upstream)",
+      "retrieved_at": "2026-09-09T16:25:44.363824+00:00",
       "kind": "download"
     },
     {
@@ -100,10 +91,43 @@
       "bytes": 38696353,
       "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
       "url": "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
-      "purpose": "Face-match mode for cross-camera trace, alongside YuNet detection",
-      "license": "OpenCV Zoo",
-      "retrieved_at": "2026-09-04T18:33:00+00:00",
+      "purpose": "Face-match mode for cross-camera trace, alongside YuNet detection (OpenCV Zoo)",
+      "license": "OpenCV Zoo (Apache-2.0 tooling; model weights per upstream)",
+      "retrieved_at": "2026-09-09T16:26:18.403945+00:00",
       "kind": "download"
+    },
+    {
+      "id": "dahua_dav_continuous",
+      "path": "oem/dahua_19.25.00-19.25.50-R.dav",
+      "bytes": 25788416,
+      "sha256": "c17602dd3958ef850e8b435a1c23a652a28fd8733ca15ad4661fc1fd15b2da07",
+      "url": "https://raw.githubusercontent.com/glepore70/pronom-research/master/sample_files/d/dav/19.25.00-19.25.50-R-.dav",
+      "purpose": "Real Dahua DHAV container for parser validation",
+      "license": "PRONOM format sample \u2014 fetch-only",
+      "retrieved_at": "2026-09-09T16:26:45.500271+00:00",
+      "kind": "download_real_dvr"
+    },
+    {
+      "id": "dahua_dav_motion",
+      "path": "external/dvr/dahua/20.49.55-20.50.21_M_0_0_0_.dav",
+      "bytes": 27503704,
+      "sha256": "f64b8884169315f3b60d4c0278648f5a26ef389b1e970b2d188db7d9a35d8efc",
+      "url": "https://raw.githubusercontent.com/glepore70/pronom-research/master/sample_files/d/dav/20.49.55-20.50.21_M_0_0_0_.dav",
+      "purpose": "Real Dahua DHAV motion-event recording",
+      "license": "PRONOM format sample \u2014 fetch-only",
+      "retrieved_at": "2026-09-09T16:27:13.481147+00:00",
+      "kind": "download_real_dvr"
+    },
+    {
+      "id": "hikvision_nvr_export",
+      "path": "external/dvr/hikvision/DVR_NVR_IP_Camera01_20130321162325.mp4",
+      "bytes": 17527140,
+      "sha256": "589b9727eba8ea193680a9fd6cbbc26db2b29668084cbbdf3794933730470905",
+      "url": "https://samples.ffmpeg.org/camera-dvr/hikvision/DVR_NVR_IP%20Camera01_20130321162325_20130321162358_576877.mp4",
+      "purpose": "Real Hikvision NVR export sample",
+      "license": "FFmpeg sample archive \u2014 fetch-only",
+      "retrieved_at": "2026-09-09T16:27:40.311230+00:00",
+      "kind": "download_real_dvr"
     }
   ],
   "large_optional": [
@@ -158,14 +182,9 @@
   "oem_files": [
     ".gitkeep",
     "dahua_19.25.00-19.25.50-R.dav",
-    "dfr-02-xfat.dd",
     "fat16_deleted_entry.img",
-    "hikvision_NVR_Camera01.mp4",
     "lab_dahua_dhfs.img",
     "lab_hikvision_fs.img",
-    "lab_honeywell_fs.img",
-    "meva_school_G474.avi",
-    "nps-2009-canon2-gen6.E01",
-    "nps-2013-canon1.E01"
+    "lab_honeywell_fs.img"
   ]
 }

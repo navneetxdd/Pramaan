@@ -48,7 +48,7 @@ class DhavValidationResult:
     frame_type: int
     channel: int
     frame_number: int
-    recorder_unix: int | None
+    recorder_unix: float | None
     timestamp_source: str
     checks: dict[str, bool]
     validation_level: str
@@ -67,7 +67,7 @@ class DhavValidationResult:
         if self.recorder_unix is None or self.recorder_unix <= 0:
             return None
         try:
-            return datetime.fromtimestamp(int(self.recorder_unix), tz=timezone.utc).isoformat()
+            return datetime.fromtimestamp(self.recorder_unix, tz=timezone.utc).isoformat()
         except (OverflowError, OSError, ValueError):
             return None
 
@@ -100,11 +100,11 @@ def unpack_dhav_date(date_val: int) -> datetime | None:
         return None
 
 
-def dhav_datetime_to_unix(date_val: int, timestamp_ms: int) -> int | None:
+def dhav_datetime_to_unix(date_val: int, timestamp_ms: int) -> float | None:
     dt = unpack_dhav_date(date_val)
     if dt is None:
         return None
-    return int(dt.timestamp()) + int(timestamp_ms) // 1000
+    return dt.timestamp() + (timestamp_ms / 1000.0)
 
 
 def build_h264_ext_tlvs(width: int = 320, height: int = 240, fps: int = 6) -> bytes:

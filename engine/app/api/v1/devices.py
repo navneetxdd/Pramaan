@@ -446,6 +446,23 @@ def export_sequence(
     def transcode_to_mp4(source: Path, destination: Path) -> bool:
         if not shutil.which(FFMPEG_BIN):
             return False
+            
+        fps = 25.0
+        try:
+            from datetime import datetime
+            start_ts = seq.get("corrected_start_ts") or seq.get("recorder_start_ts")
+            end_ts = seq.get("corrected_end_ts") or seq.get("recorder_end_ts")
+            if start_ts and end_ts:
+                dt_start = datetime.fromisoformat(start_ts.replace("Z", "+00:00"))
+                dt_end = datetime.fromisoformat(end_ts.replace("Z", "+00:00"))
+                duration = (dt_end - dt_start).total_seconds()
+                frames = seq.get("frame_count", 0)
+                if duration > 0 and frames > 0:
+                    fps = frames / duration
+        except Exception:
+            pass
+        fps = max(1.0, min(120.0, fps))
+
         if ranged:
             from_s = from_ms / 1000
             dur_s = (to_ms - from_ms) / 1000
@@ -457,6 +474,10 @@ def export_sequence(
                 "error",
                 "-ss",
                 f"{from_s:.3f}",
+                "-fflags",
+                "+genpts",
+                "-framerate",
+                f"{fps:.2f}",
                 "-f",
                 "h264",
                 "-i",
@@ -480,6 +501,10 @@ def export_sequence(
                 "error",
                 "-ss",
                 f"{from_s:.3f}",
+                "-fflags",
+                "+genpts",
+                "-framerate",
+                f"{fps:.2f}",
                 "-f",
                 "h264",
                 "-i",
@@ -505,6 +530,10 @@ def export_sequence(
             "-hide_banner",
             "-loglevel",
             "error",
+            "-fflags",
+            "+genpts",
+            "-framerate",
+            f"{fps:.2f}",
             "-f",
             "h264",
             "-i",
@@ -526,6 +555,10 @@ def export_sequence(
             "-hide_banner",
             "-loglevel",
             "error",
+            "-fflags",
+            "+genpts",
+            "-framerate",
+            f"{fps:.2f}",
             "-f",
             "h264",
             "-i",

@@ -78,9 +78,9 @@ function parseSegmentEnd(
   if (useTime) {
     const raw = seg.corrected_end_ts ?? seg.recorder_end_ts;
     if (raw) {
-      if (/^\d+(\.\d+)?$/.test(raw)) return Number(raw) * 1000;
+      if (/^\d+(\.\d+)?$/.test(raw)) return Math.max(Number(raw) * 1000, start + 1000);
       const parsed = Date.parse(raw);
-      if (!Number.isNaN(parsed)) return parsed;
+      if (!Number.isNaN(parsed)) return Math.max(parsed, start + 1000);
     }
     // No end timestamp (a carve has none). Give it a nominal one-minute span so
     // the playhead can still land on it and it can be played back; a zero-width
