@@ -436,7 +436,6 @@ export function CaseAcquirePage() {
       <PageHeader
         kicker="Step 1 · Preservation"
         title="Acquire evidence"
-        subtitle="Image or register read-only copies. Source media is never modified."
       />
       <ol className="flex flex-wrap gap-2 px-5">
         {STEPS.map((label, idx) => (
@@ -454,292 +453,284 @@ export function CaseAcquirePage() {
       </ol>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(260px,300px)_1fr_minmax(220px,260px)] lg:items-start">
-        <section className="visily-card space-y-4 p-4">
-          <div>
-            <p className="visily-card-title text-[11px]">
-              Who is performing this step?
-            </p>
-
-            <label className="mt-2 block text-[12px] font-medium text-[var(--text-primary)]">
-              {HANDLER_FIELD_LABEL}
-            </label>
-
-            <Input
-              className="mt-1"
-              value={actor}
-              onChange={(e) => setActor(e.target.value)}
-              placeholder="e.g. SI Sharma"
-            />
-
-            <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
-              {HANDLER_FIELD_HINT}
-            </p>
+        <section className="visily-card flex flex-col">
+          <div className="visily-card-header">
+            <span className="visily-card-title">Data Source</span>
           </div>
+          
+          <div className="space-y-4 p-4">
+            <div>
+              <label className="mt-2 block text-[12px] font-medium text-[var(--text-primary)]">
+                {HANDLER_FIELD_LABEL}
+              </label>
 
-          <div
-            className="space-y-2 border-t pt-3"
-            style={{ borderColor: "var(--border-subtle)" }}
-          >
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
-              Upload disk image or video
-            </p>
+              <Input
+                className="mt-1"
+                value={actor}
+                onChange={(e) => setActor(e.target.value)}
+                placeholder="e.g. SI Sharma"
+              />
+            </div>
 
-            <Button
-              variant="secondary"
-              className="w-full justify-start"
-              disabled={busy}
-              onClick={() => void handlePickNative()}
+            <div
+              className="space-y-2 border-t pt-3"
+              style={{ borderColor: "var(--border-subtle)" }}
             >
-              <Upload className="h-4 w-4" />
-
-              {isDesktopApp() ? "Pick image or video file" : "Choose file"}
-            </Button>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".bin,.img,.dd,.raw,.e01,.mp4,.dav,.avi,.mkv,.mov,.mpg,.mpeg,.m4v,.ts,.webm"
-              className="hidden"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-
-            {file ? (
-              <p className="mono truncate text-[11px] text-[var(--text-secondary)]">
-                {file.name}
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
+                Upload disk image or video
               </p>
-            ) : null}
 
-            <Button
-              className="w-full"
-              disabled={busy || !file}
-              onClick={() => void handleAcquireUpload()}
+              <Button
+                variant="secondary"
+                className="w-full justify-start"
+                disabled={busy}
+                onClick={() => void handlePickNative()}
+              >
+                <Upload className="h-4 w-4" />
+
+                {isDesktopApp() ? "Pick image or video file" : "Choose file"}
+              </Button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".bin,.img,.dd,.raw,.e01,.mp4,.dav,.avi,.mkv,.mov,.mpg,.mpeg,.m4v,.ts,.webm"
+                className="hidden"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+
+              {file ? (
+                <p className="mono truncate text-[11px] text-[var(--text-secondary)]">
+                  {file.name}
+                </p>
+              ) : null}
+
+              <Button
+                className="w-full"
+                disabled={busy || !file}
+                onClick={() => void handleAcquireUpload()}
+              >
+                Register upload
+              </Button>
+            </div>
+
+            <div
+              className="space-y-2 border-t pt-3"
+              style={{ borderColor: "var(--border-subtle)" }}
             >
-              Register upload
-            </Button>
-          </div>
-
-          <div
-            className="space-y-2 border-t pt-3"
-            style={{ borderColor: "var(--border-subtle)" }}
-          >
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
-              Disk imaging
-            </p>
-
-            <Input
-              placeholder="Path or \\.\PhysicalDriveN"
-              value={filePath}
-              onChange={(e) => setFilePath(e.target.value)}
-            />
-
-            <Button
-              className="w-full"
-
-              variant="secondary"
-
-              disabled={busy || !filePath.trim()}
-
-              onClick={() =>
-                void handlePhysicalImaging(
-                  filePath.trim(),
-                  filePath.trim().startsWith("\\\\.\\") ? "physical" : "file",
-                )
-              }
-            >
-              <Play className="h-4 w-4" />
-              Start imaging
-            </Button>
-
-            {disks.length > 0 ? (
-              <div className="space-y-1">
-                {disks.slice(0, 3).map((disk) => (
-                  <button
-                    key={disk.id}
-
-                    type="button"
-
-                    disabled={busy}
-
-                    className={`flex w-full items-start gap-2 rounded border px-2 py-1.5 text-left text-[11px] ${
-                      selectedDisk?.id === disk.id
-                        ? "border-[var(--accent-500)] bg-[var(--accent-soft)]"
-                        : "border-[var(--border-subtle)]"
-                    }`}
-
-                    onClick={() => {
-                      setSelectedDisk(disk);
-
-                      setFilePath(disk.path);
-                    }}
-                  >
-                    <HardDrive className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-
-                    <span>
-                      <span className="block font-medium">{disk.label}</span>
-
-                      <span className="text-[var(--text-tertiary)]">
-                        {formatBytes(disk.size_bytes)} · {disk.bus_type}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          <div
-            className="space-y-2 border-t pt-3"
-            style={{ borderColor: "var(--border-subtle)" }}
-          >
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
-              Operator drop folder
-            </p>
-
-            <p className="text-[11px] text-[var(--text-secondary)]">
-              Copy E01, DD, or IMG files into {oemDropLabel} and they appear
-              here for registration.
-            </p>
-
-            {oemImages.length === 0 ? (
-              <p className="text-[11px] text-[var(--text-tertiary)]">
-                No images in the drop folder yet. Copy disk images there and
-                they appear here.
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
+                Disk imaging
               </p>
-            ) : (
-              <ul className="space-y-1">
-                {oemImages.map((image) => (
-                  <li key={image.filename}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-between"
+
+              <Input
+                placeholder="Path or \\.\PhysicalDriveN"
+                value={filePath}
+                onChange={(e) => setFilePath(e.target.value)}
+              />
+
+              <Button
+                className="w-full"
+                variant="secondary"
+                disabled={busy || !filePath.trim()}
+                onClick={() =>
+                  void handlePhysicalImaging(
+                    filePath.trim(),
+                    filePath.trim().startsWith("\\\\.\\") ? "physical" : "file",
+                  )
+                }
+              >
+                <Play className="h-4 w-4" />
+                Start imaging
+              </Button>
+
+              {disks.length > 0 ? (
+                <div className="space-y-1">
+                  {disks.slice(0, 3).map((disk) => (
+                    <button
+                      key={disk.id}
+                      type="button"
                       disabled={busy}
-                      onClick={() => void handleAcquireOem(image.filename)}
+                      className={`flex w-full items-start gap-2 rounded border px-2 py-1.5 text-left text-[11px] ${
+                        selectedDisk?.id === disk.id
+                          ? "border-[var(--accent-500)] bg-[var(--accent-soft)]"
+                          : "border-[var(--border-subtle)]"
+                      }`}
+                      onClick={() => {
+                        setSelectedDisk(disk);
+                        setFilePath(disk.path);
+                      }}
                     >
-                      <span className="flex items-center gap-2 truncate">
-                        <Server className="h-3.5 w-3.5 shrink-0" />
+                      <HardDrive className="mt-0.5 h-3.5 w-3.5 shrink-0" />
 
-                        {image.filename}
-                      </span>
+                      <span>
+                        <span className="block font-medium">{disk.label}</span>
 
-                      <span className="mono text-[10px]">
-                        {formatBytes(image.size_bytes)}
+                        <span className="text-[var(--text-tertiary)]">
+                          {formatBytes(disk.size_bytes)} · {disk.bus_type}
+                        </span>
                       </span>
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div
+              className="space-y-2 border-t pt-3"
+              style={{ borderColor: "var(--border-subtle)" }}
+            >
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
+                Operator drop folder
+              </p>
+
+              <p className="text-[11px] text-[var(--text-secondary)]">
+                Copy E01, DD, or IMG files into {oemDropLabel} and they appear
+                here for registration.
+              </p>
+
+              {oemImages.length === 0 ? (
+                <p className="text-[11px] text-[var(--text-tertiary)]">
+                  No images in the drop folder yet. Copy disk images there and
+                  they appear here.
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {oemImages.map((image) => (
+                    <li key={image.filename}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-between"
+                        disabled={busy}
+                        onClick={() => void handleAcquireOem(image.filename)}
+                      >
+                        <span className="flex items-center gap-2 truncate">
+                          <Server className="h-3.5 w-3.5 shrink-0" />
+
+                          {image.filename}
+                        </span>
+
+                        <span className="mono text-[10px]">
+                          {formatBytes(image.size_bytes)}
+                        </span>
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </section>
 
-        <section className="visily-card flex flex-col p-5">
-          <p className="visily-card-title mb-4 text-[11px]">
-            Acquisition status
-          </p>
+        <section className="visily-card flex flex-col">
+          <div className="visily-card-header">
+            <span className="visily-card-title">Acquisition status</span>
+          </div>
 
-          {busy ? (
-            <div className="space-y-4">
-              <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-3)]">
-                <div
-                  className="h-full bg-[var(--accent-500)] transition-all duration-300"
-                  style={{ width: `${progress}%` }}
+          <div className="flex flex-col p-4 space-y-4">
+            {busy ? (
+              <div className="space-y-4">
+                <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-3)]">
+                  <div
+                    className="h-full bg-[var(--accent-500)] transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+
+                <JobProgressCard
+                  title="Imaging in progress"
+                  subtitle={statusMessage || "Reading source…"}
+                  status="running"
+                  progress={progress}
                 />
               </div>
+            ) : latest ? (
+              <div className="space-y-4">
+                <HashVerifyBadge state={hashState} />
 
-              <JobProgressCard
-                title="Imaging in progress"
-                subtitle={statusMessage || "Reading source…"}
-                status="running"
-                progress={progress}
-              />
-            </div>
-          ) : latest ? (
-            <div className="space-y-4">
-              <HashVerifyBadge state={hashState} />
+                {hashState === "mismatch" && hashMismatch ? (
+                  <div className="rounded-lg border border-[var(--status-danger)] bg-[var(--surface-2)] p-3 font-mono text-[11px]">
+                    <p className="mb-2 font-sans text-[12px] font-semibold text-[var(--status-danger)]">
+                      Hash mismatch. Do not treat this evidence as verified
+                    </p>
+                    {hashMismatch.expected_sha256 ? (
+                      <>
+                        <p className="text-[var(--text-tertiary)]">
+                          Expected SHA-256
+                        </p>
+                        <p className="mb-1 break-all text-[var(--text-secondary)]">
+                          {hashMismatch.expected_sha256}
+                        </p>
+                        <p className="text-[var(--text-tertiary)]">
+                          Actual SHA-256
+                        </p>
+                        <p className="break-all text-[var(--status-danger)]">
+                          {hashMismatch.actual_sha256}
+                        </p>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
 
-              {hashState === "mismatch" && hashMismatch ? (
-                <div className="rounded-lg border border-[var(--status-danger)] bg-[var(--surface-2)] p-3 font-mono text-[11px]">
-                  <p className="mb-2 font-sans text-[12px] font-semibold text-[var(--status-danger)]">
-                    Hash mismatch. Do not treat this evidence as verified
+                <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-2)] p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
+                    Registered evidence
                   </p>
-                  {hashMismatch.expected_sha256 ? (
-                    <>
-                      <p className="text-[var(--text-tertiary)]">
-                        Expected SHA-256
-                      </p>
-                      <p className="mb-1 break-all text-[var(--text-secondary)]">
-                        {hashMismatch.expected_sha256}
-                      </p>
-                      <p className="text-[var(--text-tertiary)]">
-                        Actual SHA-256
-                      </p>
-                      <p className="break-all text-[var(--status-danger)]">
-                        {hashMismatch.actual_sha256}
-                      </p>
-                    </>
-                  ) : null}
+
+                  <p className="mt-1 text-[16px] font-semibold text-[var(--text-primary)]">
+                    {latest.filename}
+                  </p>
+
+                  <dl className="mt-3 space-y-2 font-mono text-[11px] text-[var(--text-secondary)]">
+                    <div className="flex justify-between gap-4">
+                      <dt>Size</dt>
+
+                      <dd>{formatBytes(latest.size_bytes)}</dd>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <dt>SHA-256</dt>
+
+                      <dd className="truncate">{latest.sha256}</dd>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <dt>MD5</dt>
+
+                      <dd>{latest.md5 ?? "—"}</dd>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <dt>Status</dt>
+
+                      <dd>
+                        {latest.acquisition_status?.replace(/_/g, " ") ?? "—"}
+                      </dd>
+                    </div>
+                  </dl>
                 </div>
-              ) : null}
 
-              <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-2)] p-4">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
-                  Registered evidence
-                </p>
-
-                <p className="mt-1 text-[16px] font-semibold text-[var(--text-primary)]">
-                  {latest.filename}
-                </p>
-
-                <dl className="mt-3 space-y-2 font-mono text-[11px] text-[var(--text-secondary)]">
-                  <div className="flex justify-between gap-4">
-                    <dt>Size</dt>
-
-                    <dd>{formatBytes(latest.size_bytes)}</dd>
-                  </div>
-
-                  <div className="flex justify-between gap-4">
-                    <dt>SHA-256</dt>
-
-                    <dd className="truncate">{latest.sha256}</dd>
-                  </div>
-
-                  <div className="flex justify-between gap-4">
-                    <dt>MD5</dt>
-
-                    <dd>{latest.md5 ?? "—"}</dd>
-                  </div>
-
-                  <div className="flex justify-between gap-4">
-                    <dt>Status</dt>
-
-                    <dd>
-                      {latest.acquisition_status?.replace(/_/g, " ") ?? "—"}
-                    </dd>
-                  </div>
-                </dl>
+                {hashState === "verified" ? (
+                  <Button asChild className="w-full sm:w-auto">
+                    <Link to={`/cases/${caseId}/device-id`}>
+                      Continue to identification →
+                    </Link>
+                  </Button>
+                ) : null}
               </div>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
+                <p className="text-[15px] font-medium text-[var(--text-primary)]">
+                  No evidence registered
+                </p>
 
-              {hashState === "verified" ? (
-                <Button asChild className="w-full sm:w-auto">
-                  <Link to={`/cases/${caseId}/device-id`}>
-                    Continue to identification →
-                  </Link>
-                </Button>
-              ) : null}
-            </div>
-          ) : (
-            <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
-              <p className="text-[15px] font-medium text-[var(--text-primary)]">
-                No evidence registered
-              </p>
-
-              <p className="mt-2 max-w-sm text-[13px] text-[var(--text-secondary)]">
-                Choose a source on the left: upload, image a path, or register a
-                file from the operator drop folder.
-              </p>
-            </div>
-          )}
+                <p className="mt-2 max-w-sm text-[13px] text-[var(--text-secondary)]">
+                  Choose a source on the left: upload, image a path, or register a
+                  file from the operator drop folder.
+                </p>
+              </div>
+            )}
+          </div>
         </section>
 
         <aside className="visily-card flex flex-col">
@@ -751,7 +742,7 @@ export function CaseAcquirePage() {
             </span>
           </div>
 
-          <div className="max-h-[520px] overflow-y-auto p-2">
+          <div className="max-h-[520px] overflow-y-auto p-4">
             {queueItems.length === 0 ? (
               <p className="p-3 text-[12px] text-[var(--text-tertiary)]">
                 Evidence items appear here after acquisition.
