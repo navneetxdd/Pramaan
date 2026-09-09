@@ -14,8 +14,8 @@ export async function pickDiskImage(): Promise<File | null> {
     directory: false,
     filters: [
       {
-        name: "Disk images",
-        extensions: ["bin", "img", "dd", "raw", "001", "e01"],
+        name: "Forensic Evidence",
+        extensions: ["bin", "img", "dd", "raw", "001", "e01", "mp4", "dav", "avi", "mkv", "mov", "mpg", "mpeg", "m4v", "ts", "webm"],
       },
       { name: "All files", extensions: ["*"] },
     ],

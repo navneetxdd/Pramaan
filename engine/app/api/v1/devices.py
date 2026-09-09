@@ -499,6 +499,27 @@ def export_sequence(
             result = subprocess.run(fallback_cmd, capture_output=True, text=True, check=False)
             return result.returncode == 0 and destination.exists() and destination.stat().st_size > 0
 
+        cmd_copy = [
+            FFMPEG_BIN,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "h264",
+            "-i",
+            str(source),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(destination),
+        ]
+        result = subprocess.run(cmd_copy, capture_output=True, text=True, check=False)
+        if result.returncode == 0 and destination.exists() and destination.stat().st_size > 0:
+            return True
+
+        # Fallback to re-encode if copy fails
         cmd = [
             FFMPEG_BIN,
             "-y",

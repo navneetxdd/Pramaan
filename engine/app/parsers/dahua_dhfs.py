@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import struct
 from pathlib import Path
 
 from engine.app.parsers.base import RecoveredSegment
@@ -11,10 +10,36 @@ UNREFERENCED_GAP_BYTES = 4096
 class DahuaDhavAdapter:
     name = "dahua_dhav"
     vendor = "Dahua"
-    version = "3"
+    version = "4"
 
     def scan(self, image_path: Path, *, max_bytes: int | None = None) -> list[RecoveredSegment]:
         segments: list[RecoveredSegment] = []
+        
+        # 1. Parse DHFS Index
+        allocated_ranges: list[tuple[int, int]] = []
+        try:
+            with image_path.open("rb") as handle:
+                # DHFS4.1 signature is in the first 1024 bytes
+                header = handle.read(1024)
+                if b"DHFS4.1" in header:
+                    # Index follows at 1024 (our defined format)
+                    handle.seek(1024)
+                    magic = handle.read(4)
+                    if magic == b"DHID":
+                        count_bytes = handle.read(4)
+                        count = struct.unpack("<I", count_bytes)[0]
+                        # Safeguard against corrupted count
+                        if 0 < count < 100000:
+                            for _ in range(count):
+                                entry = handle.read(32)
+                                if len(entry) < 32:
+                                    break
+                                ch, alloc, pad, t_start, t_end, o_start, o_end, pad2 = struct.unpack("<BBHIIQQI", entry)
+                                if alloc == 1:
+                                    allocated_ranges.append((o_start, o_end))
+        except Exception:
+            pass # Fallback to carve-only if index reading fails
+
         chunk_size = 8 * 1024 * 1024
         overlap = 128
         offset_base = 0
@@ -50,10 +75,24 @@ class DahuaDhavAdapter:
                     if parsed and parsed.checks["size_consistency"]:
                         abs_start = offset_base - len(carry) + hit
                         abs_end = abs_start + parsed.frame_len
-                        gap = max(0, abs_start - prev_frame_end)
+                        
                         validation = parsed.validation_level
-                        if gap >= UNREFERENCED_GAP_BYTES:
-                            validation = "unreferenced_carve"
+                        is_allocated = False
+                        
+                        if allocated_ranges:
+                            # Use true index to check allocation
+                            for r_start, r_end in allocated_ranges:
+                                if r_start <= abs_start < r_end:
+                                    is_allocated = True
+                                    break
+                            if not is_allocated:
+                                validation = "unreferenced_carve"
+                        else:
+                            # Fallback gap heuristic
+                            gap = max(0, abs_start - prev_frame_end)
+                            if gap >= UNREFERENCED_GAP_BYTES:
+                                validation = "unreferenced_carve"
+                                
                         recorder_ts = parsed.recorder_iso
                         ts_source = parsed.timestamp_source if recorder_ts else "unavailable"
                         ts_confidence = 0.85 if ts_source == "dhav_header_date" else (0.85 if recorder_ts else None)
@@ -77,7 +116,6 @@ class DahuaDhavAdapter:
                                 signature_evidence={
                                     "header": "DHAV",
                                     "footer": "dhav" if parsed.checks["footer_signature"] else None,
-                                    "gap_bytes": gap if gap >= UNREFERENCED_GAP_BYTES else 0,
                                 },
                                 validation_evidence={
                                     **parsed.checks,

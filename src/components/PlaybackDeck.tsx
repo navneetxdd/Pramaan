@@ -13,7 +13,7 @@ const DELETED_VALIDATIONS = new Set([
   "slack_recovered",
 ]);
 
-const SCRUB_WINDOW_MS = 15_000;
+
 
 /** Readable text for an HTMLMediaError.code so a failed lane never shows a
  * blank frame or a reason that does not match what went wrong. */
@@ -207,10 +207,7 @@ export function PlaybackDeck({
         );
         if (!seg) return `${channel.channel}:gap`;
         const start = parseSegmentStart(seg, useTime);
-        const bucket = useTime
-          ? Math.floor((effectivePlayhead - start) / SCRUB_WINDOW_MS)
-          : 0;
-        return `${channel.channel}:${seg.id}:${bucket}`;
+        return `${channel.channel}:${seg.id}`;
       })
       .join("|");
   }, [channels, effectivePlayhead, useTime]);
@@ -272,20 +269,6 @@ export function PlaybackDeck({
         const end = parseSegmentEnd(seg, start, useTime);
         let fromMs: number | undefined;
         let toMs: number | undefined;
-        if (useTime && end - start > SCRUB_WINDOW_MS) {
-          const relPlayhead = effectivePlayhead - start;
-          const bucket = Math.floor(relPlayhead / SCRUB_WINDOW_MS);
-          fromMs = Math.max(0, bucket * SCRUB_WINDOW_MS);
-          toMs = Math.min(end - start, fromMs + SCRUB_WINDOW_MS * 2);
-        }
-        // A carve or a sub-window-length segment has no meaningful scrub range
-        // (end === start for a single DHAV frame bracket). Export the whole
-        // segment instead of asking for a zero-length window, which 400s and
-        // leaves the lane showing "no segment at playhead".
-        if (fromMs != null && toMs != null && toMs <= fromMs) {
-          fromMs = undefined;
-          toMs = undefined;
-        }
 
         const cacheKey = exportCacheKey(seg.id, fromMs, toMs);
         const cached = exportCacheRef.current.get(cacheKey);
@@ -356,7 +339,8 @@ export function PlaybackDeck({
       if (
         Number.isFinite(offsetSec) &&
         offsetSec >= 0 &&
-        Math.abs(video.currentTime - offsetSec) > 0.2
+        Math.abs(video.currentTime - offsetSec) > 0.2 &&
+        !video.seeking
       ) {
         video.currentTime = offsetSec;
       }

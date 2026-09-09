@@ -481,7 +481,7 @@ export function CaseAcquirePage() {
             style={{ borderColor: "var(--border-subtle)" }}
           >
             <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-tertiary)]">
-              Upload disk image
+              Upload disk image or video
             </p>
 
             <Button
@@ -492,13 +492,13 @@ export function CaseAcquirePage() {
             >
               <Upload className="h-4 w-4" />
 
-              {isDesktopApp() ? "Pick image file" : "Choose file"}
+              {isDesktopApp() ? "Pick image or video file" : "Choose file"}
             </Button>
 
             <input
               ref={fileInputRef}
               type="file"
-              accept=".bin,.img,.dd,.raw,.e01"
+              accept=".bin,.img,.dd,.raw,.e01,.mp4,.dav,.avi,.mkv,.mov,.mpg,.mpeg,.m4v,.ts,.webm"
               className="hidden"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />

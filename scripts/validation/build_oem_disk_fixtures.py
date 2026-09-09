@@ -21,13 +21,35 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+import struct
+
 def build_dahua_disk(specimen: bytes) -> bytes:
     disk = bytearray(DISK_SIZE)
-    # MDPI / field literature: DHFS4.1 signature in first 1024-byte header block.
+    # Master header with DHFS4.1 signature
     header = b"DHFS4.1" + b"\x00" * (1024 - len("DHFS4.1"))
     disk[0:len(header)] = header
+    
     embed_at = 512 * 1024
     disk[embed_at:embed_at + len(specimen)] = specimen
+    
+    # Build a mock DHFS index at offset 1024
+    # Format: Magic "DHID", uint32 count, then entries.
+    # We will mark the first half of the specimen as allocated, and the second half as deleted.
+    index_offset = 1024
+    disk[index_offset:index_offset+4] = b"DHID"
+    
+    entries = []
+    # Recording 1: Allocated (Start to roughly half)
+    entries.append(struct.pack("<BBHIIQQI", 1, 1, 0, 0, 0, embed_at, embed_at + 8192, 0))
+    # Recording 2: Deleted (The rest)
+    entries.append(struct.pack("<BBHIIQQI", 2, 0, 0, 0, 0, embed_at + 8192, embed_at + len(specimen), 0))
+    
+    struct.pack_into("<I", disk, index_offset+4, len(entries))
+    offset = index_offset + 8
+    for entry in entries:
+        disk[offset:offset+32] = entry
+        offset += 32
+        
     return bytes(disk)
 
 
@@ -52,15 +74,15 @@ def build_honeywell_disk(specimen: bytes) -> bytes:
 
 def main() -> int:
     sys.path.insert(0, str(ROOT))
-    from engine.app.verification.hikvision_specimen import build_hikvision_lab_specimen
-    from engine.app.verification.honeywell_specimen import build_honeywell_lab_specimen
-    from engine.app.verification.lab_specimen import build_dahua_lab_specimen
+    from engine.app.verification.builder_specimen import build_dahua_builder_specimen
+    from engine.app.verification.hikvision_specimen import build_hikvision_builder_specimen
+    from engine.app.verification.honeywell_specimen import build_honeywell_builder_specimen
 
     OEM_DIR.mkdir(parents=True, exist_ok=True)
     builds = [
-        ("lab_dahua_dhfs.img", build_dahua_disk(build_dahua_lab_specimen())),
-        ("lab_hikvision_fs.img", build_hikvision_disk(build_hikvision_lab_specimen())),
-        ("lab_honeywell_fs.img", build_honeywell_disk(build_honeywell_lab_specimen())),
+        ("lab_dahua_dhfs.img", build_dahua_disk(build_dahua_builder_specimen())),
+        ("lab_hikvision_fs.img", build_hikvision_disk(build_hikvision_builder_specimen())),
+        ("lab_honeywell_fs.img", build_honeywell_disk(build_honeywell_builder_specimen())),
     ]
 
     for name, blob in builds:
