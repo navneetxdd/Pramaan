@@ -371,6 +371,11 @@ export function PlaybackDeck({
     }
   }, [effectivePlayhead, channels, laneUrls, useTime]);
 
+  const playheadRef = useRef(effectivePlayhead);
+  useEffect(() => {
+    playheadRef.current = effectivePlayhead;
+  }, [effectivePlayhead]);
+
   useEffect(() => {
     if (!playing || !useTime) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -380,7 +385,23 @@ export function PlaybackDeck({
     const tick = (now: number) => {
       const delta = now - last;
       last = now;
-      let next = effectivePlayhead + delta;
+
+      let speed = 0.25;
+      let hasError3 = false;
+      let hasValidVideo = false;
+
+      for (const channel of channels) {
+        if (findSegmentAtPlayhead(channel.segments, playheadRef.current, useTime)) {
+          if (laneErrors[channel.channel] === 3) hasError3 = true;
+          else if (laneUrls[channel.channel] && laneErrors[channel.channel] == null) hasValidVideo = true;
+        }
+      }
+
+      if (hasError3 && !hasValidVideo) {
+        speed = 10.0;
+      }
+
+      let next = playheadRef.current + delta * speed;
       if (next >= domain.max) {
         next = domain.min;
       }
@@ -391,7 +412,7 @@ export function PlaybackDeck({
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [playing, domain, effectivePlayhead, onPlayheadChange, useTime]);
+  }, [playing, domain, onPlayheadChange, useTime, channels, laneErrors, laneUrls]);
 
   useEffect(() => {
     for (const channel of channels) {
@@ -399,6 +420,7 @@ export function PlaybackDeck({
       if (!video) continue;
       const active = segmentAtPlayhead(channel.channel);
       if (playing && active && laneUrls[channel.channel]) {
+        video.playbackRate = 0.25;
         void video.play().catch(() => undefined);
       } else {
         video.pause();

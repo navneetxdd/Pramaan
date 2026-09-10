@@ -13,6 +13,11 @@ from engine.app.core.repository import (
     register_device_from_path,
 )
 from engine.app.parsers.manufacturer_detect import identify_image
+from engine.app.verification.honeywell_specimen import write_honeywell_specimen
+from engine.app.verification.hikvision_specimen import write_hikvision_specimen
+from engine.app.verification.builder_specimen import write_builder_specimen
+
+SYNTHETIC_VENDORS = frozenset({"dahua", "honeywell", "hikvision"})
 
 logger = logging.getLogger("forensic.engine")
 
@@ -66,6 +71,42 @@ def _write_hash_sidecar(image_path: Path, sha256_hex: str | None) -> None:
         return
     sidecar = image_path.with_suffix(image_path.suffix + ".sha256")
     sidecar.write_text(f"{sha256_hex}  {image_path.name}\n", encoding="utf-8")
+
+
+async def create_builder_specimen(case_id: str, actor: str, vendor: str = "dahua") -> dict:
+    if not get_case(case_id):
+        raise HTTPException(status_code=404, detail="Case not found")
+    vendor_key = vendor.strip().lower()
+    if vendor_key not in SYNTHETIC_VENDORS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported synthetic vendor '{vendor}'. Use: {', '.join(sorted(SYNTHETIC_VENDORS))}",
+        )
+
+    if vendor_key == "honeywell":
+        dest = case_storage_dir(case_id) / "builder_honeywell.bin"
+        write_honeywell_specimen(dest)
+    elif vendor_key == "hikvision":
+        dest = case_storage_dir(case_id) / "builder_hikvision.bin"
+        write_hikvision_specimen(dest)
+    else:
+        dest = case_storage_dir(case_id) / "builder_dahua_dhav.bin"
+        write_builder_specimen(dest)
+
+    identification = identify_image(dest)
+    device = register_device_from_path(
+        case_id,
+        actor.strip(),
+        dest,
+        identification=identification,
+    )
+    _write_hash_sidecar(dest, device["image_sha256"])
+    return {
+        "evidence": _device_as_evidence(device),
+        "identification": identification,
+        "vendor": vendor_key,
+        "specimen_type": "known_answer_fixture",
+    }
 
 
 OEM_EXTENSIONS = frozenset({".bin", ".dd", ".img", ".raw", ".e01", ".ex01", ".dav", ".mp4", ".avi", ".264", ".h264", ".mkv", ".ts"})
