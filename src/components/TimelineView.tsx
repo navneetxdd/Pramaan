@@ -117,6 +117,25 @@ export function TimelineView({
     ),
   );
 
+  let globalMin = Number.POSITIVE_INFINITY;
+  let globalMax = Number.NEGATIVE_INFINITY;
+
+  for (const channel of channels) {
+    for (const seg of channel.segments) {
+      const start = parseStart(seg, useTime);
+      const end = parseEnd(seg, start, useTime);
+      if (start < globalMin) globalMin = start;
+      if (end > globalMax) globalMax = end;
+    }
+  }
+
+  if (globalMin === Number.POSITIVE_INFINITY) {
+    globalMin = 0;
+    globalMax = 1;
+  }
+  const globalSpan = Math.max(globalMax - globalMin, 1);
+  const globalTicks = buildTicks(globalMin, globalMax, useTime);
+
   const axisIsTime = useTime && rtcParsed !== false;
 
   return (
@@ -142,10 +161,10 @@ export function TimelineView({
         const ends = sorted.map((seg, index) =>
           parseEnd(seg, starts[index], useTime),
         );
-        const min = starts.length ? Math.min(...starts) : 0;
-        const max = ends.length ? Math.max(...ends) : 1;
-        const span = Math.max(max - min, 1);
-        const ticks = buildTicks(min, max, useTime);
+        const min = globalMin;
+        const max = globalMax;
+        const span = globalSpan;
+        const ticks = globalTicks;
 
         return (
           <section

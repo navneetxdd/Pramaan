@@ -202,7 +202,7 @@ export function CaseOverviewPage() {
             {sortedJobs.length === 0 ? (
               <JobProgressCard
                 title="No recovery jobs"
-                subtitle="Acquire evidence on the Acquisition screen, then run recovery."
+
                 status="idle"
               />
             ) : null}

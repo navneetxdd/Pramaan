@@ -138,7 +138,7 @@ export function CaseAiAnalyticsPage() {
       <PageHeader
         kicker="Investigative leads"
         title="Findings"
-        subtitle="Motion, scene change, face, object and proximity detection. Investigative leads only, not verified evidence."
+
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">

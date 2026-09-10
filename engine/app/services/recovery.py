@@ -37,14 +37,26 @@ def _write_bounded_artifact(
         raise ValueError(f"Invalid recovered byte range [{byte_start}, {byte_end}) for {source_size}-byte source")
     destination.parent.mkdir(parents=True, exist_ok=True)
     remaining = byte_end - byte_start
-    with open_evidence_readonly(source) as src, destination.open("wb") as dst:
+    buf = bytearray()
+    with open_evidence_readonly(source) as src:
         src.seek(byte_start)
         while remaining:
             chunk = src.read(min(COPY_CHUNK_SIZE, remaining))
             if not chunk:
                 raise OSError("Evidence source ended before recovered range was copied")
-            dst.write(chunk)
+            buf.extend(chunk)
             remaining -= len(chunk)
+            
+    raw = bytes(buf)
+    try:
+        from engine.app.parsers.unwrap import unwrap_to_h264
+        from engine.app.verification.media_fixture import ensure_playable_h264
+        stream = ensure_playable_h264(unwrap_to_h264(raw))
+    except Exception as exc:
+        logger.warning("Fallback demux failed, writing verbatim: %s", exc)
+        stream = raw
+
+    destination.write_bytes(stream)
     return hash_file(destination)
 
 
