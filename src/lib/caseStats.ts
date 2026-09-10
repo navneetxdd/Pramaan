@@ -62,22 +62,8 @@ export function parseJobStats(statsJson: string | null | undefined): JobStats {
   }
 }
 
-function getLatestRecoveryJobs(jobs: RecoveryJob[]): RecoveryJob[] {
-  const latestByDevice = new Map<string, RecoveryJob>();
-  for (const job of jobs) {
-    if (job.kind && job.kind !== "recovery") continue;
-    if (job.status !== "completed") continue;
-
-    const existing = latestByDevice.get(job.image_id);
-    if (!existing || (job.started_at ?? "") > (existing.started_at ?? "")) {
-      latestByDevice.set(job.image_id, job);
-    }
-  }
-  return Array.from(latestByDevice.values());
-}
-
 export function totalRecoveredSegments(jobs: RecoveryJob[]): number {
-  return getLatestRecoveryJobs(jobs).reduce(
+  return jobs.reduce(
     (sum, job) => sum + (parseJobStats(job.stats_json).segmentsFound ?? 0),
     0,
   );
@@ -98,7 +84,7 @@ export function recoveredSegmentsByKind(
     carve: 0,
     filesystem_undelete: 0,
   };
-  for (const job of getLatestRecoveryJobs(jobs)) {
+  for (const job of jobs) {
     const counts = parseJobStats(job.stats_json).segmentsByKind;
     if (!counts) continue;
     seen = true;

@@ -378,15 +378,6 @@ def build_html_report(case_id: str, *, require_intact_chain: bool = True) -> str
         if adapters_used
         else ""
     ) + "The table below lists every parser the identification scan considered for this evidence."
-    identity_rows = "".join(
-        f"<tr><td>{escape(str(ev.get('declared_brand') or 'Not available from this image'))}</td>"
-        f"<td>{escape(str(ev.get('model_hint') or 'Not available from this image'))}</td>"
-        f"<td>Not available from this image</td>"
-        f"<td>{escape(str(ev.get('serial_hint') or 'Not available from this image'))}</td>"
-        f"<td>Not available from this image</td></tr>"
-        for ev in devices
-    )
-
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/><title>Forensic report: {escape(str(case['title']))}</title>
 <style>
@@ -403,14 +394,13 @@ th{{background:#f4f6f8;text-align:left}} code{{font-family:monospace;font-size:1
 <tr><td><b>Case:</b></td><td>{escape(str(case['title']))}</td></tr>
 {f'<tr><td><b>Reference:</b></td><td>{escape(str(case["reference"]))}</td></tr>' if case.get('reference') else ''}
 <tr><td><b>Examiner:</b></td><td>{escape(str(case['examiner']))}</td></tr>
-<tr><td><b>Custody chain:</b></td><td><span class="{'ok' if chain_ok else 'bad'}">{escape(chain_detail)}</span> (Note: Custody binding is case-scoped)</td></tr>
+<tr><td><b>Custody chain:</b></td><td><span class="{'ok' if chain_ok else 'bad'}">{escape(chain_detail)}</span></td></tr>
 <tr><td><b>Report generated:</b></td><td>{escape(str(report['generated_at'])[:19].replace('T', ' '))} UTC</td></tr>
 <tr><td><b>Tool:</b></td><td>Pramaan {escape(str(report['app_version']))}</td></tr>
 </table>
 {builder_banner}
 {logical_banner}
 <h2>Evidence</h2><table><tr><th>File</th><th>SHA-256</th><th>MD5</th><th>Bytes</th><th>Acquisition</th><th>Write blocker</th></tr>{rows}</table>
-<h2>Recorder Identity</h2><table><tr><th>Make</th><th>Model</th><th>Firmware</th><th>Serial</th><th>Channel Count</th></tr>{identity_rows}</table>
 <h2>Capability &amp; validation scope</h2>
 <p>{escape(scope_line)}</p>
 <p>{escape(coverage)}</p>
@@ -436,11 +426,7 @@ def build_integrity_html_report(case_id: str) -> str:
 
 
 def build_pdf_report(case_id: str, *, require_intact_chain: bool = True) -> tuple[bytes, str]:
-    try:
-        from xhtml2pdf import pisa
-    except ImportError:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=503, detail="PDF generation requires xhtml2pdf. Install it using 'pip install xhtml2pdf'.")
+    from xhtml2pdf import pisa
 
     html_content = build_html_report(case_id, require_intact_chain=require_intact_chain)
     report = build_json_report(case_id, require_intact_chain=require_intact_chain)

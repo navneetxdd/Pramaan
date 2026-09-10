@@ -318,6 +318,12 @@ function UndeleteScopeBanner() {
         <p className="font-semibold text-[var(--text-primary)]">
           Undelete scope: filesystem root directory only
         </p>
+        <p className="mt-0.5 text-[var(--text-secondary)]">
+          The generic undelete pass walks the root directory of the mounted
+          filesystem. Subdirectories are not walked, and a deleted entry whose
+          directory slot has been reused is not recoverable here. Absence from
+          this table is not evidence that a file was never present.
+        </p>
       </div>
     </div>
   );

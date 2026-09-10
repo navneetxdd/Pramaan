@@ -206,7 +206,7 @@ export function CaseTimelinePage() {
       <PageHeader
         kicker="Temporal review"
         title="Recovery timeline"
-
+        subtitle="Multi-camera playback with a shared scrubber. Deleted recoveries are flagged on each lane."
       />
 
       <section className="visily-card p-3">

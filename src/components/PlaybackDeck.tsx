@@ -536,6 +536,9 @@ export function PlaybackDeck({
                   }
                   muted
                   playsInline
+                  controls
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
                   onSeeked={(e) => {
                     const window = laneExportWindowRef.current[channel.channel];
                     if (!window) return;
